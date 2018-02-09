@@ -31,4 +31,8 @@
 *.out
 *.app
 
+# Build directory
 build
+
+# Code blocks IDE
+*.cbp
