@@ -18,6 +18,9 @@ public:
   virtual void pollForEvents();
   virtual void finalise();
   virtual void ceasePollingForEvents() { continue_polling = false; }
+  virtual void fireEvent(void *, int, int, int, const char *) = 0;
+  virtual int getRank()=0;
+  virtual int getNumRanks()=0;
 };
 
 #endif
