@@ -1,6 +1,6 @@
 CC       = mpicc
 # compiling flags here
-CFLAGS   = 
+CFLAGS   = -g
 
 LFLAGS   = -L../ -ledat
 
