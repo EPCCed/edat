@@ -33,9 +33,9 @@ bool ThreadPool::isThreadPoolFinished() {
   return true;
 }
 
-void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
+bool ThreadPool::startThread(void (*callFunction)(void *), void *args) {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
-  int idleThreadId = find_idle_thread();
+  int idleThreadId = get_index_of_idle_thread();
   if (idleThreadId != -1) {
     threadBusy[idleThreadId] = true;
     thread_start_lock.unlock();
@@ -45,15 +45,10 @@ void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
     threadStart[idleThreadId] = true;
 
     active_thread_conditions[idleThreadId].notify_one();
+    return true;
+  } else {
+    return false;
   }
-}
-
-int ThreadPool::find_idle_thread() {
-  int idle_thread = get_index_of_idle_thread();
-  while (idle_thread == -1) {
-    idle_thread = get_index_of_idle_thread();
-  }
-  return idle_thread;
 }
 
 int ThreadPool::get_index_of_idle_thread() {

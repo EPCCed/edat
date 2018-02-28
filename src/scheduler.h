@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <mutex>
+#include <queue>
 
 class SpecificEvent {
   int source_pid, message_length, message_type;
@@ -37,10 +38,13 @@ struct TaskLaunchContainer {
 };
 
 class Scheduler {
-    static std::map<std::string, void (*)(void *, EDAT_Metadata)> scheduledTasks;
-    static std::map<std::string, SpecificEvent*> outstandingRequests;
+    std::map<std::string, void (*)(void *, EDAT_Metadata)> scheduledTasks;
+    std::map<std::string, SpecificEvent*> outstandingRequests;
+    static std::queue<TaskLaunchContainer*> taskQueue;
+
     ThreadPool & threadPool;
     std::mutex scheduledTasks_mutex, outstandingRequests_mutex;
+    static std::mutex taskQueue_mutex;
     static void threadBootstrapperFunction(void*);
 public:
     Scheduler(ThreadPool & tp) : threadPool(tp) { }

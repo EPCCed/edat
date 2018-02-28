@@ -7,9 +7,10 @@
 #include <mutex>
 #include <stdlib.h>
 #include <string.h>
+#include <queue>
 
-std::map<std::string, void (*)(void *, EDAT_Metadata)> Scheduler::scheduledTasks;
-std::map<std::string, SpecificEvent*> Scheduler::outstandingRequests;
+std::queue<TaskLaunchContainer*> Scheduler::taskQueue;
+std::mutex Scheduler::taskQueue_mutex;
 
 void Scheduler::registerTask(void (*task_fn)(void *, EDAT_Metadata), std::string uniqueId) {
   std::unique_lock<std::mutex> outstandReq_lock(outstandingRequests_mutex);
@@ -21,7 +22,7 @@ void Scheduler::registerTask(void (*task_fn)(void *, EDAT_Metadata), std::string
     taskContainer->event_metadata=event;
     taskContainer->freeData=true;
     taskContainer->task_fn=scheduledTasks.find(event->getUniqueId())->second;
-    threadPool.startThread(threadBootstrapperFunction, taskContainer);
+    readyToRunTask(taskContainer);
   } else {
     outstandReq_lock.unlock();
     std::lock_guard<std::mutex> sched_tasks_lock(scheduledTasks_mutex);
@@ -36,7 +37,7 @@ void Scheduler::registerEvent(SpecificEvent * event) {
     taskContainer->event_metadata=event;
     taskContainer->freeData=true;
     taskContainer->task_fn=scheduledTasks.find(event->getUniqueId())->second;
-    threadPool.startThread(threadBootstrapperFunction, taskContainer);
+    readyToRunTask(taskContainer);
     scheduledTasks.erase(event->getUniqueId());
   } else {
     sched_tasks_lock.unlock();
@@ -46,7 +47,11 @@ void Scheduler::registerEvent(SpecificEvent * event) {
 }
 
 void Scheduler::readyToRunTask(TaskLaunchContainer * taskContainer) {
-  threadPool.startThread(threadBootstrapperFunction, taskContainer);
+  std::lock_guard<std::mutex> lock(taskQueue_mutex);
+  bool taskExecuting = threadPool.startThread(threadBootstrapperFunction, taskContainer);
+  if (!taskExecuting) {
+    taskQueue.push(taskContainer);
+  }
 }
 
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
@@ -68,10 +73,18 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   free(uuid);
   if (taskContainer->freeData && taskContainer->event_metadata->getData() != NULL) free(taskContainer->event_metadata->getData());
   free(pthreadRawData);
+  std::unique_lock<std::mutex> lock(taskQueue_mutex);
+  if (!taskQueue.empty()) {
+    TaskLaunchContainer * taskContainer=taskQueue.front();
+    taskQueue.pop();
+    lock.unlock();
+    threadBootstrapperFunction(taskContainer);
+  }
 }
 
 bool Scheduler::isFinished() {
   std::lock_guard<std::mutex> sched_tasks_lock(scheduledTasks_mutex);
   std::lock_guard<std::mutex> lock(outstandingRequests_mutex);
-  return scheduledTasks.empty() && outstandingRequests.empty();
+  std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
+  return scheduledTasks.empty() && outstandingRequests.empty() && taskQueue.empty();
 }

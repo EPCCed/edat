@@ -26,11 +26,10 @@ class ThreadPool {
 
   void threadEntryProcedure(int);
   int get_index_of_idle_thread();
-  int find_idle_thread();
 
  public:
   ThreadPool();
-  void startThread(void (*)(void *), void *);
+  bool startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
 };
 
