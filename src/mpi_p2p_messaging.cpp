@@ -29,7 +29,39 @@ void MPI_P2P_Messaging::initMPI() {
   MPI_Comm_size(MPI_COMM_WORLD, &total_ranks);
 }
 
+void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target,
+                                  const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+  handleFiringOfEvent(data, data_count, data_type, target, uuid, reflux_task_fn);
+}
+
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, const char * uuid) {
+  handleFiringOfEvent(data, data_count, data_type, target, uuid, NULL);
+}
+
+void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target,
+                                            const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+  if (target == my_rank || target == EDAT_ALL) {
+    int data_size=getTypeSize(data_type) * data_count;
+    char * buffer_data=(char*) malloc(data_size);
+    memcpy(buffer_data, data, data_size);
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, std::string(uuid), (char*) buffer_data);
+    scheduler.registerEvent(event);
+  }
+  if (target != my_rank) {
+    if (target != EDAT_ALL) {
+      sendSingleEvent(data, data_count, data_type, target, uuid, reflux_task_fn);
+    } else {
+      for (int i=0;i<total_ranks;i++) {
+        if (i != my_rank) {
+          sendSingleEvent(data, data_count, data_type, i, uuid, reflux_task_fn);
+        }
+      }
+    }
+  }
+}
+
+void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target,
+                                        const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
   int uuid_len=strlen(uuid);
   int type_element_size=getTypeSize(data_type);
   int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + uuid_len + 1;
@@ -41,8 +73,25 @@ void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, in
   if (data != NULL) memcpy(&buffer[(12 + uuid_len + 1)], data, type_element_size * data_count);
   MPI_Request request;
   MPI_Isend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
+  {
+    std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
+    outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
+  }
+  if (reflux_task_fn != NULL) {
+    std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
+    TaskLaunchContainer * rawDS=new TaskLaunchContainer();
+    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, uuid, (char*) data);
+    rawDS->event_metadata=event;
+    rawDS->freeData=false;
+    rawDS->task_fn=reflux_task_fn;
+    outstandingRefluxTasks.insert(std::pair<MPI_Request, TaskLaunchContainer*>(request, rawDS));
+  }
+}
+
+bool MPI_P2P_Messaging::isFinished() {
   std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
-  outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
+  std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
+  return outstandingSendRequests.empty() && outstandingRefluxTasks.empty();
 }
 
 void MPI_P2P_Messaging::finalise() {
@@ -74,11 +123,17 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
     int out_count;
     MPI_Testsome(allreqHandles.size(), req_handles, &out_count, returnIndicies, MPI_STATUSES_IGNORE);
     if (out_count > 0) {
+      std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
       for (int i=0;i<out_count;i++) {
         auto it = outstandingSendRequests.find(storedReqHandles[returnIndicies[i]]);
         if (it != outstandingSendRequests.end()) {
           free(it->second);
           outstandingSendRequests.erase(it);
+        }
+        auto it2 = outstandingRefluxTasks.find(storedReqHandles[returnIndicies[i]]);
+        if (it2 != outstandingRefluxTasks.end()) {
+          scheduler.readyToRunTask(it2->second);
+          outstandingRefluxTasks.erase(it2);
         }
       }
     }

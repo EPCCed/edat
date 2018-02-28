@@ -30,8 +30,9 @@ class SpecificEvent {
   int getMessageType() { return this->message_type; }
 };
 
-struct pthread_raw_data_struct {
+struct TaskLaunchContainer {
   SpecificEvent * event_metadata;
+  bool freeData;
   void (*task_fn)(void *, EDAT_Metadata);
 };
 
@@ -46,6 +47,7 @@ public:
     void registerTask(void (*)(void *, EDAT_Metadata), std::string);
     void registerEvent(SpecificEvent*);
     bool isFinished();
+    void readyToRunTask(TaskLaunchContainer*);
 };
 
 #endif

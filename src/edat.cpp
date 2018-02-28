@@ -12,7 +12,6 @@ static Messaging * messaging;
 
 int edatInit(int* argc, char*** argv) {
   threadPool=new ThreadPool();
-  threadPool->initThreadPool();
   scheduler=new Scheduler(*threadPool);
   messaging=new MPI_P2P_Messaging(*scheduler);
   messaging->pollForEvents();
@@ -20,6 +19,7 @@ int edatInit(int* argc, char*** argv) {
 }
 
 int edatFinalise(void) {
+  while (!messaging->isFinished());
   while (!threadPool->isThreadPoolFinished());
   while (!scheduler->isFinished());
   messaging->finalise();
@@ -39,6 +39,11 @@ int edatScheduleTask(void (*task_fn)(void *, EDAT_Metadata), char* uniqueID) {
   return 0;
 }
 
-int edatFireEvent(void* data, int data_count, int data_type, int target, const char * uniqueID) {
+int edatFireEvent(void* data, int data_type, int data_count, int target, const char * uniqueID) {
   messaging->fireEvent(data, data_count, data_type, target, uniqueID);
+}
+
+int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * uniqueID,
+                            void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+  messaging->fireEvent(data, data_count, data_type, target, uniqueID, reflux_task_fn);
 }

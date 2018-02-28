@@ -11,6 +11,8 @@ extern "C" {
 #define EDAT_DOUBLE 3
 #define EDAT_BYTE 4
 
+#define EDAT_ALL -5
+
 struct edat_struct_metadata {
   int data_type, number_elements, source;
   const char *unique_id;
@@ -24,6 +26,7 @@ int edatGetRank();
 int edatGetNumRanks();
 int edatScheduleTask(void (*)(void *, EDAT_Metadata), char*);
 int edatFireEvent(void*, int, int, int, const char *);
+int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(void *, EDAT_Metadata));
 
 
 #ifdef __cplusplus
