@@ -45,7 +45,7 @@ public:
   bool operator<(const DependencyKey& k) const {
     int s_cmp = this->s.compare(k.s);
     if(s_cmp == 0) {
-      if (this->i == EDAT_ANY || k.i == EDAT_ANY) return 0;
+      if (this->i == EDAT_ANY || k.i == EDAT_ANY) return false;
       return this->i < k.i;
     }
     return s_cmp < 0;
@@ -60,14 +60,13 @@ struct PendingTaskDescriptor {
 };
 
 class Scheduler {
-    //std::map<std::string, void (*)(EDAT_Event*, int)> scheduledTasks;
     std::vector<PendingTaskDescriptor*> registeredTasks;
 
     std::map<DependencyKey, SpecificEvent*> outstandingEvents;
     static std::queue<PendingTaskDescriptor*> taskQueue;
 
     ThreadPool & threadPool;
-    std::mutex regTasks_mutex, outstandingEvents_mutex;
+    std::mutex taskAndEvent_mutex;
     static std::mutex taskQueue_mutex;
     static void threadBootstrapperFunction(void*);
     std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);

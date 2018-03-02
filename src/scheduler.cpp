@@ -15,7 +15,7 @@ std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
 std::mutex Scheduler::taskQueue_mutex;
 
 void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::pair<int, std::string> dependencies[], int num_dependencies) {
-  std::unique_lock<std::mutex> outstandEvt_lock(outstandingEvents_mutex);
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
   pendingTask->freeData=true;
@@ -30,26 +30,25 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::pair<int, s
       pendingTask->outstandingDependencies.insert(depKey);
     }
   }
-  outstandEvt_lock.unlock();
+
   if (pendingTask->outstandingDependencies.empty()) {
+    outstandTaskEvt_lock.unlock();
     readyToRunTask(pendingTask);
   } else {
-    std::lock_guard<std::mutex> lock(regTasks_mutex);
     registeredTasks.push_back(pendingTask);
   }
 }
 
 void Scheduler::registerEvent(SpecificEvent * event) {
-  std::unique_lock<std::mutex> regtasks_lock(regTasks_mutex);
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::pair<PendingTaskDescriptor*, int> pendingTask=findTaskMatchingEventAndUpdate(event);
   if (pendingTask.first != NULL) {
     if (pendingTask.first->outstandingDependencies.empty()) {
       registeredTasks.erase(registeredTasks.begin() + pendingTask.second);
-      regtasks_lock.unlock();
+      outstandTaskEvt_lock.unlock();
       readyToRunTask(pendingTask.first);
     }
   } else {
-    std::lock_guard<std::mutex> lock(outstandingEvents_mutex);
     outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getUniqueId(), event->getSourcePid()), event));
   }
 }
@@ -114,8 +113,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
 }
 
 bool Scheduler::isFinished() {
-  std::lock_guard<std::mutex> regtasks_lock(regTasks_mutex);
-  std::lock_guard<std::mutex> lock(outstandingEvents_mutex);
+  std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
   std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
   return registeredTasks.empty() && outstandingEvents.empty() && taskQueue.empty();
 }
