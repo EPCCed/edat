@@ -41,7 +41,7 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), char* uniqueID) {
 }
 
 int edatScheduleMultiTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
-  std::pair<int, std::string> * dependencies=new std::pair<int, std::string>[num_dependencies];
+  std::vector<std::pair<int, std::string>> dependencies;
   va_list valist;
   va_start(valist, num_dependencies);
   for (int i=0; i<num_dependencies; i++) {
@@ -49,14 +49,14 @@ int edatScheduleMultiTask(void (*task_fn)(EDAT_Event*, int), int num_dependencie
     char * uuid=va_arg(valist, char*);
     if (src == EDAT_ALL) {
       for (int j=0;j<messaging->getNumRanks();j++) {
-        dependencies[i]=std::pair<int, std::string>(j, std::string(uuid));
+        dependencies.push_back(std::pair<int, std::string>(j, std::string(uuid)));
       }
     } else {
-      dependencies[i]=std::pair<int, std::string>(src, std::string(uuid));
+      dependencies.push_back(std::pair<int, std::string>(src, std::string(uuid)));
     }
   }
   va_end(valist);
-  scheduler->registerTask(task_fn, dependencies, num_dependencies);
+  scheduler->registerTask(task_fn, dependencies);
   return 0;
 }
 

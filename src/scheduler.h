@@ -72,7 +72,7 @@ class Scheduler {
     std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
 public:
     Scheduler(ThreadPool & tp) : threadPool(tp) { }
-    void registerTask(void (*)(EDAT_Event*, int), std::pair<int, std::string>[], int);
+    void registerTask(void (*)(EDAT_Event*, int), std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
     bool isFinished();
     void readyToRunTask(PendingTaskDescriptor*);

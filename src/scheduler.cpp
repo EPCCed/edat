@@ -14,14 +14,14 @@
 std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
 std::mutex Scheduler::taskQueue_mutex;
 
-void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::pair<int, std::string> dependencies[], int num_dependencies) {
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std::pair<int, std::string>> dependencies) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
   pendingTask->freeData=true;
-  for (int i=0 ; i < num_dependencies ; i++) {
+  for (std::pair<int, std::string> dependency : dependencies) {
     std::map<DependencyKey, SpecificEvent*>::iterator it;
-    DependencyKey depKey = DependencyKey(dependencies[i].second, dependencies[i].first);
+    DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     it=outstandingEvents.find(depKey);
     if (it != outstandingEvents.end()) {
       pendingTask->arrivedEvents.push_back(it->second);
