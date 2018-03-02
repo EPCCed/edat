@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-void my_task(void*, EDAT_Metadata);
+void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv);
@@ -17,9 +17,9 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(void * data, EDAT_Metadata metadata) {
-  if (metadata.number_elements > 0 && metadata.data_type == EDAT_INT) {
-    printf("Hello world %d!\n", *((int *) data));
+void my_task(EDAT_Event * events, int num_events) {
+  if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
+    printf("Hello world %d!\n", *((int *) events[0].data));
   } else {
     printf("Hello world!\n");
   }

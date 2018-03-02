@@ -8,83 +8,114 @@
 #include <stdlib.h>
 #include <string.h>
 #include <queue>
+#include <utility>
+#include <set>
 
-std::queue<TaskLaunchContainer*> Scheduler::taskQueue;
+std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
 std::mutex Scheduler::taskQueue_mutex;
 
-void Scheduler::registerTask(void (*task_fn)(void *, EDAT_Metadata), std::string uniqueId) {
-  std::unique_lock<std::mutex> outstandReq_lock(outstandingRequests_mutex);
-  if (outstandingRequests.count(uniqueId)) {
-    SpecificEvent * event=outstandingRequests.find(uniqueId)->second;
-    outstandingRequests.erase(uniqueId);
-    outstandReq_lock.unlock();
-    TaskLaunchContainer * taskContainer = new TaskLaunchContainer();
-    taskContainer->event_metadata=event;
-    taskContainer->freeData=true;
-    taskContainer->task_fn=scheduledTasks.find(event->getUniqueId())->second;
-    readyToRunTask(taskContainer);
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::pair<int, std::string> dependencies[], int num_dependencies) {
+  std::unique_lock<std::mutex> outstandEvt_lock(outstandingEvents_mutex);
+  PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
+  pendingTask->task_fn=task_fn;
+  pendingTask->freeData=true;
+  for (int i=0 ; i < num_dependencies ; i++) {
+    std::map<DependencyKey, SpecificEvent*>::iterator it;
+    DependencyKey depKey = DependencyKey(dependencies[i].second, dependencies[i].first);
+    it=outstandingEvents.find(depKey);
+    if (it != outstandingEvents.end()) {
+      pendingTask->arrivedEvents.push_back(it->second);
+      outstandingEvents.erase(it);
+    } else {
+      pendingTask->outstandingDependencies.insert(depKey);
+    }
+  }
+  outstandEvt_lock.unlock();
+  if (pendingTask->outstandingDependencies.empty()) {
+    readyToRunTask(pendingTask);
   } else {
-    outstandReq_lock.unlock();
-    std::lock_guard<std::mutex> sched_tasks_lock(scheduledTasks_mutex);
-    scheduledTasks.insert(std::pair<std::string, void (*)(void *, EDAT_Metadata)>(uniqueId, task_fn));
+    std::lock_guard<std::mutex> lock(regTasks_mutex);
+    registeredTasks.push_back(pendingTask);
   }
 }
 
 void Scheduler::registerEvent(SpecificEvent * event) {
-  std::unique_lock<std::mutex> sched_tasks_lock(scheduledTasks_mutex);
-  if (scheduledTasks.count(event->getUniqueId())) {
-    TaskLaunchContainer * taskContainer = new TaskLaunchContainer();
-    taskContainer->event_metadata=event;
-    taskContainer->freeData=true;
-    taskContainer->task_fn=scheduledTasks.find(event->getUniqueId())->second;
-    readyToRunTask(taskContainer);
-    scheduledTasks.erase(event->getUniqueId());
+  std::unique_lock<std::mutex> regtasks_lock(regTasks_mutex);
+  std::pair<PendingTaskDescriptor*, int> pendingTask=findTaskMatchingEventAndUpdate(event);
+  if (pendingTask.first != NULL) {
+    if (pendingTask.first->outstandingDependencies.empty()) {
+      registeredTasks.erase(registeredTasks.begin() + pendingTask.second);
+      regtasks_lock.unlock();
+      readyToRunTask(pendingTask.first);
+    }
   } else {
-    sched_tasks_lock.unlock();
-    std::lock_guard<std::mutex> lock(outstandingRequests_mutex);
-    outstandingRequests.insert(std::pair<std::string, SpecificEvent*>(event->getUniqueId(), event));
+    std::lock_guard<std::mutex> lock(outstandingEvents_mutex);
+    outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getUniqueId(), event->getSourcePid()), event));
   }
 }
 
-void Scheduler::readyToRunTask(TaskLaunchContainer * taskContainer) {
+std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(SpecificEvent * event) {
+  DependencyKey eventDep = DependencyKey(event->getUniqueId(), event->getSourcePid());
+  int i=0;
+  for (PendingTaskDescriptor * pendingTask : registeredTasks) {
+    std::set<DependencyKey>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
+    if (it != pendingTask->outstandingDependencies.end()) {
+      pendingTask->outstandingDependencies.erase(it);
+      pendingTask->arrivedEvents.push_back(event);
+      return std::pair<PendingTaskDescriptor*, int>(pendingTask, i);
+    }
+    i++;
+  }
+  return std::pair<PendingTaskDescriptor*, int>(NULL, -1);
+}
+
+void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
   std::lock_guard<std::mutex> lock(taskQueue_mutex);
-  bool taskExecuting = threadPool.startThread(threadBootstrapperFunction, taskContainer);
+  bool taskExecuting = threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
   if (!taskExecuting) {
-    taskQueue.push(taskContainer);
+    taskQueue.push(taskDescriptor);
   }
 }
 
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
-  TaskLaunchContainer * taskContainer=(TaskLaunchContainer *) pthreadRawData;
-  struct edat_struct_metadata metaToPass;
-  metaToPass.data_type=taskContainer->event_metadata->getMessageType();
-  if (metaToPass.data_type == EDAT_NOTYPE) {
-    metaToPass.number_elements=0;
-  } else {
-    metaToPass.number_elements=taskContainer->event_metadata->getMessageLength() / getTypeSize(metaToPass.data_type);
+  PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
+  EDAT_Event * events_payload = new EDAT_Event[taskContainer->arrivedEvents.size()];
+  int i=0;
+  for (SpecificEvent * specEvent : taskContainer->arrivedEvents) {
+    events_payload[i].data=specEvent->getData();
+    events_payload[i].metadata.data_type=specEvent->getMessageType();
+    if (events_payload[i].metadata.data_type == EDAT_NOTYPE) {
+      events_payload[i].metadata.number_elements=0;
+    } else {
+      events_payload[i].metadata.number_elements=specEvent->getMessageLength() / getTypeSize(events_payload[i].metadata.data_type);
+    }
+    events_payload[i].metadata.source=specEvent->getSourcePid();
+    int uuid_len=specEvent->getUniqueId().size();
+    char * uuid=(char*) malloc(uuid_len + 1);
+    memcpy(uuid, specEvent->getUniqueId().c_str(), uuid_len);
+    events_payload[i].metadata.unique_id=uuid;
+    i++;
   }
-  metaToPass.source=taskContainer->event_metadata->getSourcePid();
-  int uuid_len=taskContainer->event_metadata->getUniqueId().size();
-  char * uuid=(char*) malloc(uuid_len + 1);
-  memcpy(uuid, taskContainer->event_metadata->getUniqueId().c_str(), uuid_len);
-  metaToPass.unique_id=uuid;
-
-  taskContainer->task_fn(taskContainer->event_metadata->getData(), metaToPass);
-  free(uuid);
-  if (taskContainer->freeData && taskContainer->event_metadata->getData() != NULL) free(taskContainer->event_metadata->getData());
+  taskContainer->task_fn(events_payload, i);
+  for (int j=0;j<i;j++) {
+    free(events_payload[j].metadata.unique_id);
+    if (taskContainer->freeData && events_payload[j].data != NULL) free(events_payload[j].data);
+  }
+  delete events_payload;
   free(pthreadRawData);
+
   std::unique_lock<std::mutex> lock(taskQueue_mutex);
   if (!taskQueue.empty()) {
-    TaskLaunchContainer * taskContainer=taskQueue.front();
+    PendingTaskDescriptor * taskDescriptor=taskQueue.front();
     taskQueue.pop();
     lock.unlock();
-    threadBootstrapperFunction(taskContainer);
+    threadBootstrapperFunction(taskDescriptor);
   }
 }
 
 bool Scheduler::isFinished() {
-  std::lock_guard<std::mutex> sched_tasks_lock(scheduledTasks_mutex);
-  std::lock_guard<std::mutex> lock(outstandingRequests_mutex);
+  std::lock_guard<std::mutex> regtasks_lock(regTasks_mutex);
+  std::lock_guard<std::mutex> lock(outstandingEvents_mutex);
   std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
-  return scheduledTasks.empty() && outstandingRequests.empty() && taskQueue.empty();
+  return registeredTasks.empty() && outstandingEvents.empty() && taskQueue.empty();
 }

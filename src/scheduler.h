@@ -7,6 +7,8 @@
 #include <string>
 #include <mutex>
 #include <queue>
+#include <utility>
+#include <set>
 
 class SpecificEvent {
   int source_pid, message_length, message_type;
@@ -31,27 +33,50 @@ class SpecificEvent {
   int getMessageType() { return this->message_type; }
 };
 
-struct TaskLaunchContainer {
-  SpecificEvent * event_metadata;
+class DependencyKey {
+  std::string s;
+  int i;
+public:
+  DependencyKey(std::string s, int i) {
+    this->s = s;
+    this->i = i;
+  }
+
+  bool operator<(const DependencyKey& k) const {
+    int s_cmp = this->s.compare(k.s);
+    if(s_cmp == 0) {
+      if (this->i == EDAT_ANY || k.i == EDAT_ANY) return 0;
+      return this->i < k.i;
+    }
+    return s_cmp < 0;
+  }
+};
+
+struct PendingTaskDescriptor {
+  std::set<DependencyKey> outstandingDependencies;
+  std::vector<SpecificEvent*> arrivedEvents;
   bool freeData;
-  void (*task_fn)(void *, EDAT_Metadata);
+  void (*task_fn)(EDAT_Event*, int);
 };
 
 class Scheduler {
-    std::map<std::string, void (*)(void *, EDAT_Metadata)> scheduledTasks;
-    std::map<std::string, SpecificEvent*> outstandingRequests;
-    static std::queue<TaskLaunchContainer*> taskQueue;
+    //std::map<std::string, void (*)(EDAT_Event*, int)> scheduledTasks;
+    std::vector<PendingTaskDescriptor*> registeredTasks;
+
+    std::map<DependencyKey, SpecificEvent*> outstandingEvents;
+    static std::queue<PendingTaskDescriptor*> taskQueue;
 
     ThreadPool & threadPool;
-    std::mutex scheduledTasks_mutex, outstandingRequests_mutex;
+    std::mutex regTasks_mutex, outstandingEvents_mutex;
     static std::mutex taskQueue_mutex;
     static void threadBootstrapperFunction(void*);
+    std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
 public:
     Scheduler(ThreadPool & tp) : threadPool(tp) { }
-    void registerTask(void (*)(void *, EDAT_Metadata), std::string);
+    void registerTask(void (*)(EDAT_Event*, int), std::pair<int, std::string>[], int);
     void registerEvent(SpecificEvent*);
     bool isFinished();
-    void readyToRunTask(TaskLaunchContainer*);
+    void readyToRunTask(PendingTaskDescriptor*);
 };
 
 #endif

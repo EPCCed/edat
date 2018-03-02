@@ -30,7 +30,7 @@ void MPI_P2P_Messaging::initMPI() {
 }
 
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target,
-                                  const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+                                  const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
   handleFiringOfEvent(data, data_count, data_type, target, uuid, reflux_task_fn);
 }
 
@@ -39,7 +39,7 @@ void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, in
 }
 
 void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target,
-                                            const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+                                            const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == my_rank || target == EDAT_ALL) {
     int data_size=getTypeSize(data_type) * data_count;
     char * buffer_data=(char*) malloc(data_size);
@@ -61,7 +61,7 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
 }
 
 void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target,
-                                        const char * uuid, void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+                                        const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
   int uuid_len=strlen(uuid);
   int type_element_size=getTypeSize(data_type);
   int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + uuid_len + 1;
@@ -79,12 +79,12 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
   if (reflux_task_fn != NULL) {
     std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    TaskLaunchContainer * rawDS=new TaskLaunchContainer();
     SpecificEvent * event=new SpecificEvent(target, data_count, data_type, uuid, (char*) data);
-    rawDS->event_metadata=event;
-    rawDS->freeData=false;
-    rawDS->task_fn=reflux_task_fn;
-    outstandingRefluxTasks.insert(std::pair<MPI_Request, TaskLaunchContainer*>(request, rawDS));
+    PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
+    taskDescriptor->task_fn=reflux_task_fn;
+    taskDescriptor->freeData=false;
+    taskDescriptor->arrivedEvents.push_back(event);
+    outstandingRefluxTasks.insert(std::pair<MPI_Request, PendingTaskDescriptor*>(request, taskDescriptor));
   }
 }
 

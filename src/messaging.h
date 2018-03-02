@@ -19,7 +19,7 @@ public:
   virtual void finalise();
   virtual void ceasePollingForEvents() { continue_polling = false; }
   virtual void fireEvent(void *, int, int, int, const char *) = 0;
-  virtual void fireEvent(void *, int, int, int, const char *, void (*)(void *, EDAT_Metadata)) = 0;
+  virtual void fireEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int)) = 0;
   virtual int getRank()=0;
   virtual int getNumRanks()=0;
   virtual bool isFinished()=0;

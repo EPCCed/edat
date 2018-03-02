@@ -4,7 +4,9 @@
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
 #include <stddef.h>
+#include <stdarg.h>
 #include <string>
+#include <utility>
 
 static ThreadPool * threadPool;
 static Scheduler * scheduler;
@@ -34,8 +36,27 @@ int edatGetNumRanks() {
   return messaging->getNumRanks();
 }
 
-int edatScheduleTask(void (*task_fn)(void *, EDAT_Metadata), char* uniqueID) {
-  scheduler->registerTask(task_fn, std::string(uniqueID));
+int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), char* uniqueID) {
+  return edatScheduleMultiTask(task_fn, 1, EDAT_ANY, uniqueID);
+}
+
+int edatScheduleMultiTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  std::pair<int, std::string> * dependencies=new std::pair<int, std::string>[num_dependencies];
+  va_list valist;
+  va_start(valist, num_dependencies);
+  for (int i=0; i<num_dependencies; i++) {
+    int src=va_arg(valist, int);
+    char * uuid=va_arg(valist, char*);
+    if (src == EDAT_ALL) {
+      for (int j=0;j<messaging->getNumRanks();j++) {
+        dependencies[i]=std::pair<int, std::string>(j, std::string(uuid));
+      }
+    } else {
+      dependencies[i]=std::pair<int, std::string>(src, std::string(uuid));
+    }
+  }
+  va_end(valist);
+  scheduler->registerTask(task_fn, dependencies, num_dependencies);
   return 0;
 }
 
@@ -44,6 +65,6 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
 }
 
 int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * uniqueID,
-                            void (*reflux_task_fn)(void *, EDAT_Metadata)) {
+                            void (*reflux_task_fn)(EDAT_Event*, int)) {
   messaging->fireEvent(data, data_count, data_type, target, uniqueID, reflux_task_fn);
 }
