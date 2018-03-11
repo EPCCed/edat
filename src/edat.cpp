@@ -21,9 +21,7 @@ int edatInit(int* argc, char*** argv) {
 }
 
 int edatFinalise(void) {
-  while (!messaging->isFinished());
-  while (!threadPool->isThreadPoolFinished());
-  while (!scheduler->isFinished());
+  while (!messaging->isFinished() || !threadPool->isThreadPoolFinished() || !scheduler->isFinished());
   messaging->finalise();
   return 0;
 }
