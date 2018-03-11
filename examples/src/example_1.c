@@ -7,12 +7,11 @@ void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv);
-  int d;
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, "my_task");
   } else if (edatGetRank() == 1) {
     edatScheduleTask(my_task2, "my_task2");
-    d=33;
+    int d=33;
     edatFireEvent(&d, EDAT_INT, 1, 0, "my_task");
   }
   edatFinalise();

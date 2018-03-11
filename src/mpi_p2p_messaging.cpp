@@ -17,7 +17,7 @@ void MPI_P2P_Messaging::initMPI() {
     mpiInitHere = false;
     MPI_Query_thread(&provided);
     if (provided != MPI_THREAD_MULTIPLE && provided != MPI_THREAD_SERIALIZED) {
-      raiseError("You must initialise MPI in thread serialised or multiple, or let NDM do this for you");
+      raiseError("You must initialise MPI in thread serialised or multiple, or let EDAT do this for you");
     }
     protectMPI = provided == MPI_THREAD_SERIALIZED;
   } else {
