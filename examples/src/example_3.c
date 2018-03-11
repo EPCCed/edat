@@ -16,7 +16,7 @@ int main(int argc, char * argv[]) {
     }
     edatFireEventWithReflux(d, EDAT_INT, 10, 1, "my_task", reflux_task);
   } else if (edatGetRank() == 1) {
-    edatScheduleTask(my_task, "my_task");
+    edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
   }
   edatFinalise();
   return 0;

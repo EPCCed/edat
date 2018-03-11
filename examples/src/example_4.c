@@ -8,7 +8,7 @@ int main(int argc, char * argv[]) {
   edatInit(&argc, &argv);
   int myval=(edatGetRank() + 100)* 10;
   if (edatGetRank() == 0) {
-    edatScheduleMultiTask(my_task, 2, 0, "a", 1, "b");
+    edatScheduleTask(my_task, 2, 0, "a", 1, "b");
     edatFireEvent(&myval, EDAT_INT, 1, 0, "a");
   } else {
     edatFireEvent(&myval, EDAT_INT, 1, 0, "b");

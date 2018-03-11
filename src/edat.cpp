@@ -36,11 +36,7 @@ int edatGetNumRanks() {
   return messaging->getNumRanks();
 }
 
-int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), char* uniqueID) {
-  return edatScheduleMultiTask(task_fn, 1, EDAT_ANY, uniqueID);
-}
-
-int edatScheduleMultiTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   std::vector<std::pair<int, std::string>> dependencies;
   va_list valist;
   va_start(valist, num_dependencies);
