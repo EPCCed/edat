@@ -40,13 +40,13 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
   va_start(valist, num_dependencies);
   for (int i=0; i<num_dependencies; i++) {
     int src=va_arg(valist, int);
-    char * uuid=va_arg(valist, char*);
+    char * event_id=va_arg(valist, char*);
     if (src == EDAT_ALL) {
       for (int j=0;j<messaging->getNumRanks();j++) {
-        dependencies.push_back(std::pair<int, std::string>(j, std::string(uuid)));
+        dependencies.push_back(std::pair<int, std::string>(j, std::string(event_id)));
       }
     } else {
-      dependencies.push_back(std::pair<int, std::string>(src, std::string(uuid)));
+      dependencies.push_back(std::pair<int, std::string>(src, std::string(event_id)));
     }
   }
   va_end(valist);
@@ -54,11 +54,11 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
   return 0;
 }
 
-int edatFireEvent(void* data, int data_type, int data_count, int target, const char * uniqueID) {
-  messaging->fireEvent(data, data_count, data_type, target, uniqueID);
+int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+  messaging->fireEvent(data, data_count, data_type, target, event_id);
 }
 
-int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * uniqueID,
+int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * event_id,
                             void (*reflux_task_fn)(EDAT_Event*, int)) {
-  messaging->fireEvent(data, data_count, data_type, target, uniqueID, reflux_task_fn);
+  messaging->fireEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
 }

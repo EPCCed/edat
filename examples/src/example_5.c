@@ -24,7 +24,7 @@ void my_task(EDAT_Event * events, int num_events) {
   printf("[%d] Number of events %d\n", edatGetRank(), num_events);
   int i=0;
   for (i=0;i<num_events;i++) {
-    printf("[%d] Item %d from %d with UUID %s: %d\n", edatGetRank(), i, events[i].metadata.source, events[i].metadata.unique_id, *((int*) events[i].data));
+    printf("[%d] Item %d from %d with UUID %s: %d\n", edatGetRank(), i, events[i].metadata.source, events[i].metadata.event_id, *((int*) events[i].data));
   }
 }
 

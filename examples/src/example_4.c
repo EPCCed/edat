@@ -21,6 +21,6 @@ void my_task(EDAT_Event * events, int num_events) {
   printf("Number of events %d\n", num_events);
   int i=0;
   for (i=0;i<num_events;i++) {
-    printf("Item %d from %d with UUID %s: %d\n", i, events[i].metadata.source, events[i].metadata.unique_id, *((int*) events[i].data));
+    printf("Item %d from %d with UUID %s: %d\n", i, events[i].metadata.source, events[i].metadata.event_id, *((int*) events[i].data));
   }
 }

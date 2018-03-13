@@ -16,7 +16,7 @@ extern "C" {
 
 struct edat_struct_metadata {
   int data_type, number_elements, source;
-  char *unique_id;
+  char *event_id;
 };
 
 typedef struct edat_struct_metadata EDAT_Metadata;

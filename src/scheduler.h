@@ -13,13 +13,13 @@
 class SpecificEvent {
   int source_pid, message_length, message_type;
   char* data;
-  std::string unique_id;
+  std::string event_id;
 
  public:
-  SpecificEvent(int sourcePid, int message_length, int message_type, std::string unique_id, char* data) {
+  SpecificEvent(int sourcePid, int message_length, int message_type, std::string event_id, char* data) {
     this->source_pid = sourcePid;
     this->message_type = message_type;
-    this->unique_id = unique_id;
+    this->event_id = event_id;
     this->message_length = message_length;
     this->data = data;
   }
@@ -28,7 +28,7 @@ class SpecificEvent {
   void setData(char* data) { this->data = data; }
   int getSourcePid() const { return source_pid; }
   void setSourcePid(int sourcePid) { source_pid = sourcePid; }
-  std::string getUniqueId() { return this->unique_id; }
+  std::string getEventId() { return this->event_id; }
   int getMessageLength() { return this->message_length; }
   int getMessageType() { return this->message_type; }
 };

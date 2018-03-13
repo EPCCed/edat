@@ -30,30 +30,30 @@ void MPI_P2P_Messaging::initMPI() {
 }
 
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target,
-                                  const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
-  handleFiringOfEvent(data, data_count, data_type, target, uuid, reflux_task_fn);
+                                  const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
+  handleFiringOfEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
 }
 
-void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, const char * uuid) {
-  handleFiringOfEvent(data, data_count, data_type, target, uuid, NULL);
+void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, const char * event_id) {
+  handleFiringOfEvent(data, data_count, data_type, target, event_id, NULL);
 }
 
 void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target,
-                                            const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
+                                            const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == my_rank || target == EDAT_ALL) {
     int data_size=getTypeSize(data_type) * data_count;
     char * buffer_data=(char*) malloc(data_size);
     memcpy(buffer_data, data, data_size);
-    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, std::string(uuid), (char*) buffer_data);
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, std::string(event_id), (char*) buffer_data);
     scheduler.registerEvent(event);
   }
   if (target != my_rank) {
     if (target != EDAT_ALL) {
-      sendSingleEvent(data, data_count, data_type, target, uuid, reflux_task_fn);
+      sendSingleEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
     } else {
       for (int i=0;i<total_ranks;i++) {
         if (i != my_rank) {
-          sendSingleEvent(data, data_count, data_type, i, uuid, reflux_task_fn);
+          sendSingleEvent(data, data_count, data_type, i, event_id, reflux_task_fn);
         }
       }
     }
@@ -61,16 +61,16 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
 }
 
 void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target,
-                                        const char * uuid, void (*reflux_task_fn)(EDAT_Event*, int)) {
-  int uuid_len=strlen(uuid);
+                                        const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
+  int event_id_len=strlen(event_id);
   int type_element_size=getTypeSize(data_type);
-  int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + uuid_len + 1;
+  int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + event_id_len + 1;
   char * buffer = (char*) malloc(packet_size);
   memcpy(buffer, &data_type, sizeof(int));
   memcpy(&buffer[4], &my_rank, sizeof(int));
-  memcpy(&buffer[8], &uuid_len, sizeof(int));
-  memcpy(&buffer[12], uuid, sizeof(char) * (uuid_len + 1));
-  if (data != NULL) memcpy(&buffer[(12 + uuid_len + 1)], data, type_element_size * data_count);
+  memcpy(&buffer[8], &event_id_len, sizeof(int));
+  memcpy(&buffer[12], event_id, sizeof(char) * (event_id_len + 1));
+  if (data != NULL) memcpy(&buffer[(12 + event_id_len + 1)], data, type_element_size * data_count);
   MPI_Request request;
   MPI_Isend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
   {
@@ -79,7 +79,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
   if (reflux_task_fn != NULL) {
     std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, uuid, (char*) data);
+    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, event_id, (char*) data);
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
@@ -161,11 +161,11 @@ void MPI_P2P_Messaging::runPollForEvents() {
       MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       int data_type = *((int*)buffer);
       int source_pid = *((int*)&buffer[4]);
-      int unique_id_length = strlen(&buffer[12]);
-      int data_size = message_size - (12 + unique_id_length + 1);
+      int event_id_length = strlen(&buffer[12]);
+      int data_size = message_size - (12 + event_id_length + 1);
       if (data_size > 0) {
         data_buffer = (char*)malloc(data_size);
-        memcpy(data_buffer, &buffer[12 + unique_id_length + 1], data_size);
+        memcpy(data_buffer, &buffer[12 + event_id_length + 1], data_size);
       } else {
         data_buffer = NULL;
       }

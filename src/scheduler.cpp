@@ -49,12 +49,12 @@ void Scheduler::registerEvent(SpecificEvent * event) {
       readyToRunTask(pendingTask.first);
     }
   } else {
-    outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getUniqueId(), event->getSourcePid()), event));
+    outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getEventId(), event->getSourcePid()), event));
   }
 }
 
 std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(SpecificEvent * event) {
-  DependencyKey eventDep = DependencyKey(event->getUniqueId(), event->getSourcePid());
+  DependencyKey eventDep = DependencyKey(event->getEventId(), event->getSourcePid());
   int i=0;
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     std::set<DependencyKey>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
@@ -89,15 +89,15 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
       events_payload[i].metadata.number_elements=specEvent->getMessageLength() / getTypeSize(events_payload[i].metadata.data_type);
     }
     events_payload[i].metadata.source=specEvent->getSourcePid();
-    int uuid_len=specEvent->getUniqueId().size();
-    char * uuid=(char*) malloc(uuid_len + 1);
-    memcpy(uuid, specEvent->getUniqueId().c_str(), uuid_len);
-    events_payload[i].metadata.unique_id=uuid;
+    int event_id_len=specEvent->getEventId().size();
+    char * event_id=(char*) malloc(event_id_len + 1);
+    memcpy(event_id, specEvent->getEventId().c_str(), event_id_len);
+    events_payload[i].metadata.event_id=event_id;
     i++;
   }
   taskContainer->task_fn(events_payload, i);
   for (int j=0;j<i;j++) {
-    free(events_payload[j].metadata.unique_id);
+    free(events_payload[j].metadata.event_id);
     if (taskContainer->freeData && events_payload[j].data != NULL) free(events_payload[j].data);
   }
   delete events_payload;
