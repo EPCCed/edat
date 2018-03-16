@@ -17,6 +17,7 @@ class ThreadPoolCommand {
 };
 
 class ThreadPool {
+  int number_of_threads;
   std::thread * actionThreads;
   std::condition_variable * active_thread_conditions;
   std::mutex * active_thread_mutex, thread_start_mutex;
