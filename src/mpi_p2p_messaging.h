@@ -2,9 +2,9 @@
 #define SRC_MPI_P2P_MESSAGING_H_
 
 #include <map>
+#include <mutex>
 #include "mpi.h"
 #include "messaging.h"
-#include <mutex>
 
 class MPI_P2P_Messaging : public Messaging {
   bool protectMPI, mpiInitHere, terminated;
@@ -14,7 +14,7 @@ class MPI_P2P_Messaging : public Messaging {
   MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL;
   std::map<MPI_Request, char*> outstandingSendRequests;
   std::map<MPI_Request, PendingTaskDescriptor*> outstandingRefluxTasks;
-  std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex;
+  std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex, mpi_mutex;
   void initMPI();
   void checkSendRequestsForProgress();
   void sendSingleEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));

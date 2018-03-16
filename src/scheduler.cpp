@@ -14,6 +14,11 @@
 std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
 std::mutex Scheduler::taskQueue_mutex;
 
+/**
+* Registers a task with EDAT, this will determine (and consume) outstanding events & then if applicable will mark ready for execution. Otherwise
+* it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
+* the stored version which will be updated by other events arriving.
+*/
 void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
@@ -94,6 +99,10 @@ bool Scheduler::checkProgressPersistentTasks() {
   return progress;
 }
 
+/**
+* Registers an event and will search through the registered tasks to figure out if this can be consumed directly (which might then cause the
+* task to execute) or whether it needs to be stored as there is no scheduled task that can consume it currently.
+*/
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::pair<PendingTaskDescriptor*, int> pendingTask=findTaskMatchingEventAndUpdate(event);
@@ -125,6 +134,11 @@ void Scheduler::registerEvent(SpecificEvent * event) {
   }
 }
 
+/**
+* Finds a task that depends on a specific event and updates the outstanding dependencies of that task to no longer be waiting for this
+* and place this event in the arrived dependencies of that task. IT will return either the task itself (and index, as the task might be
+* runnable hence we need to remove it) or NULL and -1 if no task was found.
+*/
 std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(SpecificEvent * event) {
   DependencyKey eventDep = DependencyKey(event->getEventId(), event->getSourcePid());
   int i=0;
@@ -140,6 +154,10 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
   return std::pair<PendingTaskDescriptor*, int>(NULL, -1);
 }
 
+/**
+* Marks that a specific task is ready to run. It will try and map this to a free thread if it can, otherwise if there are no idle threads
+* then the task will be queued up and run at some point later on
+*/
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
   std::lock_guard<std::mutex> lock(taskQueue_mutex);
   bool taskExecuting = threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
@@ -148,6 +166,11 @@ void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
   }
 }
 
+/**
+* This is the entry point for the thread to execute a task which is provided. In addition to the marshalling required to then call into the task
+* with the correct arguments, it also frees the data at the end and will check the task queue. If there are outstanding tasks in the queue then these
+* in tern will also be executed by this thread
+*/
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   EDAT_Event * events_payload = new EDAT_Event[taskContainer->arrivedEvents.size()];
@@ -184,11 +207,14 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   }
 }
 
+/**
+* Determines whether the scheduler is finished or not
+*/
 bool Scheduler::isFinished() {
   std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
-  std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }
+  std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
   return outstandingEvents.empty() && taskQueue.empty();
 }

@@ -8,6 +8,9 @@
 
 #define DEFAULT_NUMBER_THREADS 10
 
+/**
+* Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
+*/
 ThreadPool::ThreadPool() {
   number_of_threads=DEFAULT_NUMBER_THREADS;
   if(const char* env_num_threads = std::getenv("EDAT_NUM_THREADS")) {
@@ -32,6 +35,9 @@ ThreadPool::ThreadPool() {
   }
 }
 
+/**
+* Determines whether the thread pool is finished (idle) or not
+*/
 bool ThreadPool::isThreadPoolFinished() {
   int i;
   for (i = 0; i < number_of_threads; i++) {
@@ -40,6 +46,10 @@ bool ThreadPool::isThreadPoolFinished() {
   return true;
 }
 
+/**
+* Will attemp to start a thread by mapping the calling function and arguments to a free thread. If this is not possible (they are all busy) then it will
+* return false (otherwise true if successful) so that the caller can handle this (probably by queueing up.)
+*/
 bool ThreadPool::startThread(void (*callFunction)(void *), void *args) {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int idleThreadId = get_index_of_idle_thread();
@@ -58,6 +68,10 @@ bool ThreadPool::startThread(void (*callFunction)(void *), void *args) {
   }
 }
 
+/**
+* Returns the index of the next idle thread, going in a roundrobin fashion starting from the previous thread that was
+* allocated. It returns -1 if there is no idle thread available.
+*/
 int ThreadPool::get_index_of_idle_thread() {
   for (int i = next_suggested_idle_thread; i < number_of_threads; i++) {
     if (!threadBusy[i]) {
@@ -70,6 +84,10 @@ int ThreadPool::get_index_of_idle_thread() {
   return -1;
 }
 
+/**
+* Internal thread entry procedure, the threads will sit in here asleep via the condition variable and then be woken up when they
+* need to be activated and run the function call with arguments that has been set for them already.
+*/
 void ThreadPool::threadEntryProcedure(int myThreadId) {
   while (1) {
     std::unique_lock<std::mutex> lck(active_thread_mutex[myThreadId]);

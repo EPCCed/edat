@@ -15,6 +15,10 @@
 #define SEND_PROGRESS_PERIOD 10
 #define MAX_TERMINATION_COUNT 100
 
+/**
+* Initialises MPI if it has not already been initialised at serialised mode. If it has been initialised then checks which mode it is in to
+* ensure compatability with what we are doing here
+*/
 void MPI_P2P_Messaging::initMPI() {
   int is_mpi_init, provided;
   MPI_Initialized(&is_mpi_init);
@@ -30,11 +34,13 @@ void MPI_P2P_Messaging::initMPI() {
     MPI_Init_thread(NULL, NULL, MPI_THREAD_SERIALIZED, &provided);
     protectMPI = true;
   }
+  if (protectMPI) mpi_mutex.lock();
   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &total_ranks);
   std::srand(std::time(nullptr));
   char * mpi_buffer = (char*) malloc((sizeof(int) * MAX_TERMINATION_COUNT) + MPI_BSEND_OVERHEAD);
   MPI_Buffer_attach(mpi_buffer, MAX_TERMINATION_COUNT*sizeof(int) + MPI_BSEND_OVERHEAD );
+  if (protectMPI) mpi_mutex.unlock();
   if (my_rank == 0) {
     termination_codes=new int[total_ranks];
     pingback_termination_codes=new int[total_ranks];
@@ -51,6 +57,10 @@ void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, in
   handleFiringOfEvent(data, data_count, data_type, target, event_id, NULL);
 }
 
+/**
+* Handles the firing of an event, either remote or local event. Also handles when we are sending to all targets rather than just
+* one specific process
+*/
 void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target,
                                             const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == my_rank || target == EDAT_ALL) {
@@ -73,6 +83,10 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
   }
 }
 
+/**
+* Sends a single event to a specific target by packaging the data into a buffer and sending it over. We use a non-blocking synchronous send as we want acknowledgement
+* from the target that the message has started to be received (for termination correctness.)
+*/
 void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target,
                                         const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
   int event_id_len=strlen(event_id);
@@ -85,7 +99,9 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   memcpy(&buffer[12], event_id, sizeof(char) * (event_id_len + 1));
   if (data != NULL) memcpy(&buffer[(12 + event_id_len + 1)], data, type_element_size * data_count);
   MPI_Request request;
+  if (protectMPI) mpi_mutex.lock();
   MPI_Issend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
+  if (protectMPI) mpi_mutex.unlock();
   {
     std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
     outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
@@ -101,26 +117,42 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
 }
 
+/**
+* Determines whether the messaging is finished or not locally
+*/
 bool MPI_P2P_Messaging::isFinished() {
   std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
   std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
   return outstandingSendRequests.empty() && outstandingRefluxTasks.empty();
 }
 
+/**
+* Finalises the messaging - will force quit out of the polling loop (most likely this has already terminated as it has driven completion.) If MPI was initialised
+* here then will finalise it
+*/
 void MPI_P2P_Messaging::finalise() {
   continue_polling=false;
   Messaging::finalise();
   if (mpiInitHere) MPI_Finalize();
 }
 
+/**
+* Retrieves my rank
+*/
 int MPI_P2P_Messaging::getRank() {
   return my_rank;
 }
 
+/**
+* Retrieves the overall number of ranks
+*/
 int MPI_P2P_Messaging::getNumRanks() {
   return total_ranks;
 }
 
+/**
+* Checks the outstanding send requests for progress and will free the buffers of any that have been sent, this is just a clean up routine
+*/
 void MPI_P2P_Messaging::checkSendRequestsForProgress() {
   std::vector<MPI_Request> allreqHandles, storedReqHandles;
   std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
@@ -134,7 +166,9 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
     MPI_Request * req_handles=(MPI_Request *) allreqHandles.data();
     int * returnIndicies=new int[allreqHandles.size()];
     int out_count;
+    if (protectMPI) mpi_mutex.lock();
     MPI_Testsome(allreqHandles.size(), req_handles, &out_count, returnIndicies, MPI_STATUSES_IGNORE);
+    if (protectMPI) mpi_mutex.unlock();
     if (out_count > 0) {
       std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
       for (int i=0;i<out_count;i++) {
@@ -154,6 +188,11 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
   }
 }
 
+/**
+* The main polling loop, this will go through and fire a local event, then every so often will check for sending of event progress (request handles.) It then
+* will check for any messages pending, if there is one then this is received and marshalled/decoded into an event before being registered with the scheduler.
+* If there are no outstanding messages, then we might be in a local termination criteria - check if so and handle. Regardless progress termination protocol.
+*/
 void MPI_P2P_Messaging::runPollForEvents() {
   int pending_message, message_size;
   char* buffer, *data_buffer;
@@ -167,12 +206,16 @@ void MPI_P2P_Messaging::runPollForEvents() {
     } else {
       iteration_counter++;
     }
+    if (protectMPI) mpi_mutex.lock();
     MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &pending_message, &message_status);
+    if (protectMPI) mpi_mutex.unlock();
     if (pending_message) {
       terminated=false;
+      if (protectMPI) mpi_mutex.lock();
       MPI_Get_count(&message_status, MPI_BYTE, &message_size);
       buffer = (char*)malloc(message_size);
       MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      if (protectMPI) mpi_mutex.unlock();
       int data_type = *((int*)buffer);
       int source_pid = *((int*)&buffer[4]);
       int event_id_length = strlen(&buffer[12]);
@@ -187,14 +230,16 @@ void MPI_P2P_Messaging::runPollForEvents() {
       scheduler.registerEvent(event);
       free(buffer);
     } else {
-      bool current_terminated=checkForTermination();
+      bool current_terminated=checkForLocalTermination();
       if (current_terminated && !terminated) {
         terminated_id=std::rand();
         if (my_rank != 0) {
+          if (protectMPI) mpi_mutex.lock();
           MPI_Bsend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD);
           if (termination_pingback_request == MPI_REQUEST_NULL) {
             MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
           }
+          if (protectMPI) mpi_mutex.unlock();
         }
       }
       terminated=current_terminated;
@@ -234,6 +279,7 @@ bool MPI_P2P_Messaging::handleTerminationProtocol() {
 bool MPI_P2P_Messaging::handleTerminationProtocolMessagesAsWorker() {
   if (termination_pingback_request != MPI_REQUEST_NULL) {
     int completed;
+    if (protectMPI) mpi_mutex.lock();
     MPI_Test(&termination_pingback_request, &completed, MPI_STATUS_IGNORE);
     if (completed) {
       int not_completed=-1;
@@ -242,10 +288,13 @@ bool MPI_P2P_Messaging::handleTerminationProtocolMessagesAsWorker() {
       // Irrespective register the reply recieve which tells the worker whether it should terminate or not
       MPI_Irecv(&reply_from_master, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &termination_completed_request);
     }
+    if (protectMPI) mpi_mutex.unlock();
   }
   if (termination_completed_request != MPI_REQUEST_NULL) {
     int completed;
+    if (protectMPI) mpi_mutex.lock();
     MPI_Test(&termination_completed_request, &completed, MPI_STATUS_IGNORE);
+    if (protectMPI) mpi_mutex.unlock();
     if (completed) {
       if (reply_from_master == 1) {
         // All finished
@@ -254,7 +303,9 @@ bool MPI_P2P_Messaging::handleTerminationProtocolMessagesAsWorker() {
         // Not finished, need to restart
         if (termination_pingback_request == MPI_REQUEST_NULL) {
           // Reregister the ping-back recv if required
+          if (protectMPI) mpi_mutex.lock();
           MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
+          if (protectMPI) mpi_mutex.unlock();
         }
       }
     }
@@ -271,11 +322,15 @@ bool MPI_P2P_Messaging::confirmTerminationCodes() {
   int msg_pending, termination_command=0;
   bool updated=false;
   MPI_Status status;
+  if (protectMPI) mpi_mutex.lock();
   MPI_Iprobe(MPI_ANY_SOURCE, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &msg_pending, &status);
+  if (protectMPI) mpi_mutex.unlock();
   while (msg_pending) {
     updated=true;
+    if (protectMPI) mpi_mutex.lock();
     MPI_Recv(&pingback_termination_codes[status.MPI_SOURCE], 1, MPI_INT, status.MPI_SOURCE, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Iprobe(MPI_ANY_SOURCE, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &msg_pending, &status);
+    if (protectMPI) mpi_mutex.unlock();
   }
   if (!checkForCodeInList(pingback_termination_codes, -2)) {
     // All responses are in, now process
@@ -295,10 +350,12 @@ bool MPI_P2P_Messaging::confirmTerminationCodes() {
       mode=0;
     }
     if (mode == 0) termination_codes[0]=pingback_termination_codes[0];
+    if (protectMPI) mpi_mutex.lock();
     for (int i=1;i<total_ranks;i++) {
       MPI_Send(&termination_command, 1, MPI_INT, i, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD);
       if (mode == 0) termination_codes[i]=pingback_termination_codes[i];
     }
+    if (protectMPI) mpi_mutex.unlock();
   }
   return termination_command==0;
 }
@@ -313,19 +370,25 @@ void MPI_P2P_Messaging::trackTentativeTerminationCodes() {
   int msg_pending;
   bool updated=false;
   MPI_Status status;
+  if (protectMPI) mpi_mutex.lock();
   MPI_Iprobe(MPI_ANY_SOURCE, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &msg_pending, &status);
+  if (protectMPI) mpi_mutex.unlock();
   while (msg_pending) {
     updated=true;
+    if (protectMPI) mpi_mutex.lock();
     MPI_Recv(&termination_codes[status.MPI_SOURCE], 1, MPI_INT, status.MPI_SOURCE, MPI_TERMINATION_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Iprobe(MPI_ANY_SOURCE, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &msg_pending, &status);
+    if (protectMPI) mpi_mutex.unlock();
   }
   if (terminated && !checkForCodeInList(termination_codes, -1)) {
     mode=1;
     pingback_termination_codes[0]=terminated_id;
     for (int i=1;i<total_ranks;i++) pingback_termination_codes[i]=-2;
+    if (protectMPI) mpi_mutex.lock();
     for (int i=1;i<total_ranks;i++) {
       MPI_Send(NULL, 0, MPI_INT, i, MPI_TERMINATION_TAG, MPI_COMM_WORLD);
     }
+    if (protectMPI) mpi_mutex.unlock();
   }
 }
 

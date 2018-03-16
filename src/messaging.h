@@ -16,7 +16,7 @@ protected:
   ThreadPool & threadPool;
   bool continue_polling;
   virtual bool fireASingleLocalEvent();
-  virtual bool checkForTermination();
+  virtual bool checkForLocalTermination();
   virtual void startPollForEvents();
   Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : scheduler(a_scheduler), threadPool(a_threadPool), continue_polling(true) { }
 public:
