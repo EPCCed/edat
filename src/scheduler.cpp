@@ -21,13 +21,14 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std:
   pendingTask->freeData=true;
   pendingTask->persistent=persistent;
   for (std::pair<int, std::string> dependency : dependencies) {
-    std::map<DependencyKey, SpecificEvent*>::iterator it;
+    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it;
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     pendingTask->originalDependencies.insert(depKey);
     it=outstandingEvents.find(depKey);
-    if (it != outstandingEvents.end()) {
-      pendingTask->arrivedEvents.push_back(it->second);
-      outstandingEvents.erase(it);
+    if (it != outstandingEvents.end() && !it->second.empty()) {
+      pendingTask->arrivedEvents.push_back(it->second.front());
+      it->second.pop();
+      if (it->second.empty()) outstandingEvents.erase(it);
     } else {
       pendingTask->outstandingDependencies.insert(depKey);
     }
@@ -45,9 +46,52 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std:
     }
     outstandTaskEvt_lock.unlock();
     readyToRunTask(exec_Task);
+    consumeEventsByPersistentTasks();
   } else {
     registeredTasks.push_back(pendingTask);
   }
+}
+
+/**
+* Consumes events by persistent tasks, this is needed as lots of events can be stored and then when we register a persistent task we then want
+* to consume all of these. But as we don't want to duplicate tasks internally (especially with lots of dependencies) then handle as tasks are queued for execution
+* only. Hence we need to call this when a task is registered (might consume multiple outstanding events) or an event arrives (might fire a task which then
+* unlocks consumption of other events.)
+*/
+void Scheduler::consumeEventsByPersistentTasks() {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  bool consumingEvents=checkProgressPersistentTasks();
+  while (consumingEvents) consumingEvents=checkProgressPersistentTasks();
+}
+
+/**
+* Checks all persistent tasks for whether they can consume events, if so will do consumption and event better if we can execute some then this will do. Note that
+* for each persistent task will only execute once (i.e. this might directly unlock the next iteration of that task which can comsume more and hence run itself.)
+* If any tasks run then returns true, this means it is worth calling again to potentially execute further tasks.
+*/
+bool Scheduler::checkProgressPersistentTasks() {
+  bool progress=false;
+  for (PendingTaskDescriptor * pendingTask : registeredTasks) {
+    if (pendingTask->persistent) {
+      for (DependencyKey depKey : pendingTask->outstandingDependencies) {
+        std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
+        if (it != outstandingEvents.end() && !it->second.empty()) {
+          pendingTask->arrivedEvents.push_back(it->second.front());
+          it->second.pop();
+          if (it->second.empty()) outstandingEvents.erase(it);
+          pendingTask->outstandingDependencies.erase(depKey);
+        }
+      }
+      if (pendingTask->outstandingDependencies.empty()) {
+        PendingTaskDescriptor* exec_Task=new PendingTaskDescriptor(*pendingTask);
+        pendingTask->outstandingDependencies=pendingTask->originalDependencies;
+        pendingTask->arrivedEvents.clear();
+        readyToRunTask(exec_Task);
+        progress=true;
+      }
+    }
+  }
+  return progress;
 }
 
 void Scheduler::registerEvent(SpecificEvent * event) {
@@ -66,9 +110,18 @@ void Scheduler::registerEvent(SpecificEvent * event) {
       }
       outstandTaskEvt_lock.unlock();
       readyToRunTask(exec_Task);
+      consumeEventsByPersistentTasks();
     }
   } else {
-    outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getEventId(), event->getSourcePid()), event));
+    DependencyKey dK=DependencyKey(event->getEventId(), event->getSourcePid());
+    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it = outstandingEvents.find(dK);
+    if (it == outstandingEvents.end()) {
+      std::queue<SpecificEvent*> eventQueue;
+      eventQueue.push(event);
+      outstandingEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(dK, eventQueue));
+    } else {
+      it->second.push(event);
+    }
   }
 }
 
