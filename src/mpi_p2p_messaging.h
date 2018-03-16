@@ -7,8 +7,11 @@
 #include <mutex>
 
 class MPI_P2P_Messaging : public Messaging {
-  bool protectMPI, mpiInitHere;
-  int my_rank, total_ranks;
+  bool protectMPI, mpiInitHere, terminated;
+  int my_rank, total_ranks, reply_from_master;
+  int terminated_id, mode=0;
+  int * termination_codes, *pingback_termination_codes;
+  MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL;
   std::map<MPI_Request, char*> outstandingSendRequests;
   std::map<MPI_Request, PendingTaskDescriptor*> outstandingRefluxTasks;
   std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex;
@@ -16,8 +19,14 @@ class MPI_P2P_Messaging : public Messaging {
   void checkSendRequestsForProgress();
   void sendSingleEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));
   void handleFiringOfEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));
+  void trackTentativeTerminationCodes();
+  bool confirmTerminationCodes();
+  bool checkForCodeInList(int*, int);
+  bool compareTerminationRanks();
+  bool handleTerminationProtocolMessagesAsWorker();
+  bool handleTerminationProtocol();
 public:
-  MPI_P2P_Messaging(Scheduler & a_scheduler) : Messaging(a_scheduler) { initMPI(); }
+  MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : Messaging(a_scheduler, a_threadPool) { initMPI(); terminated=false; }
   virtual void runPollForEvents();
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, const char *);

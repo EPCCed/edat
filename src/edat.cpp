@@ -21,7 +21,14 @@ int edatInit(int* argc, char*** argv) {
 }
 
 int edatFinalise(void) {
-  while (!messaging->isFinished() || !threadPool->isThreadPoolFinished() || !scheduler->isFinished());
+  // Puts the thread to sleep and will wake it up when there are no more events and tasks.
+  std::mutex * m = new std::mutex();
+  std::condition_variable * cv = new std::condition_variable();
+  bool * completed = new bool();
+
+  messaging->attachMainThread(cv, m, completed);
+  std::unique_lock<std::mutex> lk(*m);
+  cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
   return 0;
 }
