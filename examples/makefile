@@ -1,6 +1,6 @@
 CC       = mpicc
 # compiling flags here
-CFLAGS   = -g
+CFLAGS   = 
 
 LFLAGS   = -L../ -ledat
 
@@ -13,7 +13,13 @@ rm       = rm -f
 %.o: %.c
 	$(CC) $(CFLAGS) -I../include -c $< -o $@ 
 
-all: example1 example2 example3 example4 example5 example6
+all: CFLAGS += -O3
+all: mkexamples
+	
+debug: CFLAGS += -g
+debug: mkexamples
+
+mkexamples: example1 example2 example3 example4 example5 example6
 
 example1: src/example_1.o
 	$(CC) -o example_1 src/example_1.o $(LFLAGS)

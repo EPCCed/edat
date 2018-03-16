@@ -1,6 +1,6 @@
 CC       = mpic++
 # compiling flags here
-CFLAGS   = -fPIC -O3 -Iinclude -std=c++11 -g
+CFLAGS   = -fPIC -O3 -Iinclude -std=c++11 
 
 LFLAGS   =
 
@@ -13,9 +13,14 @@ INCLUDES := $(wildcard $(SRCDIR)/*.h)
 OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 rm       = rm -Rf
 
-all: ndm
+all: CFLAGS += -O3
+all: edat
+	
+debug: CFLAGS += -g
+debug: edat
+	
 
-ndm: build_buildDir $(OBJECTS)
+edat: build_buildDir $(OBJECTS)
 	$(CC) -shared -Wl,-soname,libedat.so -o libedat.so $(OBJECTS) $(LFLAGS)
 	ar rcs libedat.a $(OBJECTS) $(LFLAGS)
 
