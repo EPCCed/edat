@@ -15,7 +15,7 @@ static Messaging * messaging;
 int edatInit(int* argc, char*** argv) {
   threadPool=new ThreadPool();
   scheduler=new Scheduler(*threadPool);
-  messaging=new MPI_P2P_Messaging(*scheduler);
+  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool);
   messaging->pollForEvents();
   return 0;
 }
@@ -41,6 +41,26 @@ int edatGetNumRanks() {
   return messaging->getNumRanks();
 }
 
+int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  std::vector<std::pair<int, std::string>> dependencies;
+  va_list valist;
+  va_start(valist, num_dependencies);
+  for (int i=0; i<num_dependencies; i++) {
+    int src=va_arg(valist, int);
+    char * uuid=va_arg(valist, char*);
+    if (src == EDAT_ALL) {
+      for (int j=0;j<messaging->getNumRanks();j++) {
+        dependencies.push_back(std::pair<int, std::string>(j, std::string(uuid)));
+      }
+    } else {
+      dependencies.push_back(std::pair<int, std::string>(src, std::string(uuid)));
+    }
+  }
+  va_end(valist);
+  scheduler->registerTask(task_fn, dependencies, true);
+  return 0;
+}
+
 int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   std::vector<std::pair<int, std::string>> dependencies;
   va_list valist;
@@ -57,7 +77,7 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
     }
   }
   va_end(valist);
-  scheduler->registerTask(task_fn, dependencies);
+  scheduler->registerTask(task_fn, dependencies, false);
   return 0;
 }
 

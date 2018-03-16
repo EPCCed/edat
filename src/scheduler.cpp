@@ -14,14 +14,16 @@
 std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
 std::mutex Scheduler::taskQueue_mutex;
 
-void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std::pair<int, std::string>> dependencies) {
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
   pendingTask->freeData=true;
+  pendingTask->persistent=persistent;
   for (std::pair<int, std::string> dependency : dependencies) {
     std::map<DependencyKey, SpecificEvent*>::iterator it;
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
+    pendingTask->originalDependencies.insert(depKey);
     it=outstandingEvents.find(depKey);
     if (it != outstandingEvents.end()) {
       pendingTask->arrivedEvents.push_back(it->second);
@@ -32,8 +34,17 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std:
   }
 
   if (pendingTask->outstandingDependencies.empty()) {
+    PendingTaskDescriptor* exec_Task;
+    if (persistent) {
+      exec_Task=new PendingTaskDescriptor(*pendingTask);
+      pendingTask->outstandingDependencies=pendingTask->originalDependencies;
+      pendingTask->arrivedEvents.clear();
+      registeredTasks.push_back(pendingTask);
+    } else {
+      exec_Task=pendingTask;
+    }
     outstandTaskEvt_lock.unlock();
-    readyToRunTask(pendingTask);
+    readyToRunTask(exec_Task);
   } else {
     registeredTasks.push_back(pendingTask);
   }
@@ -44,9 +55,17 @@ void Scheduler::registerEvent(SpecificEvent * event) {
   std::pair<PendingTaskDescriptor*, int> pendingTask=findTaskMatchingEventAndUpdate(event);
   if (pendingTask.first != NULL) {
     if (pendingTask.first->outstandingDependencies.empty()) {
-      registeredTasks.erase(registeredTasks.begin() + pendingTask.second);
+      PendingTaskDescriptor* exec_Task;
+      if (!pendingTask.first->persistent) {
+        registeredTasks.erase(registeredTasks.begin() + pendingTask.second);
+        exec_Task=pendingTask.first;
+      } else {
+        exec_Task=new PendingTaskDescriptor(*pendingTask.first);
+        pendingTask.first->outstandingDependencies=pendingTask.first->originalDependencies;
+        pendingTask.first->arrivedEvents.clear();
+      }
       outstandTaskEvt_lock.unlock();
-      readyToRunTask(pendingTask.first);
+      readyToRunTask(exec_Task);
     }
   } else {
     outstandingEvents.insert(std::pair<DependencyKey, SpecificEvent*>(DependencyKey(event->getEventId(), event->getSourcePid()), event));
@@ -115,5 +134,8 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
 bool Scheduler::isFinished() {
   std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
   std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
-  return registeredTasks.empty() && outstandingEvents.empty() && taskQueue.empty();
+  for (PendingTaskDescriptor * pendingTask : registeredTasks) {
+    if (!pendingTask->persistent) return false;
+  }
+  return outstandingEvents.empty() && taskQueue.empty();
 }

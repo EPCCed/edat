@@ -33,6 +33,7 @@ int edatFinalise(void);
 int edatGetRank();
 int edatGetNumRanks();
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
+int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
 int edatFireEvent(void*, int, int, int, const char *);
 int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Event*, int));
 
