@@ -85,7 +85,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   memcpy(&buffer[12], event_id, sizeof(char) * (event_id_len + 1));
   if (data != NULL) memcpy(&buffer[(12 + event_id_len + 1)], data, type_element_size * data_count);
   MPI_Request request;
-  MPI_Isend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
+  MPI_Issend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
   {
     std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
     outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
