@@ -1,6 +1,6 @@
 CC       = mpic++
 # compiling flags here
-CFLAGS   = -fPIC -O3 -Iinclude -std=c++11 
+CFLAGS   = -fPIC -Iinclude -std=c++11 
 
 LFLAGS   =
 
