@@ -11,9 +11,6 @@
 #include <utility>
 #include <set>
 
-std::queue<PendingTaskDescriptor*> Scheduler::taskQueue;
-std::mutex Scheduler::taskQueue_mutex;
-
 /**
 * Registers a task with EDAT, this will determine (and consume) outstanding events & then if applicable will mark ready for execution. Otherwise
 * it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
@@ -155,15 +152,11 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
 }
 
 /**
-* Marks that a specific task is ready to run. It will try and map this to a free thread if it can, otherwise if there are no idle threads
-* then the task will be queued up and run at some point later on
+* Marks that a specific task is ready to run. It will pass this onto the thread pool which will try and map this to a free thread if it can, otherwise if there are no idle threads
+* then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  std::lock_guard<std::mutex> lock(taskQueue_mutex);
-  bool taskExecuting = threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
-  if (!taskExecuting) {
-    taskQueue.push(taskDescriptor);
-  }
+  threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
 }
 
 /**
@@ -197,14 +190,6 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   }
   delete events_payload;
   free(pthreadRawData);
-
-  std::unique_lock<std::mutex> lock(taskQueue_mutex);
-  if (!taskQueue.empty()) {
-    PendingTaskDescriptor * taskDescriptor=taskQueue.front();
-    taskQueue.pop();
-    lock.unlock();
-    threadBootstrapperFunction(taskDescriptor);
-  }
 }
 
 /**
@@ -215,6 +200,5 @@ bool Scheduler::isFinished() {
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }
-  std::lock_guard<std::mutex> tq_lock(taskQueue_mutex);
-  return outstandingEvents.empty() && taskQueue.empty();
+  return outstandingEvents.empty();
 }

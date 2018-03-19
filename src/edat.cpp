@@ -16,7 +16,7 @@ int edatInit(int* argc, char*** argv) {
   threadPool=new ThreadPool();
   scheduler=new Scheduler(*threadPool);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool);
-  messaging->pollForEvents();
+  threadPool->setMessaging(messaging);
   return 0;
 }
 

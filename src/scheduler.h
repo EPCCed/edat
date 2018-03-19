@@ -62,11 +62,8 @@ struct PendingTaskDescriptor {
 class Scheduler {
     std::vector<PendingTaskDescriptor*> registeredTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
-    static std::queue<PendingTaskDescriptor*> taskQueue;
-
     ThreadPool & threadPool;
     std::mutex taskAndEvent_mutex;
-    static std::mutex taskQueue_mutex;
     static void threadBootstrapperFunction(void*);
     std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
     void consumeEventsByPersistentTasks();

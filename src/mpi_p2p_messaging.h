@@ -25,8 +25,10 @@ class MPI_P2P_Messaging : public Messaging {
   bool compareTerminationRanks();
   bool handleTerminationProtocolMessagesAsWorker();
   bool handleTerminationProtocol();
+protected:
+  bool performSinglePoll(int*);
 public:
-  MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : Messaging(a_scheduler, a_threadPool) { initMPI(); terminated=false; }
+  MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool);
   virtual void runPollForEvents();
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, const char *);

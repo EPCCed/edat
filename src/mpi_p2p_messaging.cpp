@@ -19,7 +19,7 @@
 * Initialises MPI if it has not already been initialised at serialised mode. If it has been initialised then checks which mode it is in to
 * ensure compatability with what we are doing here
 */
-void MPI_P2P_Messaging::initMPI() {
+MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : Messaging(a_scheduler, a_threadPool) {
   int is_mpi_init, provided;
   MPI_Initialized(&is_mpi_init);
   if (is_mpi_init) {
@@ -46,6 +46,8 @@ void MPI_P2P_Messaging::initMPI() {
     pingback_termination_codes=new int[total_ranks];
     for (int i=0;i<total_ranks;i++) termination_codes[i]=-1;
   }
+  terminated=false;
+  if (doesProgressThreadExist()) startProgressThread();
 }
 
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target,
@@ -189,63 +191,73 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
 }
 
 /**
-* The main polling loop, this will go through and fire a local event, then every so often will check for sending of event progress (request handles.) It then
+* The main polling functionality, this will go through and fire a local event, then every so often will check for sending of event progress (request handles.) It then
 * will check for any messages pending, if there is one then this is received and marshalled/decoded into an event before being registered with the scheduler.
 * If there are no outstanding messages, then we might be in a local termination criteria - check if so and handle. Regardless progress termination protocol.
+* This only performs one "tick" through, so is called repeatedly by a progress thread of an idle thread if there is none
 */
-void MPI_P2P_Messaging::runPollForEvents() {
+bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   int pending_message, message_size;
   char* buffer, *data_buffer;
   MPI_Status message_status;
+
+  fireASingleLocalEvent();
+  if (*iteration_counter == SEND_PROGRESS_PERIOD) {
+    checkSendRequestsForProgress();
+    *iteration_counter=0;
+  } else {
+    (*iteration_counter)++;
+  }
+  if (protectMPI) mpi_mutex.lock();
+  MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &pending_message, &message_status);
+  if (protectMPI) mpi_mutex.unlock();
+  if (pending_message) {
+    terminated=false;
+    if (protectMPI) mpi_mutex.lock();
+    MPI_Get_count(&message_status, MPI_BYTE, &message_size);
+    buffer = (char*)malloc(message_size);
+    MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if (protectMPI) mpi_mutex.unlock();
+    int data_type = *((int*)buffer);
+    int source_pid = *((int*)&buffer[4]);
+    int event_id_length = strlen(&buffer[12]);
+    int data_size = message_size - (12 + event_id_length + 1);
+    if (data_size > 0) {
+      data_buffer = (char*)malloc(data_size);
+      memcpy(data_buffer, &buffer[12 + event_id_length + 1], data_size);
+    } else {
+      data_buffer = NULL;
+    }
+    SpecificEvent* event=new SpecificEvent(source_pid, data_size, data_type, std::string(&buffer[12]), data_buffer);
+    scheduler.registerEvent(event);
+    free(buffer);
+  } else {
+    bool current_terminated=checkForLocalTermination();
+    if (current_terminated && !terminated) {
+      terminated_id=std::rand();
+      if (my_rank != 0) {
+        if (protectMPI) mpi_mutex.lock();
+        MPI_Bsend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD);
+        if (termination_pingback_request == MPI_REQUEST_NULL) {
+          MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
+        }
+        if (protectMPI) mpi_mutex.unlock();
+      }
+    }
+    terminated=current_terminated;
+  }
+  if (my_rank == 0) termination_codes[0]=terminated ? terminated_id : -1;
+  return handleTerminationProtocol();
+}
+
+/**
+* Runs the poll for events from within a progress thread (the thread calls this procedure.) It will loop round and call the polling function
+* whilst there is progress to be made.
+*/
+void MPI_P2P_Messaging::runPollForEvents() {
   int iteration_counter=0;
   while (continue_polling) {
-    fireASingleLocalEvent();
-    if (iteration_counter == SEND_PROGRESS_PERIOD) {
-      checkSendRequestsForProgress();
-      iteration_counter=0;
-    } else {
-      iteration_counter++;
-    }
-    if (protectMPI) mpi_mutex.lock();
-    MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &pending_message, &message_status);
-    if (protectMPI) mpi_mutex.unlock();
-    if (pending_message) {
-      terminated=false;
-      if (protectMPI) mpi_mutex.lock();
-      MPI_Get_count(&message_status, MPI_BYTE, &message_size);
-      buffer = (char*)malloc(message_size);
-      MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      if (protectMPI) mpi_mutex.unlock();
-      int data_type = *((int*)buffer);
-      int source_pid = *((int*)&buffer[4]);
-      int event_id_length = strlen(&buffer[12]);
-      int data_size = message_size - (12 + event_id_length + 1);
-      if (data_size > 0) {
-        data_buffer = (char*)malloc(data_size);
-        memcpy(data_buffer, &buffer[12 + event_id_length + 1], data_size);
-      } else {
-        data_buffer = NULL;
-      }
-      SpecificEvent* event=new SpecificEvent(source_pid, data_size, data_type, std::string(&buffer[12]), data_buffer);
-      scheduler.registerEvent(event);
-      free(buffer);
-    } else {
-      bool current_terminated=checkForLocalTermination();
-      if (current_terminated && !terminated) {
-        terminated_id=std::rand();
-        if (my_rank != 0) {
-          if (protectMPI) mpi_mutex.lock();
-          MPI_Bsend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD);
-          if (termination_pingback_request == MPI_REQUEST_NULL) {
-            MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
-          }
-          if (protectMPI) mpi_mutex.unlock();
-        }
-      }
-      terminated=current_terminated;
-    }
-    if (my_rank == 0) termination_codes[0]=terminated ? terminated_id : -1;
-    continue_polling=handleTerminationProtocol();
+    continue_polling=performSinglePoll(&iteration_counter);
   }
 }
 
