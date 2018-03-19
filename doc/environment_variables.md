@@ -26,4 +26,8 @@ Will create 12 worker threads which can execute tasks. Any tasks over and above 
 
 **Description:** Determines whether a background progress thread should be created to continually poll for arriving events (and hence task progress), the delivery of events and termination. If *true* then this is an extra thread, additional to the worker threads and will run continually and greedily until program termination. If it is configured not to use a background progress thread then instead an idle worker thread (when one is available) will do the polling until it is interupted by a task. In such a case there is a guarantee that if there are any idle worker threads then one of these will poll for tasks, but tasks take priority and hence there will be no polling when all workers are busy.
 
+```
+export EDAT_PROGRESS_THREAD=false
+```
+
 **Default:** true
