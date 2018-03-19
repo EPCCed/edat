@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <string>
+#include <cstring>
 #include <utility>
 
 static ThreadPool * threadPool;
@@ -94,4 +95,13 @@ int edatFireEventWithReflux(void* data, int data_type, int data_count, int targe
                             void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
+}
+
+int edatFindEvent(EDAT_Event * events, int number_events, int source, char * event_id) {
+  if (source == EDAT_SELF) source=messaging->getRank();
+  for (int i=0;i<number_events;i++) {
+    if (strcmp(events[i].metadata.event_id, event_id) == 0 &&
+        (source == EDAT_ANY || events[i].metadata.source == source)) return i;
+  }
+  return -1;
 }
