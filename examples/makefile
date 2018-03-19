@@ -19,7 +19,7 @@ all: mkexamples
 debug: CFLAGS += -g
 debug: mkexamples
 
-mkexamples: example1 example2 example3 example4 example5 example6
+mkexamples: example1 example2 example3 example4 example5 example6 example7
 
 example1: src/example_1.o
 	$(CC) -o example_1 src/example_1.o $(LFLAGS)
@@ -39,6 +39,9 @@ example5: src/example_5.o
 example6: src/example_6.o
 	$(CC) -o example_6 src/example_6.o $(LFLAGS)
 
+example7: src/example_7.o
+	$(CC) -o example_7 src/example_7.o $(LFLAGS)
+
 .PHONEY: clean
 clean:
-	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6
+	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7
