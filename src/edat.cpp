@@ -1,13 +1,12 @@
+#include <stddef.h>
+#include <stdarg.h>
+#include <string>
+#include <string.h>
 #include "edat.h"
 #include "threadpool.h"
 #include "scheduler.h"
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
-#include <stddef.h>
-#include <stdarg.h>
-#include <string>
-#include <cstring>
-#include <utility>
 
 static ThreadPool * threadPool;
 static Scheduler * scheduler;
