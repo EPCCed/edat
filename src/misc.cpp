@@ -16,10 +16,11 @@ void raiseError(const char* errorMessage) {
 }
 
 int getTypeSize(int type) {
-  if (type == EDAT_INT) return 4;
-  if (type == EDAT_FLOAT) return 4;
-  if (type == EDAT_DOUBLE) return 8;
-  if (type == EDAT_BYTE) return 1;
+  if (type == EDAT_INT) return sizeof(int);
+  if (type == EDAT_FLOAT) return sizeof(float);
+  if (type == EDAT_DOUBLE) return sizeof(double);
+  if (type == EDAT_BYTE) return sizeof(char);
+  if (type == EDAT_ADDRESS) return sizeof(char*);
   if (type == EDAT_NOTYPE) return 0;
   fprintf(stderr, "Error in type matching\n");
   return -1;

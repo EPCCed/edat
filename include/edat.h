@@ -10,9 +10,11 @@ extern "C" {
 #define EDAT_FLOAT 2
 #define EDAT_DOUBLE 3
 #define EDAT_BYTE 4
+#define EDAT_ADDRESS 5
 
 #define EDAT_ALL -1
 #define EDAT_ANY -2
+#define EDAT_SELF -3
 
 struct edat_struct_metadata {
   int data_type, number_elements, source;
