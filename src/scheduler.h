@@ -56,6 +56,7 @@ struct PendingTaskDescriptor {
   std::set<DependencyKey> outstandingDependencies, originalDependencies;
   std::vector<SpecificEvent*> arrivedEvents;
   bool freeData, persistent;
+  std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
 };
 
@@ -68,12 +69,15 @@ class Scheduler {
     std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
     void consumeEventsByPersistentTasks();
     bool checkProgressPersistentTasks();
+    std::vector<PendingTaskDescriptor*>::iterator locatePendingTaskFromName(std::string);
 public:
     Scheduler(ThreadPool & tp) : threadPool(tp) { }
-    void registerTask(void (*)(EDAT_Event*, int), std::vector<std::pair<int, std::string>>, bool);
+    void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
     void registerEvent(SpecificEvent*);
     bool isFinished();
     void readyToRunTask(PendingTaskDescriptor*);
+    bool isTaskScheduled(std::string);
+    bool descheduleTask(std::string);
 };
 
 #endif

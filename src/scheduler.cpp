@@ -16,12 +16,13 @@
 * it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
 * the stored version which will be updated by other events arriving.
 */
-void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
   pendingTask->freeData=true;
   pendingTask->persistent=persistent;
+  pendingTask->task_name=task_name;
   for (std::pair<int, std::string> dependency : dependencies) {
     std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it;
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
@@ -64,6 +65,40 @@ void Scheduler::consumeEventsByPersistentTasks() {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   bool consumingEvents=checkProgressPersistentTasks();
   while (consumingEvents) consumingEvents=checkProgressPersistentTasks();
+}
+
+/**
+* Deschedules a task (removes it from the task list) based upon its name
+*/
+bool Scheduler::descheduleTask(std::string taskName) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
+  if (task_iterator != registeredTasks.end()) {
+    registeredTasks.erase(task_iterator);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/**
+* Determines whether a task is scheduled or not (based upon its name)
+*/
+bool Scheduler::isTaskScheduled(std::string taskName) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
+  return task_iterator != registeredTasks.end();
+}
+
+/**
+* Returns an iterator to a specific task based on its name or the end of the vector if none is found
+*/
+std::vector<PendingTaskDescriptor*>::iterator Scheduler::locatePendingTaskFromName(std::string taskName) {
+  std::vector<PendingTaskDescriptor*>::iterator it;
+  for (it = registeredTasks.begin(); it < registeredTasks.end(); it++) {
+    if (!(*it)->task_name.empty() && taskName == (*it)->task_name) return it;
+  }
+  return it;
 }
 
 /**
