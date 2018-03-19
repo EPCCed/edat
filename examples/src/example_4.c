@@ -10,7 +10,7 @@ int main(int argc, char * argv[]) {
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 2, 0, "a", 1, "b");
     edatFireEvent(&myval, EDAT_INT, 1, 0, "a");
-  } else {
+  } else if (edatGetRank() == 1) {
     edatFireEvent(&myval, EDAT_INT, 1, 0, "b");
   }
   edatFinalise();
