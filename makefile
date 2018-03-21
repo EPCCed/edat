@@ -1,4 +1,4 @@
-CC       = mpic++
+CC       = mpicxx
 # compiling flags here
 CFLAGS   = -fPIC -Iinclude -std=c++11 
 
