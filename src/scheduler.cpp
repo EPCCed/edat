@@ -214,7 +214,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     events_payload[i].metadata.source=specEvent->getSourcePid();
     int event_id_len=specEvent->getEventId().size();
     char * event_id=(char*) malloc(event_id_len + 1);
-    memcpy(event_id, specEvent->getEventId().c_str(), event_id_len);
+    memcpy(event_id, specEvent->getEventId().c_str(), event_id_len+1);
     events_payload[i].metadata.event_id=event_id;
     i++;
   }
