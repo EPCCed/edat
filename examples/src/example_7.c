@@ -18,7 +18,8 @@ static void report_task(EDAT_Event*, int);
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv);
   double * data = (double*) malloc(sizeof(double) * 200);
-  for (int i=0;i<200;i++) data[i]=0;
+  int i;
+  for (i=0;i<200;i++) data[i]=0;
 #if APPROACH == 1
   edatSchedulePersistentTask(accumulation_task, 2, EDAT_SELF, "local_data", EDAT_SELF, "num_fired");
 #elif APPROACH == 2
@@ -36,12 +37,13 @@ static void accumulation_task(EDAT_Event * events, int num_events) {
   int num_fired_index=edatFindEvent(events, num_events, EDAT_SELF, "num_fired");
 
   int num_fired=*((int*) events[num_fired_index].data);
+  int i;
   if (num_fired < 50) {
     num_fired++;
     edatFireEvent(&num_fired, EDAT_INT, 1, EDAT_SELF, "num_fired");
 
     double * data = *((double **) events[data_index].data);
-    for (int i=0;i<200;i++) data[i]+=1;
+    for (i=0;i<200;i++) data[i]+=1;
     edatFireEvent(events[data_index].data, EDAT_ADDRESS, 1, EDAT_SELF, "local_data");
   } else {
 #if APPROACH == 1
@@ -62,8 +64,9 @@ static void report_task(EDAT_Event * events, int num_events) {
 #elif APPROACH == 2
   int data_index=edatFindEvent(events, num_events, EDAT_SELF, "local_data");
 #endif
+  int i;
   double * data = *((double **) events[data_index].data);
-  for (int i=0;i<200;i++) {
+  for (i=0;i<200;i++) {
     printf("[%d] Value is %f\n", i, data[i]);
   }
 }
