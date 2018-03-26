@@ -36,3 +36,4 @@ build
 
 # Code blocks IDE
 *.cbp
+*.layout
