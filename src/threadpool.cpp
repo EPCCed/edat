@@ -7,15 +7,13 @@
 #include <cstdlib>
 #include <string.h>
 
-#define DEFAULT_NUMBER_THREADS 10
-
 /**
 * Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
 */
 ThreadPool::ThreadPool() {
   progressPollIdleThread=false;
   pollingProgressThread=-1;
-  number_of_threads=DEFAULT_NUMBER_THREADS;
+  number_of_threads=std::thread::hardware_concurrency();
   if(const char* env_num_threads = std::getenv("EDAT_NUM_THREADS")) {
     if (strlen(env_num_threads) > 0) number_of_threads=atoi(env_num_threads);
   }

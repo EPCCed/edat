@@ -18,7 +18,7 @@ export EDAT_NUM_THREADS=12
 
 Will create 12 worker threads which can execute tasks. Any tasks over and above this are then queued up until an idle thread becomes available.
 
-**Default:** 10
+**Default:** Number of cores reported by C++ hardware_concurrency call
 
 ### EDAT_PROGRESS_THREAD
 
