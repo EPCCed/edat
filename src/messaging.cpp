@@ -2,19 +2,15 @@
 #include <vector>
 #include <thread>
 #include <string.h>
+#include "misc.h"
 
 /**
 * Constructor which will initialise this aspect of the messaging
 */
 Messaging::Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : scheduler(a_scheduler), threadPool(a_threadPool) {
   continue_polling=true;
-  progress_thread=true;
+  progress_thread=getEnvironmentVariable("EDAT_PROGRESS_THREAD", true);
   it_count=0;
-  if(const char* env_progress_thread = std::getenv("EDAT_PROGRESS_THREAD")) {
-    if (strlen(env_progress_thread) > 0) {
-      if (strcmp(env_progress_thread, "false") == 0) progress_thread=false;
-    }
-  }
 }
 
 /**

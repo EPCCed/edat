@@ -29,6 +29,7 @@ int edatFinalise(void) {
   bool * completed = new bool();
 
   messaging->attachMainThread(cv, m, completed);
+  threadPool->notifyMainThreadIsSleeping();
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();

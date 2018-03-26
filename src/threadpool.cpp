@@ -8,10 +8,14 @@
 #include <string.h>
 #include <iostream>
 #include <sched.h>
+#include "misc.h"
 
 #define THREAD_MAPPING_AUTO 0
 #define THREAD_MAPPING_LINEAR 1
 #define THREAD_MAPPING_LINEARFROMCORE 1
+
+static std::map<const char*, int> thread_mapping_lookup={{"auto", THREAD_MAPPING_AUTO},
+  {"linear", THREAD_MAPPING_LINEAR}, {"linearfromcore", THREAD_MAPPING_LINEARFROMCORE}} ;
 
 /**
 * Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
@@ -19,10 +23,8 @@
 ThreadPool::ThreadPool() {
   progressPollIdleThread=false;
   pollingProgressThread=-1;
-  number_of_threads=std::thread::hardware_concurrency();
-  if(const char* env_num_threads = std::getenv("EDAT_NUM_THREADS")) {
-    if (strlen(env_num_threads) > 0) number_of_threads=atoi(env_num_threads);
-  }
+  number_of_threads=getEnvironmentVariable("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
+  main_thread_is_worker=getEnvironmentVariable("EDAT_MAIN_THREAD_WORKER", false);
 
   actionThreads = new std::thread[number_of_threads];
   active_thread_conditions=new std::condition_variable[number_of_threads];
@@ -40,50 +42,42 @@ ThreadPool::ThreadPool() {
   for (i = 0; i < number_of_threads; i++) {
     actionThreads[i]=std::thread(&ThreadPool::threadEntryProcedure, this, i);
   }
-  mapThreadsToCores();
+  mapThreadsToCores(main_thread_is_worker);
+  if (main_thread_is_worker) threadBusy[0] = true;
 }
 
 /**
-* Maps the threads to cores by setting the affinity if required
+* Maps the threads to cores by setting the affinity if required. There are a number of options here, linear will just go from core 0 all the way to core n and cycle
+* round. Linear from core will go from the process core. Both approaches will start off from plus one if we don't include the main thread as a worker and the current core
+* (or zero) if the main thread is a worker.
 */
-void ThreadPool::mapThreadsToCores() {
-  int thread_to_core_mapping=THREAD_MAPPING_AUTO;
-  if(const char* env_thread_to_core_mapping = std::getenv("EDAT_THREAD_MAPPING")) {
-    if (strlen(env_thread_to_core_mapping) > 0) {
-      if (strcmp(env_thread_to_core_mapping, "auto") == 0) {
-        thread_to_core_mapping=THREAD_MAPPING_AUTO;
-      } else if (strcmp(env_thread_to_core_mapping, "linear") == 0) {
-        thread_to_core_mapping=THREAD_MAPPING_LINEAR;
-      } else if (strcmp(env_thread_to_core_mapping, "linearfromcore") == 0) {
-        thread_to_core_mapping=THREAD_MAPPING_LINEARFROMCORE;
-      }
-    }
-  }
+void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
+  int thread_to_core_mapping=getEnvironmentMapVariable("EDAT_THREAD_MAPPING", thread_mapping_lookup, THREAD_MAPPING_AUTO);
 
   if (thread_to_core_mapping != THREAD_MAPPING_AUTO) {
     int total_num_cores=std::thread::hardware_concurrency();
     int my_core=sched_getcpu();
     for (int i=0;i<number_of_threads; i++) {
       if (thread_to_core_mapping==THREAD_MAPPING_LINEAR || thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
+        int core_id;
+        if (thread_to_core_mapping==THREAD_MAPPING_LINEAR) {
+          core_id=(i+(main_thread_is_worker ? 0 : 1)) % total_num_cores;
+        } else if (thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
+          core_id=(i+my_core+(main_thread_is_worker ? 0 : 1)) % total_num_cores;
+        }
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        CPU_SET((thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE ? (i + my_core) : i) % total_num_cores, &cpuset);
+        CPU_SET(core_id, &cpuset);
         int rc = pthread_setaffinity_np(actionThreads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
-        if (rc != 0) {
-          std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n";
-        }
+        if (rc != 0) raiseError("Error setting pthread affinity in mapping threads to cores");
       }
     }
   }
 
-  if(const char* env_report_thread_mapping = std::getenv("EDAT_REPORT_THREAD_MAPPING")) {
-    if (strlen(env_report_thread_mapping) > 0) {
-      if (strcmp(env_report_thread_mapping, "true") == 0) {
-        for (int i=0;i<number_of_threads; i++) {
+  if (getEnvironmentVariable("EDAT_REPORT_THREAD_MAPPING", false)) {
+    for (int i=0;i<number_of_threads; i++) {
           std::unique_lock<std::mutex> lck(active_thread_mutex[i]);
           active_thread_conditions[i].notify_one();
-        }
-      }
     }
   }
 }
@@ -100,9 +94,34 @@ bool ThreadPool::isThreadPoolFinished() {
   return threadQueue.empty();
 }
 
+/**
+* Sets the messaging and based on this will then launch a thread to poll for progress if possible, it is important that one is launched for this
+* or else they will all sit there idle not doing anything! In-fact the only situation that this will not happen is when there is only 1 thread and
+* the main thread is being used as a worker.
+*/
 void ThreadPool::setMessaging(Messaging * messaging) {
   this->messaging = messaging;
   progressPollIdleThread=!messaging->doesProgressThreadExist();
+  if (progressPollIdleThread) {
+    launchThreadToPollForProgressIfPossible();
+  }
+}
+
+/**
+* We are notified that the main thread is sleeping, if I am then reusing the main thread as a worker it will mark the first threads as eligable to run.
+* Note that we are not strictly reusing the thread, but instead having one sleeping and one active (and then swapping over when the main thread becomes
+* idle.) In the case of one worker only, then we need to inform this straight away to poll for progress.
+*/
+void ThreadPool::notifyMainThreadIsSleeping() {
+  if (main_thread_is_worker) threadBusy[0] = false;
+  if (number_of_threads == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
+}
+
+/**
+* Launches a thread to poll for progress, this is ideally called when the code starts up but if there is not a free thread
+* (i.e. one worker only and the master is going to be repurposed as a worker) then is called when the main thread goes idle.
+*/
+void ThreadPool::launchThreadToPollForProgressIfPossible() {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int idleThreadId = get_index_of_idle_thread();
   if (idleThreadId != -1) {
@@ -111,7 +130,6 @@ void ThreadPool::setMessaging(Messaging * messaging) {
     std::unique_lock<std::mutex> lck(active_thread_mutex[idleThreadId]);
     threadCommands[idleThreadId].setCallFunction(NULL);
     threadStart[idleThreadId] = true;
-
     active_thread_conditions[idleThreadId].notify_one();
   }
 }
@@ -184,12 +202,8 @@ int ThreadPool::get_index_of_idle_thread() {
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
   bool reported_mapping=false;
-  bool should_report_mapping=false;
-  if(const char* env_report_thread_mapping = std::getenv("EDAT_REPORT_THREAD_MAPPING")) {
-    if (strlen(env_report_thread_mapping) > 0) {
-      should_report_mapping=(strcmp(env_report_thread_mapping, "true") == 0);
-    }
-  }
+  bool should_report_mapping=getEnvironmentVariable("EDAT_REPORT_THREAD_MAPPING", false);
+
   while (1) {
     std::unique_lock<std::mutex> lck(active_thread_mutex[myThreadId]);
     while (!threadStart[myThreadId]) {

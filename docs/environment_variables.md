@@ -55,3 +55,15 @@ export EDAT_THREAD_MAPPING=linear
 ```
 
 **Default:** auto
+
+### EDAT_MAIN_THREAD_WORKER
+
+**Value type:** A boolean
+
+**Description:** Whether the main thread will be repurposed as a worker thread once it has gone idle (called finalise in the user's code.) 
+
+```
+export EDAT_MAIN_THREAD_WORKER=true
+```
+
+**Default:** false

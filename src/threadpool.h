@@ -26,6 +26,7 @@ struct PendingThreadContainer {
 
 class ThreadPool {
   int number_of_threads, pollingProgressThread;
+  bool main_thread_is_worker;
   std::thread * actionThreads;
   std::condition_variable * active_thread_conditions;
   std::mutex * active_thread_mutex, thread_start_mutex, progressMutex, pollingProgressThreadMutex;
@@ -38,12 +39,14 @@ class ThreadPool {
 
   void threadEntryProcedure(int);
   int get_index_of_idle_thread();
-  void mapThreadsToCores();
+  void mapThreadsToCores(bool);
+  void launchThreadToPollForProgressIfPossible();
  public:
   ThreadPool();
   void startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
+  void notifyMainThreadIsSleeping();
 };
 
 #endif /* SRC_THREADPOOL_H_ */
