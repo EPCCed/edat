@@ -1,4 +1,4 @@
-CC       = mpicc
+CC       = mpicxx
 # compiling flags here
 CFLAGS   = 
 

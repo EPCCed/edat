@@ -35,14 +35,14 @@ int edatFinalise(void);
 int edatGetRank();
 int edatGetNumRanks();
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
-int edatScheduleNamedTask(void (*)(EDAT_Event*, int), char*, int, ...);
+int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
 int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
-int edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), char*, int, ...);
-int edatIsTaskScheduled(char*);
-int edatDescheduleTask(char*);
+int edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+int edatIsTaskScheduled(const char*);
+int edatDescheduleTask(const char*);
 int edatFireEvent(void*, int, int, int, const char *);
 int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Event*, int));
-int edatFindEvent(EDAT_Event*, int, int, char*);
+int edatFindEvent(EDAT_Event*, int, int, const char*);
 
 #ifdef __cplusplus
 }

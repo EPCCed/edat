@@ -52,7 +52,7 @@ int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_depend
   return 0;
 }
 
-int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), char * task_name, int num_dependencies, ...) {
+int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, std::string(task_name), true, num_dependencies, valist);
@@ -68,7 +68,7 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
   return 0;
 }
 
-int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), char * task_name, int num_dependencies, ...) {
+int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, std::string(task_name), false, num_dependencies, valist);
@@ -76,30 +76,32 @@ int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), char * task_name, i
   return 0;
 }
 
-int edatDescheduleTask(char * task_name) {
+int edatDescheduleTask(const char * task_name) {
   return scheduler->descheduleTask(std::string(task_name)) ? 1 : 0;
 }
 
-int edatIsTaskScheduled(char * task_name) {
+int edatIsTaskScheduled(const char * task_name) {
   return scheduler->isTaskScheduled(std::string(task_name)) ? 1 : 0;
 }
 
 int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, event_id);
+  return 0;
 }
 
 int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * event_id,
                             void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
+  return 0;
 }
 
 /**
 * Given an array of events, the number of events, the source rank and a specifc event identifier will return the appropriate index in the event array where that
 * can be found or -1 if none is present
 */
-int edatFindEvent(EDAT_Event * events, int number_events, int source, char * event_id) {
+int edatFindEvent(EDAT_Event * events, int number_events, int source, const char * event_id) {
   if (source == EDAT_SELF) source=messaging->getRank();
   for (int i=0;i<number_events;i++) {
     if (strcmp(events[i].metadata.event_id, event_id) == 0 &&
