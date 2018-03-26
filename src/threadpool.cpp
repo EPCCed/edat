@@ -6,6 +6,12 @@
 #include <mutex>
 #include <cstdlib>
 #include <string.h>
+#include <iostream>
+#include <sched.h>
+
+#define THREAD_MAPPING_AUTO 0
+#define THREAD_MAPPING_LINEAR 1
+#define THREAD_MAPPING_LINEARFROMCORE 1
 
 /**
 * Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
@@ -33,6 +39,52 @@ ThreadPool::ThreadPool() {
   }
   for (i = 0; i < number_of_threads; i++) {
     actionThreads[i]=std::thread(&ThreadPool::threadEntryProcedure, this, i);
+  }
+  mapThreadsToCores();
+}
+
+/**
+* Maps the threads to cores by setting the affinity if required
+*/
+void ThreadPool::mapThreadsToCores() {
+  int thread_to_core_mapping=THREAD_MAPPING_AUTO;
+  if(const char* env_thread_to_core_mapping = std::getenv("EDAT_THREAD_MAPPING")) {
+    if (strlen(env_thread_to_core_mapping) > 0) {
+      if (strcmp(env_thread_to_core_mapping, "auto") == 0) {
+        thread_to_core_mapping=THREAD_MAPPING_AUTO;
+      } else if (strcmp(env_thread_to_core_mapping, "linear") == 0) {
+        thread_to_core_mapping=THREAD_MAPPING_LINEAR;
+      } else if (strcmp(env_thread_to_core_mapping, "linearfromcore") == 0) {
+        thread_to_core_mapping=THREAD_MAPPING_LINEARFROMCORE;
+      }
+    }
+  }
+
+  if (thread_to_core_mapping != THREAD_MAPPING_AUTO) {
+    int total_num_cores=std::thread::hardware_concurrency();
+    int my_core=sched_getcpu();
+    for (int i=0;i<number_of_threads; i++) {
+      if (thread_to_core_mapping==THREAD_MAPPING_LINEAR || thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET((thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE ? (i + my_core) : i) % total_num_cores, &cpuset);
+        int rc = pthread_setaffinity_np(actionThreads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
+        if (rc != 0) {
+          std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n";
+        }
+      }
+    }
+  }
+
+  if(const char* env_report_thread_mapping = std::getenv("EDAT_REPORT_THREAD_MAPPING")) {
+    if (strlen(env_report_thread_mapping) > 0) {
+      if (strcmp(env_report_thread_mapping, "true") == 0) {
+        for (int i=0;i<number_of_threads; i++) {
+          std::unique_lock<std::mutex> lck(active_thread_mutex[i]);
+          active_thread_conditions[i].notify_one();
+        }
+      }
+    }
   }
 }
 
@@ -131,10 +183,21 @@ int ThreadPool::get_index_of_idle_thread() {
 * the polling. It might be interupted from this polling at any point, which is fine.
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
+  bool reported_mapping=false;
+  bool should_report_mapping=false;
+  if(const char* env_report_thread_mapping = std::getenv("EDAT_REPORT_THREAD_MAPPING")) {
+    if (strlen(env_report_thread_mapping) > 0) {
+      should_report_mapping=(strcmp(env_report_thread_mapping, "true") == 0);
+    }
+  }
   while (1) {
     std::unique_lock<std::mutex> lck(active_thread_mutex[myThreadId]);
     while (!threadStart[myThreadId]) {
       active_thread_conditions[myThreadId].wait(lck);
+      if (should_report_mapping && !reported_mapping) {
+        reported_mapping=true;
+        std::cout << "Thread #" << myThreadId << ": on core " << sched_getcpu() << "\n";
+      }
     }
     lck.unlock();
     threadStart[myThreadId] = false;

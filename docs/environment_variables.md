@@ -31,3 +31,27 @@ export EDAT_PROGRESS_THREAD=false
 ```
 
 **Default:** true
+
+### EDAT_REPORT_THREAD_MAPPING
+
+**Value type:** A boolean
+
+**Description:** Determines whether each worker thread will display its corresponding (local) core id at start up once thread to core mapping has been performed. This is local as it is reported within the context of a single node rather than across the system as a whole.
+
+```
+export EDAT_REPORT_THREAD_MAPPING=true
+```
+
+**Default:** false
+
+### EDAT_THREAD_MAPPING
+
+**Value type:** A string
+
+**Description:** Sets the mapping (affinity) of worker threads to cores in the node. There are a number of possible configuration options, *auto* will allow the OS to do what it thinks is best, *linear* will go cyclically 0 to the number of cores and then wrap around if there are more worker threads than cores, *linearfromcore* is similar to *linear* but will start from the core ID +1 of the main process. This last option is designed when the processes are placed explicitly on the first core of a region (for instance one per NUMA region) and the rest of the cores in that region are to be workers. Note though that it does not respect this region if there are more threads than cores in the region and it will progress through into other regions and maybe even cycle through if this is the case.
+
+```
+export EDAT_THREAD_MAPPING=linear
+```
+
+**Default:** auto

@@ -38,7 +38,7 @@ class ThreadPool {
 
   void threadEntryProcedure(int);
   int get_index_of_idle_thread();
-
+  void mapThreadsToCores();
  public:
   ThreadPool();
   void startThread(void (*)(void *), void *);
