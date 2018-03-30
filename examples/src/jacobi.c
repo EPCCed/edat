@@ -3,7 +3,6 @@
 #include <math.h>
 #include <limits.h>
 #include <time.h>
-#include "mpi.h"
 #include "edat.h"
 
 // Boundary value at the LHS of the bar
@@ -128,11 +127,18 @@ int main(int argc, char * argv[])
 
 void domainDecomposition(int num_ranks, int my_rank, int nx, int ny,
 	int * domain_dims, int * local_dims, int * domain_coords) {
-	/* sets local grid sizes for each rank, and gives each rank its location
-	 * really we want to do this without MPI, but I can't be bothered to
-	 * reimplement MPI_Dims_create just yet...
-	 */
-	MPI_Dims_create(num_ranks, 2, domain_dims);
+	/* sets local grid sizes for each rank, and gives each rank its location */
+	int Xmax = (int) floor(sqrt(num_ranks));
+
+	domain_dims[0] = num_ranks;
+	domain_dims[1] = 1;
+	for (int i=Xmax; i>1; i--) {
+		if (domain_dims[0] % i == 0) {
+			domain_dims[0] /= i;
+			domain_dims[1] *= i;
+			break;
+		}
+	}
 
 	domain_coords[0] = my_rank / domain_dims[1];
 	domain_coords[1] = my_rank % domain_dims[1];
