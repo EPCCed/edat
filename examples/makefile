@@ -1,6 +1,6 @@
 CC       = mpicxx
 # compiling flags here
-CFLAGS   = 
+CFLAGS   =
 
 LFLAGS   = -L../ -ledat
 
@@ -11,15 +11,15 @@ OBJDIR   = build
 rm       = rm -f
 
 %.o: %.c
-	$(CC) $(CFLAGS) -I../include -c $< -o $@ 
+	$(CC) $(CFLAGS) -I../include -c $< -o $@
 
 all: CFLAGS += -O3
 all: mkexamples
-	
+
 debug: CFLAGS += -g
 debug: mkexamples
 
-mkexamples: example1 example2 example3 example4 example5 example6 example7
+mkexamples: example1 example2 example3 example4 example5 example6 example7 jacobi
 
 example1: src/example_1.o
 	$(CC) -o example_1 src/example_1.o $(LFLAGS)
@@ -42,6 +42,9 @@ example6: src/example_6.o
 example7: src/example_7.o
 	$(CC) -o example_7 src/example_7.o $(LFLAGS)
 
+jacobi: src/jacobi.o
+	$(CC) -o jacobi src/jacobi.o $(LFLAGS)
+
 .PHONEY: clean
 clean:
-	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7
+	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7 jacobi
