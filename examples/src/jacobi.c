@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <limits.h>
+#include <time.h>
 #include "mpi.h"
 #include "edat.h"
 
@@ -31,15 +32,19 @@ void normUpdateTask(EDAT_Event*, int);
 void localNormTask(EDAT_Event*, int);
 void boundaryUpdateTask(EDAT_Event*, int);
 
+// timing
+double timeDiff(struct timespec, struct timespec);
+
 int main(int argc, char * argv[])
 {
 	int num_ranks, my_rank, nx, ny, domain_dims[]={0,0}, local_dims[]={0,0};
 	int domain_coords[]={-1,-1}, neighbours[]={INT_MIN, INT_MIN, INT_MIN, INT_MIN};
 	int mem_dims[]={0,0}, iter=0;
 	double norm=INFINITY, initial_norm=0.0, global_norm=0.0, local_norm=0.0;
-	double convergence_accuracy;
+	double convergence_accuracy, wall_time;
 	double *u_k, *u_kp1, *ptr_to_norm=&norm;
 	double *ptr_to_initial=&initial_norm, *ptr_to_global=&global_norm;
+	struct timespec start, stop;
 
 	edatInit(&argc, &argv);
 
@@ -65,6 +70,10 @@ int main(int argc, char * argv[])
 	initJacobi(local_dims, domain_coords, domain_dims, mem_dims, &u_k, &u_kp1);
 
 	local_norm = localNorm(u_k, local_dims, mem_dims);
+
+	// start the clock before we fire the first event
+	if (my_rank == MASTER) clock_gettime(CLOCK_MONOTONIC, &start);
+
 	edatFireEvent(&local_norm, EDAT_DOUBLE, 1, MASTER, "iN_local_norm");
 
 	// everybody tasks
@@ -103,6 +112,12 @@ int main(int argc, char * argv[])
 	}
 
 	edatFinalise();
+	// stop timer
+	if (my_rank == MASTER) {
+		clock_gettime(CLOCK_MONOTONIC, &stop);
+		wall_time = timeDiff(stop, start);
+		printf("Total time = %e seconds.\n", wall_time);
+	}
 
 	// no leaks, thanks
 	free(u_k);
@@ -449,7 +464,7 @@ void normUpdateTask(EDAT_Event * events, int num_events) {
 	*norm = global_norm / *initial_norm;
 
 	if (*norm < convergence_accuracy) {
-		printf("Convergence reached. Terminated on %d iterations. Relative norm = %e\n", iter, *norm);
+		printf("Convergence reached. Terminated on %d iterations. Relative norm = %e.\n", iter, *norm);
 	} else {
 		if (iter % REPORT_NORM_PERIOD == 0) printf("Iteration = %d, Norm = %e\n", iter, *norm);
 		edatFireEvent(&iter, EDAT_INT, 1, EDAT_ALL, "iterate");
@@ -536,4 +551,14 @@ void boundaryUpdateTask(EDAT_Event * events, int num_events) {
 	edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, compass[direction]);
 
 	return;
+}
+
+double timeDiff(struct timespec stop, struct timespec start) {
+	long int dt, stop_ns, start_ns;
+
+	stop_ns = (long int) stop.tv_sec * 1E9 + stop.tv_nsec;
+	start_ns = (long int) start.tv_sec * 1E9 + start.tv_nsec;
+	dt = stop_ns - start_ns;
+
+	return (double) 1E-9 * dt;
 }
