@@ -24,16 +24,25 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   pendingTask->persistent=persistent;
   pendingTask->task_name=task_name;
   for (std::pair<int, std::string> dependency : dependencies) {
-    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it;
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
-    pendingTask->originalDependencies.insert(depKey);
-    it=outstandingEvents.find(depKey);
+    std::map<DependencyKey, int*>::iterator oDit=pendingTask->originalDependencies.find(depKey);
+    if (oDit != pendingTask->originalDependencies.end()) {
+      *(oDit->second)++;
+    } else {
+      pendingTask->originalDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+    }
+    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
     if (it != outstandingEvents.end() && !it->second.empty()) {
       pendingTask->arrivedEvents.push_back(it->second.front());
       it->second.pop();
       if (it->second.empty()) outstandingEvents.erase(it);
     } else {
-      pendingTask->outstandingDependencies.insert(depKey);
+      oDit=pendingTask->outstandingDependencies.find(depKey);
+      if (oDit != pendingTask->outstandingDependencies.end()) {
+        (*(oDit->second))++;
+      } else {
+        pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+      }
     }
   }
 
@@ -110,13 +119,16 @@ bool Scheduler::checkProgressPersistentTasks() {
   bool progress=false;
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (pendingTask->persistent) {
-      for (DependencyKey depKey : pendingTask->outstandingDependencies) {
-        std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
+      for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
+        std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(dependency.first);
         if (it != outstandingEvents.end() && !it->second.empty()) {
           pendingTask->arrivedEvents.push_back(it->second.front());
           it->second.pop();
           if (it->second.empty()) outstandingEvents.erase(it);
-          pendingTask->outstandingDependencies.erase(depKey);
+          (*(dependency.second))--;
+          if (*(dependency.second) == 0) {
+            pendingTask->outstandingDependencies.erase(dependency.first);
+          }
         }
       }
       if (pendingTask->outstandingDependencies.empty()) {
@@ -175,9 +187,12 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
   DependencyKey eventDep = DependencyKey(event->getEventId(), event->getSourcePid());
   int i=0;
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
-    std::set<DependencyKey>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
+    std::map<DependencyKey, int*>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
     if (it != pendingTask->outstandingDependencies.end()) {
-      pendingTask->outstandingDependencies.erase(it);
+      (*(it->second))--;
+      if (*(it->second) == 0) {
+        pendingTask->outstandingDependencies.erase(it);
+      }
       pendingTask->arrivedEvents.push_back(event);
       return std::pair<PendingTaskDescriptor*, int>(pendingTask, i);
     }

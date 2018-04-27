@@ -53,7 +53,7 @@ public:
 };
 
 struct PendingTaskDescriptor {
-  std::set<DependencyKey> outstandingDependencies, originalDependencies;
+  std::map<DependencyKey, int*> outstandingDependencies, originalDependencies;
   std::vector<SpecificEvent*> arrivedEvents;
   bool freeData, persistent;
   std::string task_name;
