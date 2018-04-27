@@ -32,7 +32,7 @@ static void displayPreamble(int, int, int, int, int, int);
 static void errorCheckParameters(int, int, int, long, int, int, int);
 static void initialise_in_out_arrays(DTYPE ** RESTRICT, DTYPE ** RESTRICT, int, int, int, int, int, int, int);
 static void initialise_stencil_weights(DTYPE [2*RADIUS+1][2*RADIUS+1]);
-static void allocate_comms_buffers(DTYPE**, int, int, int);
+static void allocate_comms_buffers(DTYPE**, DTYPE**, DTYPE**, DTYPE**, int, int, int);
 static void displayResults(int, DTYPE, int, double, int);
 static void complete_run(EDAT_Event*, int);
 static void compute_kernel(EDAT_Event*, int);
@@ -47,7 +47,7 @@ static void halo_swap_to_right(EDAT_Event*, int);
 
 int Num_procsx, Num_procsy, my_IDx, my_IDy, right_nbr, left_nbr, top_nbr, bottom_nbr, n, width, height, istart, iend, jstart, jend, iterations,
   num_neighbours;
-DTYPE * comm_buffer;
+DTYPE * comm_buffer_up, * comm_buffer_down, * comm_buffer_left, * comm_buffer_right;
 long nsquare;
 DTYPE * RESTRICT in, * RESTRICT out;
 DTYPE weight[2*RADIUS+1][2*RADIUS+1];
@@ -136,73 +136,61 @@ int main(int argc, char ** argv) {
   if (my_IDx < Num_procsx-1) num_neighbours++;
 
   if (Num_procs > 1) {
-    allocate_comms_buffers(&comm_buffer, width, height, my_ID);
+    allocate_comms_buffers(&comm_buffer_up, &comm_buffer_down, &comm_buffer_left, &comm_buffer_right, width, height, my_ID);
   }
 
   if (my_ID == ROOT_PROCESS) {
     edatScheduleTask(complete_run, 2, EDAT_ALL, "runtime", EDAT_ALL, "localnorm");
   }
 
-  if (my_IDy < Num_procsy-1) edatSchedulePersistentTask(halo_swap_from_up, 2, top_nbr, "buffer", EDAT_SELF, "gethalo_up");
-  if (my_IDy > 0) edatSchedulePersistentTask(halo_swap_from_down, 2, bottom_nbr, "buffer", EDAT_SELF, "gethalo_down");
-  if (my_IDx > 0) edatSchedulePersistentTask(halo_swap_from_left, 2, left_nbr, "buffer", EDAT_SELF, "gethalo_left");
-  if (my_IDx < Num_procsx-1) edatSchedulePersistentTask(halo_swap_from_right, 2, right_nbr, "buffer", EDAT_SELF, "gethalo_right");
-
-  if (my_IDy < Num_procsy-1) edatSchedulePersistentTask(halo_swap_to_up, 1, EDAT_SELF, "haloswap_up");
-  if (my_IDy > 0) edatSchedulePersistentTask(halo_swap_to_down, 1, EDAT_SELF, "haloswap_down");
-  if (my_IDx > 0) edatSchedulePersistentTask(halo_swap_to_left, 1, EDAT_SELF, "haloswap_left");
-  if (my_IDx < Num_procsx-1) edatSchedulePersistentTask(halo_swap_to_right, 1, EDAT_SELF, "haloswap_right");
-
-  char event_hs_names[8][50];
-  int idx=0;
-
   if (my_IDy < Num_procsy-1) {
-    strcpy(event_hs_names[idx++], "uphalorecv");
-    strcpy(event_hs_names[idx++], "uphalosend");
+    edatSchedulePersistentTask(halo_swap_from_up, 2, top_nbr, "buffer", EDAT_SELF, "gethalo_up");
+    edatSchedulePersistentTask(halo_swap_to_up, 1, EDAT_SELF, "haloswap_up");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_up");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_up");
   }
+
   if (my_IDy > 0) {
-    strcpy(event_hs_names[idx++], "downhalorecv");
-    strcpy(event_hs_names[idx++], "downhalosend");
+    edatSchedulePersistentTask(halo_swap_from_down, 2, bottom_nbr, "buffer", EDAT_SELF, "gethalo_down");
+    edatSchedulePersistentTask(halo_swap_to_down, 1, EDAT_SELF, "haloswap_down");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_down");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_down");
   }
+
   if (my_IDx > 0) {
-    strcpy(event_hs_names[idx++], "lefthalorecv");
-    strcpy(event_hs_names[idx++], "lefthalosend");
+    edatSchedulePersistentTask(halo_swap_from_left, 2, left_nbr, "buffer", EDAT_SELF, "gethalo_left");
+    edatSchedulePersistentTask(halo_swap_to_left, 1, EDAT_SELF, "haloswap_left");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_left");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_left");
   }
+
   if (my_IDx < Num_procsx-1) {
-    strcpy(event_hs_names[idx++], "righthalorecv");
-    strcpy(event_hs_names[idx++], "righthalosend");
+    edatSchedulePersistentTask(halo_swap_from_right, 2, right_nbr, "buffer", EDAT_SELF, "gethalo_right");
+    edatSchedulePersistentTask(halo_swap_to_right, 1, EDAT_SELF, "haloswap_right");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_right");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_right");
   }
 
   switch(num_neighbours) {
   case 0:
-    edatSchedulePersistentTask(compute_kernel, 2+idx, EDAT_SELF, "iterations", EDAT_SELF, "start_time");
+    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time");
     break;
   case 1:
-    edatSchedulePersistentTask(compute_kernel, 2+idx, EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, event_hs_names[0],
-                               EDAT_SELF, event_hs_names[1]);
+    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+                               EDAT_SELF, "halosend");
     break;
   case 2:
-    edatSchedulePersistentTask(compute_kernel, 2+idx, EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, event_hs_names[0],
-                               EDAT_SELF, event_hs_names[1], EDAT_SELF, event_hs_names[2], EDAT_SELF, event_hs_names[3]);
+    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+                               EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;
   case 3:
-    edatSchedulePersistentTask(compute_kernel, 2+idx, EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, event_hs_names[0],
-                               EDAT_SELF, event_hs_names[1], EDAT_SELF, event_hs_names[2], EDAT_SELF, event_hs_names[3],
-                               EDAT_SELF, event_hs_names[4], EDAT_SELF, event_hs_names[5]);
+    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+                               EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;
   case 4:
-    edatSchedulePersistentTask(compute_kernel, 2+idx, EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, event_hs_names[0],
-                               EDAT_SELF, event_hs_names[1], EDAT_SELF, event_hs_names[2], EDAT_SELF, event_hs_names[3],
-                               EDAT_SELF, event_hs_names[4], EDAT_SELF, event_hs_names[5], EDAT_SELF, event_hs_names[6],
-                               EDAT_SELF, event_hs_names[7]);
+    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+                               EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend",
+                               EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;
   }
 
@@ -222,17 +210,17 @@ static void halo_swap_from_up(EDAT_Event * events, int num_events) {
       IN(i,j) = buffer[kk++];
     }
   }
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "uphalorecv");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halorecv");
 }
 
 static void halo_swap_to_up(EDAT_Event * events, int num_events) {
   for (int kk=0,j=jend-RADIUS+1; j<=jend; j++) {
     for (int i=istart; i<=iend; i++) {
-      comm_buffer[kk++]= IN(i,j);
+      comm_buffer_up[kk++]= IN(i,j);
     }
   }
-  edatFireEvent(comm_buffer, EDAT_DOUBLE, RADIUS*width, top_nbr, "buffer");
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "uphalosend");
+  edatFireEvent(comm_buffer_up, EDAT_DOUBLE, RADIUS*width, top_nbr, "buffer");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halosend");
 }
 
 static void halo_swap_from_down(EDAT_Event * events, int num_events) {
@@ -243,17 +231,17 @@ static void halo_swap_from_down(EDAT_Event * events, int num_events) {
       IN(i,j) = buffer[kk++];
     }
   }
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "downhalorecv");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halorecv");
 }
 
 static void halo_swap_to_down(EDAT_Event * events, int num_events) {
   for (int kk=0,j=jstart; j<=jstart+RADIUS-1; j++) {
     for (int i=istart; i<=iend; i++) {
-      comm_buffer[kk++]= IN(i,j);
+      comm_buffer_down[kk++]= IN(i,j);
     }
   }
-  edatFireEvent(comm_buffer, EDAT_DOUBLE, RADIUS*width, bottom_nbr, "buffer");
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "downhalosend");
+  edatFireEvent(comm_buffer_down, EDAT_DOUBLE, RADIUS*width, bottom_nbr, "buffer");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halosend");
 }
 
 static void halo_swap_from_left(EDAT_Event * events, int num_events) {
@@ -264,17 +252,17 @@ static void halo_swap_from_left(EDAT_Event * events, int num_events) {
       IN(i,j) = buffer[kk++];
     }
   }
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "lefthalorecv");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halorecv");
 }
 
 static void halo_swap_to_left(EDAT_Event * events, int num_events) {
   for (int kk=0,j=jstart; j<=jend; j++) {
     for (int i=istart; i<=istart+RADIUS-1; i++) {
-      comm_buffer[kk++]= IN(i,j);
+      comm_buffer_left[kk++]= IN(i,j);
     }
   }
-  edatFireEvent(comm_buffer, EDAT_DOUBLE, RADIUS*height, left_nbr, "buffer");
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "lefthalosend");
+  edatFireEvent(comm_buffer_left, EDAT_DOUBLE, RADIUS*height, left_nbr, "buffer");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halosend");
 }
 
 static void halo_swap_from_right(EDAT_Event * events, int num_events) {
@@ -285,17 +273,17 @@ static void halo_swap_from_right(EDAT_Event * events, int num_events) {
       IN(i,j) = buffer[kk++];
     }
   }
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "righthalorecv");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halorecv");
 }
 
 static void halo_swap_to_right(EDAT_Event * events, int num_events) {
   for (int kk=0,j=jstart; j<=jend; j++) {
     for (int i=iend-RADIUS+1; i<=iend; i++) {
-      comm_buffer[kk++]= IN(i,j);
+      comm_buffer_right[kk++]= IN(i,j);
     }
   }
-  edatFireEvent(comm_buffer, EDAT_DOUBLE, RADIUS*height, right_nbr, "buffer");
-  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "righthalosend");
+  edatFireEvent(comm_buffer_right, EDAT_DOUBLE, RADIUS*height, right_nbr, "buffer");
+  edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "halosend");
 }
 
 
@@ -425,10 +413,25 @@ static void initialise_in_out_arrays(DTYPE  ** RESTRICT in_x, DTYPE  ** RESTRICT
   }
 }
 
-static void allocate_comms_buffers(DTYPE **comm_buffer, int width, int height, int my_ID) {
-  *comm_buffer = (DTYPE *) prk_malloc(4*sizeof(DTYPE) * RADIUS * (width > height ? width : height));
-  if (!*comm_buffer) {
-    printf("ERROR: Rank %d could not allocated comm buffers for y-direction\n", my_ID);
+static void allocate_comms_buffers(DTYPE **comm_buffer_up, DTYPE **comm_buffer_down, DTYPE **comm_buffer_left, DTYPE **comm_buffer_right, int width, int height, int my_ID) {
+  *comm_buffer_up = (DTYPE *) prk_malloc(4*sizeof(DTYPE) * RADIUS * width);
+  if (!*comm_buffer_up) {
+    printf("ERROR: Rank %d could not allocated comm_buffer_up\n", my_ID);
+    exit(EXIT_FAILURE);
+  }
+  *comm_buffer_down = (DTYPE *) prk_malloc(4*sizeof(DTYPE) * RADIUS * width);
+  if (!*comm_buffer_down) {
+    printf("ERROR: Rank %d could not allocated comm_buffer_down\n", my_ID);
+    exit(EXIT_FAILURE);
+  }
+  *comm_buffer_left = (DTYPE *) prk_malloc(4*sizeof(DTYPE) * RADIUS * height);
+  if (!*comm_buffer_left) {
+    printf("ERROR: Rank %d could not allocated comm_buffer_left\n", my_ID);
+    exit(EXIT_FAILURE);
+  }
+  *comm_buffer_right = (DTYPE *) prk_malloc(4*sizeof(DTYPE) * RADIUS * height);
+  if (!*comm_buffer_right) {
+    printf("ERROR: Rank %d could not allocated comm_buffer_right\n", my_ID);
     exit(EXIT_FAILURE);
   }
 }
