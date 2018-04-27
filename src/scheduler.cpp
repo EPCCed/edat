@@ -27,7 +27,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     std::map<DependencyKey, int*>::iterator oDit=pendingTask->originalDependencies.find(depKey);
     if (oDit != pendingTask->originalDependencies.end()) {
-      *(oDit->second)++;
+      (*(oDit->second))++;
     } else {
       pendingTask->originalDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
     }
@@ -50,7 +50,9 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     PendingTaskDescriptor* exec_Task;
     if (persistent) {
       exec_Task=new PendingTaskDescriptor(*pendingTask);
-      pendingTask->outstandingDependencies=pendingTask->originalDependencies;
+      for (std::pair<DependencyKey, int*> dependency : pendingTask->originalDependencies) {
+        pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
+      }
       pendingTask->arrivedEvents.clear();
       registeredTasks.push_back(pendingTask);
     } else {
@@ -126,14 +128,16 @@ bool Scheduler::checkProgressPersistentTasks() {
           it->second.pop();
           if (it->second.empty()) outstandingEvents.erase(it);
           (*(dependency.second))--;
-          if (*(dependency.second) == 0) {
+          if (*(dependency.second) <= 0) {
             pendingTask->outstandingDependencies.erase(dependency.first);
           }
         }
       }
       if (pendingTask->outstandingDependencies.empty()) {
         PendingTaskDescriptor* exec_Task=new PendingTaskDescriptor(*pendingTask);
-        pendingTask->outstandingDependencies=pendingTask->originalDependencies;
+        for (std::pair<DependencyKey, int*> dependency : pendingTask->originalDependencies) {
+          pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
+        }
         pendingTask->arrivedEvents.clear();
         readyToRunTask(exec_Task);
         progress=true;
@@ -158,7 +162,9 @@ void Scheduler::registerEvent(SpecificEvent * event) {
         exec_Task=pendingTask.first;
       } else {
         exec_Task=new PendingTaskDescriptor(*pendingTask.first);
-        pendingTask.first->outstandingDependencies=pendingTask.first->originalDependencies;
+        for (std::pair<DependencyKey, int*> dependency : pendingTask.first->originalDependencies) {
+          pendingTask.first->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
+        }
         pendingTask.first->arrivedEvents.clear();
       }
       outstandTaskEvt_lock.unlock();
@@ -190,7 +196,7 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
     std::map<DependencyKey, int*>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
     if (it != pendingTask->outstandingDependencies.end()) {
       (*(it->second))--;
-      if (*(it->second) == 0) {
+      if (*(it->second) <= 0) {
         pendingTask->outstandingDependencies.erase(it);
       }
       pendingTask->arrivedEvents.push_back(event);
