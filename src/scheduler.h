@@ -13,15 +13,16 @@
 #include <string.h>
 
 class SpecificEvent {
-  int source_pid, message_length, message_type;
+  int source_pid, message_length, raw_data_length, message_type;
   char* data;
   std::string event_id;
   bool persistent;
 
  public:
-  SpecificEvent(int sourcePid, int message_length, int message_type, bool persistent, std::string event_id, char* data) {
+  SpecificEvent(int sourcePid, int message_length, int raw_data_length, int message_type, bool persistent, std::string event_id, char* data) {
     this->source_pid = sourcePid;
     this->message_type = message_type;
+    this->raw_data_length = raw_data_length;
     this->event_id = event_id;
     this->message_length = message_length;
     this->data = data;
@@ -34,9 +35,10 @@ class SpecificEvent {
     this->message_type = source.message_type;
     this->event_id =  source.event_id;
     this->message_length = source.message_length;
+    this->raw_data_length=source.raw_data_length;
     if (source.data != NULL) {
-      this->data = (char*) malloc(this->message_length);
-      memcpy(this->data, source.data, this->message_length);
+      this->data = (char*) malloc(this->raw_data_length);
+      memcpy(this->data, source.data, this->raw_data_length);
     } else {
       this->data = source.data;
     }
@@ -50,6 +52,7 @@ class SpecificEvent {
   std::string getEventId() { return this->event_id; }
   int getMessageLength() { return this->message_length; }
   int getMessageType() { return this->message_type; }
+  int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
 };
 

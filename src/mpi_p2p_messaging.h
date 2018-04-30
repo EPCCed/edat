@@ -28,7 +28,7 @@ class MPI_P2P_Messaging : public Messaging {
 protected:
   bool performSinglePoll(int*);
 public:
-  MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool);
+  MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&);
   virtual void runPollForEvents();
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, bool, const char *);

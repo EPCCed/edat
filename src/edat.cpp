@@ -18,9 +18,9 @@ static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, 
 
 int edatInit(int* argc, char*** argv) {
   threadPool=new ThreadPool();
-  scheduler=new Scheduler(*threadPool);
-  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool);
   contextManager=new ContextManager();
+  scheduler=new Scheduler(*threadPool);
+  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager);
   threadPool->setMessaging(messaging);
   return 0;
 }

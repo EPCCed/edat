@@ -263,7 +263,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     if (events_payload[i].metadata.data_type == EDAT_NOTYPE) {
       events_payload[i].metadata.number_elements=0;
     } else {
-      events_payload[i].metadata.number_elements=specEvent->getMessageLength() / getTypeSize(events_payload[i].metadata.data_type);
+      events_payload[i].metadata.number_elements=specEvent->getMessageLength();
     }
     events_payload[i].metadata.source=specEvent->getSourcePid();
     int event_id_len=specEvent->getEventId().size();

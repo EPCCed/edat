@@ -3,6 +3,7 @@
 
 #include "scheduler.h"
 #include "threadpool.h"
+#include "contextmanager.h"
 #include <vector>
 #include <thread>
 
@@ -17,14 +18,16 @@ class Messaging {
 protected:
   Scheduler & scheduler;
   ThreadPool & threadPool;
+  ContextManager & contextManager;
   bool continue_polling;
   bool progress_thread;
   int it_count;
   virtual bool fireASingleLocalEvent();
   virtual bool checkForLocalTermination();
   virtual void startProgressThread();
-  Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool);
+  Messaging(Scheduler&, ThreadPool&, ContextManager&);
   virtual bool performSinglePoll(int*) = 0;
+  virtual int getTypeSize(int);
 public:
   virtual void runPollForEvents() = 0;
   virtual bool pollForEvents();

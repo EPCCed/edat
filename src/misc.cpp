@@ -21,16 +21,16 @@ void raiseError(const char* errorMessage) {
 }
 
 /**
-* Retrieves the size of a specific type in bytes
+* Retrieves the size of a specific in built type in bytes
 */
-int getTypeSize(int type) {
+int getBaseTypeSize(int type) {
   if (type == EDAT_INT) return sizeof(int);
   if (type == EDAT_FLOAT) return sizeof(float);
   if (type == EDAT_DOUBLE) return sizeof(double);
   if (type == EDAT_BYTE) return sizeof(char);
   if (type == EDAT_ADDRESS) return sizeof(char*);
   if (type == EDAT_NOTYPE) return 0;
-  fprintf(stderr, "Error in type matching\n");
+  raiseError("Error in type matching\n");
   return -1;
 }
 

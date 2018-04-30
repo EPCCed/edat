@@ -7,7 +7,8 @@
 /**
 * Constructor which will initialise this aspect of the messaging
 */
-Messaging::Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : scheduler(a_scheduler), threadPool(a_threadPool) {
+Messaging::Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool, ContextManager& a_contextManager) : scheduler(a_scheduler),
+                      threadPool(a_threadPool), contextManager(a_contextManager) {
   continue_polling=true;
   progress_thread=getEnvironmentVariable("EDAT_PROGRESS_THREAD", true);
   it_count=0;
@@ -99,4 +100,15 @@ void Messaging::attachMainThread(std::condition_variable * cdt, std::mutex * cdt
   this->mainThreadConditionVariable = cdt;
   this->mainThreadConditionVarMutex = cdt_mutex;
   this->mainThreadConditionVarPred = cdt_pred;
+}
+
+/**
+* Retrieves the size of an event payload type in bytes
+*/
+int Messaging::getTypeSize(int type) {
+  if (type >= BASE_CONTEXT_ID) {
+    return contextManager.getContextEventPayloadSize(type);
+  } else {
+    return getBaseTypeSize(type);
+  }
 }

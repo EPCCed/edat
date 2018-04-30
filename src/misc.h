@@ -12,7 +12,7 @@
 #include <string.h>
 
 void raiseError(const char*);
-int getTypeSize(int);
+int getBaseTypeSize(int);
 bool getEnvironmentVariable(const char*, bool);
 unsigned int getEnvironmentVariable(const char*, unsigned int);
 int getEnvironmentVariable(const char*, int);

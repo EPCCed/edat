@@ -19,7 +19,7 @@
 * Initialises MPI if it has not already been initialised at serialised mode. If it has been initialised then checks which mode it is in to
 * ensure compatability with what we are doing here
 */
-MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool) : Messaging(a_scheduler, a_threadPool) {
+MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool, ContextManager& a_contextManager) : Messaging(a_scheduler, a_threadPool, a_contextManager) {
   int is_mpi_init, provided;
   MPI_Initialized(&is_mpi_init);
   if (is_mpi_init) {
@@ -69,7 +69,7 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
     int data_size=getTypeSize(data_type) * data_count;
     char * buffer_data=(char*) malloc(data_size);
     memcpy(buffer_data, data, data_size);
-    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, persistent, std::string(event_id), (char*) buffer_data);
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count, data_count * getTypeSize(data_type), data_type, persistent, std::string(event_id), (char*) buffer_data);
     scheduler.registerEvent(event);
   }
   if (target != my_rank) {
@@ -112,7 +112,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
   if (reflux_task_fn != NULL) {
     std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, persistent, event_id, (char*) data);
+    SpecificEvent * event=new SpecificEvent(target, data_count, type_element_size * data_count, data_type, persistent, event_id, (char*) data);
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
@@ -231,7 +231,7 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     } else {
       data_buffer = NULL;
     }
-    SpecificEvent* event=new SpecificEvent(source_pid, data_size, data_type, persistent == 1 ? true : false, std::string(&buffer[13]), data_buffer);
+    SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type, persistent == 1 ? true : false, std::string(&buffer[13]), data_buffer);
     scheduler.registerEvent(event);
     free(buffer);
   } else {
