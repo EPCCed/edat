@@ -17,8 +17,8 @@ class MPI_P2P_Messaging : public Messaging {
   std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex, mpi_mutex;
   void initMPI();
   void checkSendRequestsForProgress();
-  void sendSingleEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));
-  void handleFiringOfEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));
+  void sendSingleEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
+  void handleFiringOfEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
   void trackTentativeTerminationCodes();
   bool confirmTerminationCodes();
   bool checkForCodeInList(int*, int);
@@ -31,8 +31,8 @@ public:
   MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool);
   virtual void runPollForEvents();
   virtual void finalise();
-  virtual void fireEvent(void *, int, int, int, const char *);
-  virtual void fireEvent(void *, int, int, int, const char *, void (*)(EDAT_Event*, int));
+  virtual void fireEvent(void *, int, int, int, bool, const char *);
+  virtual void fireEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
   virtual int getRank();
   virtual int getNumRanks();
   virtual bool isFinished();

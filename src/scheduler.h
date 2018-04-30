@@ -9,19 +9,38 @@
 #include <queue>
 #include <utility>
 #include <set>
+#include <stdlib.h>
+#include <string.h>
 
 class SpecificEvent {
   int source_pid, message_length, message_type;
   char* data;
   std::string event_id;
+  bool persistent;
 
  public:
-  SpecificEvent(int sourcePid, int message_length, int message_type, std::string event_id, char* data) {
+  SpecificEvent(int sourcePid, int message_length, int message_type, bool persistent, std::string event_id, char* data) {
     this->source_pid = sourcePid;
     this->message_type = message_type;
     this->event_id = event_id;
     this->message_length = message_length;
     this->data = data;
+    this->persistent=persistent;
+  }
+
+  SpecificEvent(const SpecificEvent& source) {
+    // Copy constructor needed as we free the data from event to event, hence take a copy of this
+    this->source_pid = source.source_pid;
+    this->message_type = source.message_type;
+    this->event_id =  source.event_id;
+    this->message_length = source.message_length;
+    if (source.data != NULL) {
+      this->data = (char*) malloc(this->message_length);
+      memcpy(this->data, source.data, this->message_length);
+    } else {
+      this->data = source.data;
+    }
+    this->persistent= source.persistent;
   }
 
   char* getData() const { return data; }
@@ -31,6 +50,7 @@ class SpecificEvent {
   std::string getEventId() { return this->event_id; }
   int getMessageLength() { return this->message_length; }
   int getMessageType() { return this->message_type; }
+  bool isPersistent() { return this->persistent; }
 };
 
 class DependencyKey {
@@ -61,6 +81,7 @@ struct PendingTaskDescriptor {
 };
 
 class Scheduler {
+    int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
     std::vector<PendingTaskDescriptor*> registeredTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
     ThreadPool & threadPool;
@@ -71,7 +92,7 @@ class Scheduler {
     bool checkProgressPersistentTasks();
     std::vector<PendingTaskDescriptor*>::iterator locatePendingTaskFromName(std::string);
 public:
-    Scheduler(ThreadPool & tp) : threadPool(tp) { }
+    Scheduler(ThreadPool & tp) : threadPool(tp) { outstandingEventsToHandle = 0; }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
     void registerEvent(SpecificEvent*);
     bool isFinished();

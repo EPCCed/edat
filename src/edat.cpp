@@ -89,14 +89,20 @@ int edatIsTaskScheduled(const char * task_name) {
 
 int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   if (target == EDAT_SELF) target=messaging->getRank();
-  messaging->fireEvent(data, data_count, data_type, target, event_id);
+  messaging->fireEvent(data, data_count, data_type, target, false, event_id);
+  return 0;
+}
+
+int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+  if (target == EDAT_SELF) target=messaging->getRank();
+  messaging->fireEvent(data, data_count, data_type, target, true, event_id);
   return 0;
 }
 
 int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * event_id,
                             void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == EDAT_SELF) target=messaging->getRank();
-  messaging->fireEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
+  messaging->fireEvent(data, data_count, data_type, target, false, event_id, reflux_task_fn);
   return 0;
 }
 

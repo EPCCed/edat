@@ -19,7 +19,7 @@ all: mkexamples
 debug: CFLAGS += -g
 debug: mkexamples
 
-mkexamples: example1 example2 example3 example4 example5 example6 example7 example8 example9 jacobi cholesky
+mkexamples: example1 example2 example3 example4 example5 example6 example7 example8 example9 example10 jacobi cholesky
 
 example1: src/example_1.o
 	$(CC) -o example_1 src/example_1.o $(LFLAGS)
@@ -48,6 +48,9 @@ example8: src/example_8.o
 example9: src/example_9.o
 	$(CC) -o example_9 src/example_9.o $(LFLAGS)
 
+example10: src/example_10.o
+	$(CC) -o example_10 src/example_10.o $(LFLAGS)
+
 jacobi: src/jacobi.o
 	$(CC) -o jacobi src/jacobi.o $(LFLAGS)
 
@@ -56,4 +59,4 @@ cholesky: src/cholesky.o
 
 .PHONEY: clean
 clean:
-	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7 example_8 example_9 jacobi cholesky
+	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7 example_8 example_9 example_10 jacobi cholesky

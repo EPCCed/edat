@@ -33,9 +33,16 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     }
     std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
     if (it != outstandingEvents.end() && !it->second.empty()) {
-      pendingTask->arrivedEvents.push_back(it->second.front());
-      it->second.pop();
-      if (it->second.empty()) outstandingEvents.erase(it);
+      if (it->second.front()->isPersistent()) {
+        // If its persistent event then copy the event
+        pendingTask->arrivedEvents.push_back(new SpecificEvent(*(it->second.front())));
+      } else {
+        pendingTask->arrivedEvents.push_back(it->second.front());
+        // If not persistent then remove from outstanding events
+        outstandingEventsToHandle--;
+        it->second.pop();
+        if (it->second.empty()) outstandingEvents.erase(it);
+      }
     } else {
       oDit=pendingTask->outstandingDependencies.find(depKey);
       if (oDit != pendingTask->outstandingDependencies.end()) {
@@ -124,9 +131,16 @@ bool Scheduler::checkProgressPersistentTasks() {
       for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
         std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(dependency.first);
         if (it != outstandingEvents.end() && !it->second.empty()) {
-          pendingTask->arrivedEvents.push_back(it->second.front());
-          it->second.pop();
-          if (it->second.empty()) outstandingEvents.erase(it);
+          if (it->second.front()->isPersistent()) {
+            // If its a persistent event then copy the event
+            pendingTask->arrivedEvents.push_back(new SpecificEvent(*(it->second.front())));
+          } else {
+            pendingTask->arrivedEvents.push_back(it->second.front());
+            // If not persistent then remove from outstanding events
+            outstandingEventsToHandle--;
+            it->second.pop();
+            if (it->second.empty()) outstandingEvents.erase(it);
+          }
           (*(dependency.second))--;
           if (*(dependency.second) <= 0) {
             pendingTask->outstandingDependencies.erase(dependency.first);
@@ -154,7 +168,9 @@ bool Scheduler::checkProgressPersistentTasks() {
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::pair<PendingTaskDescriptor*, int> pendingTask=findTaskMatchingEventAndUpdate(event);
-  if (pendingTask.first != NULL) {
+  bool firstIt=true;
+
+  while (pendingTask.first != NULL && (event->isPersistent() || firstIt)) {
     if (pendingTask.first->outstandingDependencies.empty()) {
       PendingTaskDescriptor* exec_Task;
       if (!pendingTask.first->persistent) {
@@ -171,7 +187,17 @@ void Scheduler::registerEvent(SpecificEvent * event) {
       readyToRunTask(exec_Task);
       consumeEventsByPersistentTasks();
     }
-  } else {
+    if (event->isPersistent()) {
+      // If this is a persistent event keep trying to consume tasks to match against as many as possible
+      pendingTask=findTaskMatchingEventAndUpdate(event);
+    } else {
+      // If not a persistent task then the event has been consumed and don't do another iteration
+      firstIt=false;
+    }
+  }
+
+  if (pendingTask.first == NULL) {
+    // Will always hit here if the event is persistent as it consumes in the above loop until there are no more pending, matching tasks
     DependencyKey dK=DependencyKey(event->getEventId(), event->getSourcePid());
     std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it = outstandingEvents.find(dK);
     if (it == outstandingEvents.end()) {
@@ -181,6 +207,8 @@ void Scheduler::registerEvent(SpecificEvent * event) {
     } else {
       it->second.push(event);
     }
+
+    if (!event->isPersistent()) outstandingEventsToHandle++;
   }
 }
 
@@ -199,7 +227,12 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
       if (*(it->second) <= 0) {
         pendingTask->outstandingDependencies.erase(it);
       }
-      pendingTask->arrivedEvents.push_back(event);
+      if (event->isPersistent()) {
+        // If its persistent then copy the event
+        pendingTask->arrivedEvents.push_back(new SpecificEvent(*event));
+      } else {
+        pendingTask->arrivedEvents.push_back(event);
+      }
       return std::pair<PendingTaskDescriptor*, int>(pendingTask, i);
     }
     i++;
@@ -256,5 +289,5 @@ bool Scheduler::isFinished() {
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }
-  return outstandingEvents.empty();
+  return outstandingEventsToHandle==0;
 }

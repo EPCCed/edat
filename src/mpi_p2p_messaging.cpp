@@ -50,35 +50,35 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   if (doesProgressThreadExist()) startProgressThread();
 }
 
-void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target,
+void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent,
                                   const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
-  handleFiringOfEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
+  handleFiringOfEvent(data, data_count, data_type, target, persistent, event_id, reflux_task_fn);
 }
 
-void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, const char * event_id) {
-  handleFiringOfEvent(data, data_count, data_type, target, event_id, NULL);
+void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent, const char * event_id) {
+  handleFiringOfEvent(data, data_count, data_type, target, persistent, event_id, NULL);
 }
 
 /**
 * Handles the firing of an event, either remote or local event. Also handles when we are sending to all targets rather than just
 * one specific process
 */
-void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target,
+void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target, bool persistent,
                                             const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
   if (target == my_rank || target == EDAT_ALL) {
     int data_size=getTypeSize(data_type) * data_count;
     char * buffer_data=(char*) malloc(data_size);
     memcpy(buffer_data, data, data_size);
-    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, std::string(event_id), (char*) buffer_data);
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count * getTypeSize(data_type), data_type, persistent, std::string(event_id), (char*) buffer_data);
     scheduler.registerEvent(event);
   }
   if (target != my_rank) {
     if (target != EDAT_ALL) {
-      sendSingleEvent(data, data_count, data_type, target, event_id, reflux_task_fn);
+      sendSingleEvent(data, data_count, data_type, target, persistent, event_id, reflux_task_fn);
     } else {
       for (int i=0;i<total_ranks;i++) {
         if (i != my_rank) {
-          sendSingleEvent(data, data_count, data_type, i, event_id, reflux_task_fn);
+          sendSingleEvent(data, data_count, data_type, i, persistent, event_id, reflux_task_fn);
         }
       }
     }
@@ -89,17 +89,19 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
 * Sends a single event to a specific target by packaging the data into a buffer and sending it over. We use a non-blocking synchronous send as we want acknowledgement
 * from the target that the message has started to be received (for termination correctness.)
 */
-void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target,
+void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target, bool persistent,
                                         const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
   int event_id_len=strlen(event_id);
   int type_element_size=getTypeSize(data_type);
-  int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + event_id_len + 1;
+  int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + event_id_len + 1 + sizeof(char);
   char * buffer = (char*) malloc(packet_size);
   memcpy(buffer, &data_type, sizeof(int));
   memcpy(&buffer[4], &my_rank, sizeof(int));
   memcpy(&buffer[8], &event_id_len, sizeof(int));
-  memcpy(&buffer[12], event_id, sizeof(char) * (event_id_len + 1));
-  if (data != NULL) memcpy(&buffer[(12 + event_id_len + 1)], data, type_element_size * data_count);
+  char pVal=persistent ? 1 : 0;
+  memcpy(&buffer[12], &pVal, sizeof(char));
+  memcpy(&buffer[13], event_id, sizeof(char) * (event_id_len + 1));
+  if (data != NULL) memcpy(&buffer[(13 + event_id_len + 1)], data, type_element_size * data_count);
   MPI_Request request;
   if (protectMPI) mpi_mutex.lock();
   MPI_Issend(buffer, packet_size, MPI_BYTE, target, MPI_TAG, MPI_COMM_WORLD, &request);
@@ -110,7 +112,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
   if (reflux_task_fn != NULL) {
     std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, event_id, (char*) data);
+    SpecificEvent * event=new SpecificEvent(target, data_count, data_type, persistent, event_id, (char*) data);
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
@@ -220,15 +222,16 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     if (protectMPI) mpi_mutex.unlock();
     int data_type = *((int*)buffer);
     int source_pid = *((int*)&buffer[4]);
-    int event_id_length = strlen(&buffer[12]);
-    int data_size = message_size - (12 + event_id_length + 1);
+    char persistent=*((char*)&buffer[12]);
+    int event_id_length = strlen(&buffer[13]);
+    int data_size = message_size - (13 + event_id_length + 1);
     if (data_size > 0) {
       data_buffer = (char*)malloc(data_size);
-      memcpy(data_buffer, &buffer[12 + event_id_length + 1], data_size);
+      memcpy(data_buffer, &buffer[13 + event_id_length + 1], data_size);
     } else {
       data_buffer = NULL;
     }
-    SpecificEvent* event=new SpecificEvent(source_pid, data_size, data_type, std::string(&buffer[12]), data_buffer);
+    SpecificEvent* event=new SpecificEvent(source_pid, data_size, data_type, persistent == 1 ? true : false, std::string(&buffer[13]), data_buffer);
     scheduler.registerEvent(event);
     free(buffer);
   } else {

@@ -43,6 +43,7 @@ int edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int
 int edatIsTaskScheduled(const char*);
 int edatDescheduleTask(const char*);
 int edatFireEvent(void*, int, int, int, const char *);
+int edatFirePersistentEvent(void*, int, int, int, const char *);
 int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Event*, int));
 int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
