@@ -1,6 +1,8 @@
 #ifndef SRC_EDAT_H_
 #define SRC_EDAT_H_
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,6 +45,8 @@ int edatDescheduleTask(const char*);
 int edatFireEvent(void*, int, int, int, const char *);
 int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Event*, int));
 int edatFindEvent(EDAT_Event*, int, int, const char*);
+int edatDefineContext(size_t);
+void* edatCreateContext(int);
 
 #ifdef __cplusplus
 }

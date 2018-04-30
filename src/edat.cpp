@@ -7,10 +7,12 @@
 #include "scheduler.h"
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
+#include "contextmanager.h"
 
 static ThreadPool * threadPool;
 static Scheduler * scheduler;
 static Messaging * messaging;
+static ContextManager * contextManager;
 
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
 
@@ -18,6 +20,7 @@ int edatInit(int* argc, char*** argv) {
   threadPool=new ThreadPool();
   scheduler=new Scheduler(*threadPool);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool);
+  contextManager=new ContextManager();
   threadPool->setMessaging(messaging);
   return 0;
 }
@@ -108,6 +111,15 @@ int edatFindEvent(EDAT_Event * events, int number_events, int source, const char
         (source == EDAT_ANY || events[i].metadata.source == source)) return i;
   }
   return -1;
+}
+
+int edatDefineContext(size_t contextSize) {
+  ContextDefinition * definition = new ContextDefinition(contextSize);
+  return contextManager->addDefinition(definition);
+}
+
+void* edatCreateContext(int contextType) {
+  return contextManager->createContext(contextType);
 }
 
 /**
