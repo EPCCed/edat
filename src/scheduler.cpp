@@ -20,11 +20,13 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
+  pendingTask->numArrivedEvents=0;
   pendingTask->freeData=true;
   pendingTask->persistent=persistent;
   pendingTask->task_name=task_name;
   for (std::pair<int, std::string> dependency : dependencies) {
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
+    pendingTask->taskDependencyOrder.push_back(depKey);
     std::map<DependencyKey, int*>::iterator oDit=pendingTask->originalDependencies.find(depKey);
     if (oDit != pendingTask->originalDependencies.end()) {
       (*(oDit->second))++;
@@ -33,15 +35,26 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     }
     std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
     if (it != outstandingEvents.end() && !it->second.empty()) {
+      pendingTask->numArrivedEvents++;
+      SpecificEvent * specificEVTToAdd;
       if (it->second.front()->isPersistent()) {
         // If its persistent event then copy the event
-        pendingTask->arrivedEvents.push_back(new SpecificEvent(*(it->second.front())));
+        specificEVTToAdd=new SpecificEvent(*(it->second.front()));
       } else {
-        pendingTask->arrivedEvents.push_back(it->second.front());
+        specificEVTToAdd=it->second.front();
         // If not persistent then remove from outstanding events
         outstandingEventsToHandle--;
         it->second.pop();
         if (it->second.empty()) outstandingEvents.erase(it);
+      }
+
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(depKey);
+      if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+        std::queue<SpecificEvent*> eventQueue;
+        eventQueue.push(specificEVTToAdd);
+        pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depKey, eventQueue));
+      } else {
+        arrivedEventsIT->second.push(specificEVTToAdd);
       }
     } else {
       oDit=pendingTask->outstandingDependencies.find(depKey);
@@ -61,6 +74,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
         pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
       }
       pendingTask->arrivedEvents.clear();
+      pendingTask->numArrivedEvents=0;
       registeredTasks.push_back(pendingTask);
     } else {
       exec_Task=pendingTask;
@@ -131,15 +145,26 @@ bool Scheduler::checkProgressPersistentTasks() {
       for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
         std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(dependency.first);
         if (it != outstandingEvents.end() && !it->second.empty()) {
+          pendingTask->numArrivedEvents++;
+          SpecificEvent * specificEVTToAdd;
           if (it->second.front()->isPersistent()) {
-            // If its a persistent event then copy the event
-            pendingTask->arrivedEvents.push_back(new SpecificEvent(*(it->second.front())));
+            // If its persistent event then copy the event
+            specificEVTToAdd=new SpecificEvent(*(it->second.front()));
           } else {
-            pendingTask->arrivedEvents.push_back(it->second.front());
+            specificEVTToAdd=it->second.front();
             // If not persistent then remove from outstanding events
             outstandingEventsToHandle--;
             it->second.pop();
             if (it->second.empty()) outstandingEvents.erase(it);
+          }
+
+          std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(dependency.first);
+          if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+            std::queue<SpecificEvent*> eventQueue;
+            eventQueue.push(specificEVTToAdd);
+            pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(dependency.first, eventQueue));
+          } else {
+            arrivedEventsIT->second.push(specificEVTToAdd);
           }
           (*(dependency.second))--;
           if (*(dependency.second) <= 0) {
@@ -153,6 +178,7 @@ bool Scheduler::checkProgressPersistentTasks() {
           pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
         }
         pendingTask->arrivedEvents.clear();
+        pendingTask->numArrivedEvents=0;
         readyToRunTask(exec_Task);
         progress=true;
       }
@@ -182,6 +208,7 @@ void Scheduler::registerEvent(SpecificEvent * event) {
           pendingTask.first->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
         }
         pendingTask.first->arrivedEvents.clear();
+        pendingTask.first->numArrivedEvents=0;
       }
       outstandTaskEvt_lock.unlock();
       readyToRunTask(exec_Task);
@@ -223,16 +250,28 @@ std::pair<PendingTaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     std::map<DependencyKey, int*>::iterator it = pendingTask->outstandingDependencies.find(eventDep);
     if (it != pendingTask->outstandingDependencies.end()) {
+      pendingTask->numArrivedEvents++;
       (*(it->second))--;
       if (*(it->second) <= 0) {
         pendingTask->outstandingDependencies.erase(it);
       }
+
+      SpecificEvent * specificEVTToAdd;
       if (event->isPersistent()) {
-        // If its persistent then copy the event
-        pendingTask->arrivedEvents.push_back(new SpecificEvent(*event));
+        // If its persistent event then copy the event
+        specificEVTToAdd=new SpecificEvent(*event);
       } else {
-        pendingTask->arrivedEvents.push_back(event);
+        specificEVTToAdd=event;
       }
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(eventDep);
+      if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+        std::queue<SpecificEvent*> eventQueue;
+        eventQueue.push(specificEVTToAdd);
+        pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(eventDep, eventQueue));
+      } else {
+        arrivedEventsIT->second.push(specificEVTToAdd);
+      }
+
       return std::pair<PendingTaskDescriptor*, int>(pendingTask, i);
     }
     i++;
@@ -255,10 +294,20 @@ void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
 */
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
-  EDAT_Event * events_payload = new EDAT_Event[taskContainer->arrivedEvents.size()];
+  EDAT_Event * events_payload = new EDAT_Event[taskContainer->numArrivedEvents];
   std::set<int> eventsThatAreContexts;
   int i=0;
-  for (SpecificEvent * specEvent : taskContainer->arrivedEvents) {
+  for (DependencyKey dependencyKey : taskContainer->taskDependencyOrder) {
+    // Pick them off this way to ensure ordering of dependencies wrt task definition
+    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = taskContainer->arrivedEvents.find(dependencyKey);
+    if (arrivedEventsIT == taskContainer->arrivedEvents.end()) {
+      raiseError("Can not find the corresponding event dependency key when mapping the task onto a thread\n");
+    }
+    if (arrivedEventsIT->second.size() <=0 ) {
+      raiseError("Too few events with a corresponding EID for when mapping the task onto a thread\n");
+    }
+    SpecificEvent * specEvent=arrivedEventsIT->second.front();
+    arrivedEventsIT->second.pop();
     if (specEvent->isAContext()) {
       // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
       events_payload[i].data=*((char**) specEvent->getData());

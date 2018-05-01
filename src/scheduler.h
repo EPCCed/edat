@@ -80,8 +80,10 @@ public:
 
 struct PendingTaskDescriptor {
   std::map<DependencyKey, int*> outstandingDependencies, originalDependencies;
-  std::vector<SpecificEvent*> arrivedEvents;
+  std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
+  std::vector<DependencyKey> taskDependencyOrder;
   bool freeData, persistent;
+  int numArrivedEvents;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
 };

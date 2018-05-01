@@ -123,7 +123,11 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
-    taskDescriptor->arrivedEvents.push_back(event);
+
+    std::queue<SpecificEvent*> eventQueue;
+    eventQueue.push(event);
+    taskDescriptor->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(DependencyKey(event->getEventId(), event->getSourcePid()), eventQueue));
+
     outstandingRefluxTasks.insert(std::pair<MPI_Request, PendingTaskDescriptor*>(request, taskDescriptor));
   }
 }
