@@ -16,10 +16,10 @@ class SpecificEvent {
   int source_pid, message_length, raw_data_length, message_type;
   char* data;
   std::string event_id;
-  bool persistent;
+  bool persistent, aContext;
 
  public:
-  SpecificEvent(int sourcePid, int message_length, int raw_data_length, int message_type, bool persistent, std::string event_id, char* data) {
+  SpecificEvent(int sourcePid, int message_length, int raw_data_length, int message_type, bool persistent, bool aContext, std::string event_id, char* data) {
     this->source_pid = sourcePid;
     this->message_type = message_type;
     this->raw_data_length = raw_data_length;
@@ -27,6 +27,7 @@ class SpecificEvent {
     this->message_length = message_length;
     this->data = data;
     this->persistent=persistent;
+    this->aContext=aContext;
   }
 
   SpecificEvent(const SpecificEvent& source) {
@@ -36,6 +37,7 @@ class SpecificEvent {
     this->event_id =  source.event_id;
     this->message_length = source.message_length;
     this->raw_data_length=source.raw_data_length;
+    this->aContext=source.aContext;
     if (source.data != NULL) {
       this->data = (char*) malloc(this->raw_data_length);
       memcpy(this->data, source.data, this->raw_data_length);
@@ -54,6 +56,7 @@ class SpecificEvent {
   int getMessageType() { return this->message_type; }
   int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
+  bool isAContext() { return this->aContext; }
 };
 
 class DependencyKey {

@@ -68,8 +68,14 @@ void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int dat
   if (target == my_rank || target == EDAT_ALL) {
     int data_size=getTypeSize(data_type) * data_count;
     char * buffer_data=(char*) malloc(data_size);
-    memcpy(buffer_data, data, data_size);
-    SpecificEvent* event=new SpecificEvent(my_rank, data_count, data_count * getTypeSize(data_type), data_type, persistent, std::string(event_id), (char*) buffer_data);
+    if (contextManager.isTypeAContext(data_type)) {
+      // If its a context then pass the pointer to the context data rather than the data itself
+      memcpy(buffer_data, &data, data_size);
+    } else {
+      memcpy(buffer_data, data, data_size);
+    }
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count, data_count * getTypeSize(data_type), data_type, persistent,
+                                           contextManager.isTypeAContext(data_type), std::string(event_id), (char*) buffer_data);
     scheduler.registerEvent(event);
   }
   if (target != my_rank) {
@@ -112,7 +118,8 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
   }
   if (reflux_task_fn != NULL) {
     std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    SpecificEvent * event=new SpecificEvent(target, data_count, type_element_size * data_count, data_type, persistent, event_id, (char*) data);
+    SpecificEvent * event=new SpecificEvent(target, data_count, type_element_size * data_count, data_type, persistent,
+                                            contextManager.isTypeAContext(data_type), event_id, (char*) data);
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
@@ -231,7 +238,8 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     } else {
       data_buffer = NULL;
     }
-    SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type, persistent == 1 ? true : false, std::string(&buffer[13]), data_buffer);
+    SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type,
+                                           persistent == 1 ? true : false, contextManager.isTypeAContext(data_type), std::string(&buffer[13]), data_buffer);
     scheduler.registerEvent(event);
     free(buffer);
   } else {

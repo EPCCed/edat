@@ -69,12 +69,19 @@ VERBOSE=0/1             omit/include verbose run information       [0]"
 
 TUNEFLAGS    = $(RESTRICTFLAG) $(VERBOSEFLAG)$(USERFLAGS) $(LOOPGENFLAG)\
                $(DOUBLEFLAG)   $(RADIUSFLAG) $(STARFLAG) 
-PROGRAM     = stencil
+PROGRAM     = 
 OBJS        = $(PROGRAM).o $(COMOBJS)
 
 include ../make.common
 
-$(PROGRAM).o: loop_body_star.incl loop_body_compact.incl
+stencil_basic:stencil_basic.o $(COMOBJS)
+	$(CLINKER) -o stencil_basic $(LIBPATHS)  $(CFLAGS) stencil_basic.o $(COMOBJS) $(EXTOBJS) $(LIBS)
+
+stencil_context:stencil_context.o $(COMOBJS)
+	$(CLINKER) -o stencil_context $(LIBPATHS)  $(CFLAGS) stencil_context.o $(COMOBJS) $(EXTOBJS) $(LIBS)
+
+stencil_basic.o: loop_body_star.incl loop_body_compact.incl
+stencil_context.o: loop_body_star.incl loop_body_compact.incl
 
 loop_body_star.incl:
 	@echo "#########################################################################"
