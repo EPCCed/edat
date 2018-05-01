@@ -2,6 +2,7 @@
 #include "edat.h"
 #include "threadpool.h"
 #include "misc.h"
+#include "metrics.h"
 #include <map>
 #include <string>
 #include <mutex>
@@ -10,6 +11,10 @@
 #include <queue>
 #include <utility>
 #include <set>
+
+#ifndef DO_METRICS
+#define DO_METRICS false
+#endif
 
 /**
 * Registers a task with EDAT, this will determine (and consume) outstanding events & then if applicable will mark ready for execution. Otherwise
@@ -94,9 +99,15 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
 * unlocks consumption of other events.)
 */
 void Scheduler::consumeEventsByPersistentTasks() {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("consumeEventsByPersistentTasks");
+  #endif
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   bool consumingEvents=checkProgressPersistentTasks();
   while (consumingEvents) consumingEvents=checkProgressPersistentTasks();
+  #if DO_METRICS
+    metrics::METRICS->timerStop("consumeEventsByPersistentTasks");
+  #endif
 }
 
 /**

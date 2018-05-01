@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#define DO_METRICS false
+
 #ifdef __cplusplus
 extern "C" {
 #endif
