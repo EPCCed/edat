@@ -1,6 +1,7 @@
 #include "mpi_p2p_messaging.h"
 #include "misc.h"
 #include "scheduler.h"
+#include "metrics.h"
 #include <string.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,10 @@
 #include <mutex>
 #include <cstdlib>
 #include <ctime>
+
+#ifndef DO_METRICS
+#define DO_METRICS false
+#endif
 
 #define MPI_TAG 16384
 #define MPI_TERMINATION_TAG 16385
@@ -206,6 +211,9 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
 * This only performs one "tick" through, so is called repeatedly by a progress thread of an idle thread if there is none
 */
 bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("performSinglePoll");
+  #endif
   int pending_message, message_size;
   char* buffer, *data_buffer;
   MPI_Status message_status;
@@ -221,6 +229,9 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &pending_message, &message_status);
   if (protectMPI) mpi_mutex.unlock();
   if (pending_message) {
+    #if DO_METRICS
+      metrics::METRICS->timerStart("pending_message");
+    #endif
     terminated=false;
     if (protectMPI) mpi_mutex.lock();
     MPI_Get_count(&message_status, MPI_BYTE, &message_size);
@@ -242,6 +253,9 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
                                            persistent == 1 ? true : false, contextManager.isTypeAContext(data_type), std::string(&buffer[13]), data_buffer);
     scheduler.registerEvent(event);
     free(buffer);
+    #if DO_METRICS
+      metrics::METRICS->timerStop("pending_message");
+    #endif
   } else {
     bool current_terminated=checkForLocalTermination();
     if (current_terminated && !terminated) {
@@ -258,6 +272,9 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     terminated=current_terminated;
   }
   if (my_rank == 0) termination_codes[0]=terminated ? terminated_id : -1;
+  #if DO_METRICS
+    metrics::METRICS->timerStop("performSinglePoll");
+  #endif
   return handleTerminationProtocol();
 }
 
@@ -282,12 +299,21 @@ void MPI_P2P_Messaging::runPollForEvents() {
 * termination IDs and pinging back.
 */
 bool MPI_P2P_Messaging::handleTerminationProtocol() {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("handleTerminationProtocol");
+  #endif
   if (my_rank == 0) {
     bool rt=true;
     if (mode == 0) trackTentativeTerminationCodes();
     if (mode == 1) rt=confirmTerminationCodes();
+    #if DO_METRICS
+      metrics::METRICS->timerStop("handleTerminationProtocol");
+    #endif
     return rt;
   } else {
+    #if DO_METRICS
+      metrics::METRICS->timerStop("handleTerminationProtocol");
+    #endif
     return handleTerminationProtocolMessagesAsWorker();
   }
 }
