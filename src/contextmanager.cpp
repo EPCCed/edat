@@ -17,6 +17,13 @@ void* ContextManager::createContext(int contextType) {
   }
 }
 
+bool ContextManager::isTypeAContext(int type) {
+  if (type >= BASE_CONTEXT_ID) {
+    return definitions.count(type) > 0;
+  }
+  return false;
+}
+
 int ContextManager::getContextEventPayloadSize(int contextType) {
   std::map<int, ContextDefinition*>::iterator it = definitions.find(contextType);
   if (it != definitions.end()) {

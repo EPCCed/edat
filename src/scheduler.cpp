@@ -256,9 +256,16 @@ void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   EDAT_Event * events_payload = new EDAT_Event[taskContainer->arrivedEvents.size()];
+  std::set<int> eventsThatAreContexts;
   int i=0;
   for (SpecificEvent * specEvent : taskContainer->arrivedEvents) {
-    events_payload[i].data=specEvent->getData();
+    if (specEvent->isAContext()) {
+      // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
+      events_payload[i].data=*((char**) specEvent->getData());
+      eventsThatAreContexts.emplace(i);
+    } else {
+      events_payload[i].data=specEvent->getData();
+    }
     events_payload[i].metadata.data_type=specEvent->getMessageType();
     if (events_payload[i].metadata.data_type == EDAT_NOTYPE) {
       events_payload[i].metadata.number_elements=0;
@@ -275,7 +282,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   taskContainer->task_fn(events_payload, i);
   for (int j=0;j<i;j++) {
     free(events_payload[j].metadata.event_id);
-    if (taskContainer->freeData && events_payload[j].data != NULL) free(events_payload[j].data);
+    if (taskContainer->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
   delete events_payload;
   free(pthreadRawData);

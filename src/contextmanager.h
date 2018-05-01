@@ -23,6 +23,7 @@ public:
   int addDefinition(ContextDefinition*);
   void* createContext(int);
   int getContextEventPayloadSize(int);
+  bool isTypeAContext(int);
 };
 
 #endif
