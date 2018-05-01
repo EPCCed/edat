@@ -213,8 +213,8 @@ int main(int argc, char ** argv) {
 }
 
 static void halo_swap_from_up(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
-  double * buffer = (double*) events[edatFindEvent(events, num_events, context->top_nbr, "buffer")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
+  double * buffer = (double*) events[1].data;
 
   for (int kk=0,j=context->jend+1; j<=context->jend+RADIUS; j++) {
     for (int i=context->istart; i<=context->iend; i++) {
@@ -225,7 +225,7 @@ static void halo_swap_from_up(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_to_up(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
 
   for (int kk=0,j=context->jend-RADIUS+1; j<=context->jend; j++) {
     for (int i=context->istart; i<=context->iend; i++) {
@@ -237,8 +237,8 @@ static void halo_swap_to_up(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_down(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
-  double * buffer = (double*) events[edatFindEvent(events, num_events, context->bottom_nbr, "buffer")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
+  double * buffer = (double*) events[1].data;
 
   for (int kk=0,j=context->jstart-RADIUS; j<=context->jstart-1; j++) {
     for (int i=context->istart; i<=context->iend; i++) {
@@ -249,7 +249,7 @@ static void halo_swap_from_down(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_to_down(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
 
   for (int kk=0,j=context->jstart; j<=context->jstart+RADIUS-1; j++) {
     for (int i=context->istart; i<=context->iend; i++) {
@@ -261,8 +261,8 @@ static void halo_swap_to_down(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_left(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
-  double * buffer = (double*) events[edatFindEvent(events, num_events, context->left_nbr, "buffer")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
+  double * buffer = (double*) events[1].data;
 
   for (int kk=0,j=context->jstart; j<=context->jend; j++) {
     for (int i=context->istart-RADIUS; i<=context->istart-1; i++) {
@@ -273,7 +273,7 @@ static void halo_swap_from_left(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_to_left(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
 
   for (int kk=0,j=context->jstart; j<=context->jend; j++) {
     for (int i=context->istart; i<=context->istart+RADIUS-1; i++) {
@@ -285,8 +285,8 @@ static void halo_swap_to_left(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_right(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
-  double * buffer = (double*) events[edatFindEvent(events, num_events, context->right_nbr, "buffer")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
+  double * buffer = (double*) events[1].data;
 
   for (int kk=0,j=context->jstart; j<=context->jend; j++) {
     for (int i=context->iend+1; i<=context->iend+RADIUS; i++) {
@@ -297,7 +297,7 @@ static void halo_swap_from_right(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_to_right(EDAT_Event * events, int num_events) {
-  struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
+  struct mycontext * context=(struct mycontext*) events[0].data;
 
   for (int kk=0,j=context->jstart; j<=context->jend; j++) {
     for (int i=context->iend-RADIUS+1; i<=context->iend; i++) {
@@ -323,8 +323,8 @@ static void complete_run(EDAT_Event * events, int num_events) {
 }
 
 static void compute_kernel(EDAT_Event * events, int num_events) {
-  int current_it=*((int*) events[edatFindEvent(events, num_events, EDAT_SELF, "iterations")].data);
-   struct mycontext * context=(struct mycontext*) events[edatFindEvent(events, num_events, EDAT_SELF, "context")].data;
+  int current_it=*((int*) events[1].data);
+  struct mycontext * context=(struct mycontext*) events[0].data;
 
   // Apply the stencil operator
   for (int j=MAX(context->jstart,RADIUS); j<=MIN(context->n-RADIUS-1,context->jend); j++) {
@@ -371,11 +371,11 @@ static void compute_kernel(EDAT_Event * events, int num_events) {
     if (current_it == 1) {
       runtime=wtime();
     } else {
-      runtime=*((double*) events[edatFindEvent(events, num_events, EDAT_SELF, "start_time")].data);
+      runtime=*((double*) events[2].data);
     }
     edatFireEvent(&runtime, EDAT_DOUBLE, 1, EDAT_SELF, "start_time");
   } else {
-    double runtime=wtime() - *((double*) events[edatFindEvent(events, num_events, EDAT_SELF, "start_time")].data);
+    double runtime=wtime() - *((double*) events[2].data);
     edatFireEvent(&runtime, EDAT_DOUBLE, 1, ROOT_PROCESS, "runtime");
       /* compute L1 norm in parallel                                                */
     DTYPE local_norm = (DTYPE) 0.0;
