@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "contextmanager.h"
 #include "misc.h"
 

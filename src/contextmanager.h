@@ -3,6 +3,7 @@
 
 #include <map>
 #include <vector>
+#include <stddef.h>
 
 static int BASE_CONTEXT_ID=2000;
 
