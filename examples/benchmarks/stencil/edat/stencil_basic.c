@@ -1,6 +1,5 @@
 #include "../par-res-kern_general.h"
 #include "edat.h"
-#include <mpi.h>
 
 #define ROOT_PROCESS 0
 
