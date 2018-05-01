@@ -8,6 +8,11 @@
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
 #include "contextmanager.h"
+#include "metrics.h"
+
+#ifndef DO_METRICS
+#define DO_METRICS false
+#endif
 
 static ThreadPool * threadPool;
 static Scheduler * scheduler;
@@ -22,6 +27,10 @@ int edatInit(int* argc, char*** argv) {
   scheduler=new Scheduler(*threadPool);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager);
   threadPool->setMessaging(messaging);
+  #if DO_METRICS
+    metricsInit();
+    metrics::METRICS->timerStart("edat");
+  #endif
   return 0;
 }
 
@@ -36,6 +45,10 @@ int edatFinalise(void) {
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
+  #if DO_METRICS
+    metrics::METRICS->timerStop("edat");
+    metrics::METRICS->finalise();
+  #endif
   return 0;
 }
 
@@ -48,10 +61,16 @@ int edatGetNumRanks() {
 }
 
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("SchedulePersistentTask");
+  #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", true, num_dependencies, valist);
   va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SchedulePersistentTask");
+  #endif
   return 0;
 }
 
@@ -64,10 +83,16 @@ int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const cha
 }
 
 int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("ScheduleTask");
+  #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", false, num_dependencies, valist);
   va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("ScheduleTask");
+  #endif
   return 0;
 }
 
@@ -88,14 +113,26 @@ int edatIsTaskScheduled(const char * task_name) {
 }
 
 int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("FireEvent");
+  #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, false, event_id);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("FireEvent");
+  #endif
   return 0;
 }
 
 int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+  #if DO_METRICS
+    metrics::METRICS->timerStart("FirePersistentEvent");
+  #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, true, event_id);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("FirePersistentEvent");
+  #endif
   return 0;
 }
 
