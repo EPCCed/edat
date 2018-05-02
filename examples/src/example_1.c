@@ -6,7 +6,7 @@ void my_task(EDAT_Event*, int);
 void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {

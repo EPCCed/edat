@@ -32,9 +32,14 @@ struct edat_struct_event {
   EDAT_Metadata metadata;
 };
 
+struct edat_struct_configuration {
+  char **key, **value;
+  int num_entries;
+};
+
 typedef struct edat_struct_event EDAT_Event;
 
-int edatInit(int *, char ***);
+int edatInit(int *, char ***, struct edat_struct_configuration*);
 int edatFinalise(void);
 int edatGetRank();
 int edatGetNumRanks();

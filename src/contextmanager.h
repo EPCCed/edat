@@ -4,6 +4,7 @@
 #include <map>
 #include <vector>
 #include <stddef.h>
+#include "configuration.h"
 
 static int BASE_CONTEXT_ID=2000;
 
@@ -17,10 +18,11 @@ public:
 };
 
 class ContextManager {
+  Configuration & configuration;
   int definitionId;
   std::map<int, ContextDefinition*> definitions;
 public:
-  ContextManager() { definitionId = BASE_CONTEXT_ID; }
+  ContextManager(Configuration & aconfig) : configuration(aconfig) { definitionId = BASE_CONTEXT_ID; }
   int addDefinition(ContextDefinition*);
   void* createContext(int);
   int getContextEventPayloadSize(int);

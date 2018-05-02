@@ -58,7 +58,7 @@ int main(int argc, char ** argv) {
   /*******************************************************************************
   ** Initialize the MPI environment
   ********************************************************************************/
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
   my_ID=edatGetRank();
   Num_procs=edatGetNumRanks();
 
@@ -202,7 +202,7 @@ int main(int argc, char ** argv) {
 }
 
 static void halo_swap_from_up(EDAT_Event * events, int num_events) {
-  double * buffer = (double*) events[edatFindEvent(events, num_events, top_nbr, "buffer")].data;
+  double * buffer = (double*) events[0].data;
 
   for (int kk=0,j=jend+1; j<=jend+RADIUS; j++) {
     for (int i=istart; i<=iend; i++) {
@@ -223,7 +223,7 @@ static void halo_swap_to_up(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_down(EDAT_Event * events, int num_events) {
-  double * buffer = (double*) events[edatFindEvent(events, num_events, bottom_nbr, "buffer")].data;
+  double * buffer = (double*) events[0].data;
 
   for (int kk=0,j=jstart-RADIUS; j<=jstart-1; j++) {
     for (int i=istart; i<=iend; i++) {
@@ -244,7 +244,7 @@ static void halo_swap_to_down(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_left(EDAT_Event * events, int num_events) {
-  double * buffer = (double*) events[edatFindEvent(events, num_events, left_nbr, "buffer")].data;
+  double * buffer = (double*) events[0].data;
 
   for (int kk=0,j=jstart; j<=jend; j++) {
     for (int i=istart-RADIUS; i<=istart-1; i++) {
@@ -265,7 +265,7 @@ static void halo_swap_to_left(EDAT_Event * events, int num_events) {
 }
 
 static void halo_swap_from_right(EDAT_Event * events, int num_events) {
-  double * buffer = (double*) events[edatFindEvent(events, num_events, right_nbr, "buffer")].data;
+  double * buffer = (double*) events[0].data;
 
   for (int kk=0,j=jstart; j<=jend; j++) {
     for (int i=iend+1; i<=iend+RADIUS; i++) {
@@ -299,7 +299,7 @@ static void complete_run(EDAT_Event * events, int num_events) {
 }
 
 static void compute_kernel(EDAT_Event * events, int num_events) {
-  int current_it=*((int*) events[edatFindEvent(events, num_events, EDAT_SELF, "iterations")].data);
+  int current_it=*((int*) events[0].data);
 
   // Apply the stencil operator
   for (int j=MAX(jstart,RADIUS); j<=MIN(n-RADIUS-1,jend); j++) {
@@ -346,11 +346,11 @@ static void compute_kernel(EDAT_Event * events, int num_events) {
     if (current_it == 1) {
       runtime=wtime();
     } else {
-      runtime=*((double*) events[edatFindEvent(events, num_events, EDAT_SELF, "start_time")].data);
+      runtime=*((double*) events[1].data);
     }
     edatFireEvent(&runtime, EDAT_DOUBLE, 1, EDAT_SELF, "start_time");
   } else {
-    double runtime=wtime() - *((double*) events[edatFindEvent(events, num_events, EDAT_SELF, "start_time")].data);
+    double runtime=wtime() - *((double*) events[1].data);
     edatFireEvent(&runtime, EDAT_DOUBLE, 1, ROOT_PROCESS, "runtime");
       /* compute L1 norm in parallel                                                */
     DTYPE local_norm = (DTYPE) 0.0;

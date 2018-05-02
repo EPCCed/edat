@@ -43,7 +43,7 @@ int main(int argc, char * argv[]) {
   sscanf(argv[1], "%d", &global_size);
   sscanf(argv[2], "%d", &block_size);
 
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
 
   const int NUM_RANKS = edatGetNumRanks();
   const int MY_RANK = edatGetRank();

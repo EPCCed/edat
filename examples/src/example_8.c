@@ -5,7 +5,7 @@
 void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 3, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
     edatFireEvent(NULL, EDAT_NOTYPE, 0,  EDAT_SELF, "evt");

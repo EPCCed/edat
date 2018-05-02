@@ -4,6 +4,7 @@
 #include "scheduler.h"
 #include "threadpool.h"
 #include "contextmanager.h"
+#include "configuration.h"
 #include <vector>
 #include <thread>
 
@@ -19,13 +20,14 @@ protected:
   Scheduler & scheduler;
   ThreadPool & threadPool;
   ContextManager & contextManager;
+  Configuration & configuration;
   bool continue_polling;
   bool progress_thread;
   int it_count;
   virtual bool fireASingleLocalEvent();
   virtual bool checkForLocalTermination();
   virtual void startProgressThread();
-  Messaging(Scheduler&, ThreadPool&, ContextManager&);
+  Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
   virtual bool performSinglePoll(int*) = 0;
   virtual int getTypeSize(int);
 public:

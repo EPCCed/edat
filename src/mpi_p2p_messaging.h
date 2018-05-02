@@ -5,6 +5,7 @@
 #include <mutex>
 #include "mpi.h"
 #include "messaging.h"
+#include "configuration.h"
 
 class MPI_P2P_Messaging : public Messaging {
   bool protectMPI, mpiInitHere, terminated;
@@ -28,7 +29,7 @@ class MPI_P2P_Messaging : public Messaging {
 protected:
   bool performSinglePoll(int*);
 public:
-  MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&);
+  MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
   virtual void runPollForEvents();
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, bool, const char *);

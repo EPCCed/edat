@@ -3,6 +3,7 @@
 
 #include "edat.h"
 #include "threadpool.h"
+#include "configuration.h"
 #include <map>
 #include <string>
 #include <mutex>
@@ -92,6 +93,7 @@ class Scheduler {
     int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
     std::vector<PendingTaskDescriptor*> registeredTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
+    Configuration & configuration;
     ThreadPool & threadPool;
     std::mutex taskAndEvent_mutex;
     static void threadBootstrapperFunction(void*);
@@ -100,7 +102,7 @@ class Scheduler {
     bool checkProgressPersistentTasks();
     std::vector<PendingTaskDescriptor*>::iterator locatePendingTaskFromName(std::string);
 public:
-    Scheduler(ThreadPool & tp) : threadPool(tp) { outstandingEventsToHandle = 0; }
+    Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
     void registerEvent(SpecificEvent*);
     bool isFinished();

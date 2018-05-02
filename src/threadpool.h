@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#include "configuration.h"
 
 class Messaging;
 
@@ -25,6 +26,7 @@ struct PendingThreadContainer {
 };
 
 class ThreadPool {
+  Configuration & configuration;
   int number_of_threads, pollingProgressThread;
   bool main_thread_is_worker;
   std::thread * actionThreads;
@@ -42,7 +44,7 @@ class ThreadPool {
   void mapThreadsToCores(bool);
   void launchThreadToPollForProgressIfPossible();
  public:
-  ThreadPool();
+  ThreadPool(Configuration&);
   void startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);

@@ -62,7 +62,7 @@ int main(int argc, char ** argv) {
   /*******************************************************************************
   ** Initialize the MPI environment
   ********************************************************************************/
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
   my_ID=edatGetRank();
   Num_procs=edatGetNumRanks();
 

@@ -24,7 +24,8 @@
 * Initialises MPI if it has not already been initialised at serialised mode. If it has been initialised then checks which mode it is in to
 * ensure compatability with what we are doing here
 */
-MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool, ContextManager& a_contextManager) : Messaging(a_scheduler, a_threadPool, a_contextManager) {
+MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool, ContextManager& a_contextManager,
+                                     Configuration & aconfig) : Messaging(a_scheduler, a_threadPool, a_contextManager, aconfig) {
   int is_mpi_init, provided;
   MPI_Initialized(&is_mpi_init);
   if (is_mpi_init) {

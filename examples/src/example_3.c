@@ -7,7 +7,7 @@ void my_task(EDAT_Event*, int);
 void reflux_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv);
+  edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
     int * d = (int*) malloc(sizeof(int) * 10);
     int i;

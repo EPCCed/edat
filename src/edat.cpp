@@ -18,14 +18,16 @@ static ThreadPool * threadPool;
 static Scheduler * scheduler;
 static Messaging * messaging;
 static ContextManager * contextManager;
+static Configuration * configuration;
 
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
 
-int edatInit(int* argc, char*** argv) {
-  threadPool=new ThreadPool();
-  contextManager=new ContextManager();
-  scheduler=new Scheduler(*threadPool);
-  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager);
+int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
+  configuration=new Configuration(edat_config);
+  threadPool=new ThreadPool(*configuration);
+  contextManager=new ContextManager(*configuration);
+  scheduler=new Scheduler(*threadPool, *configuration);
+  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   #if DO_METRICS
     metricsInit();

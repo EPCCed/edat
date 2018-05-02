@@ -20,11 +20,11 @@ static std::map<const char*, int> thread_mapping_lookup={{"auto", THREAD_MAPPING
 /**
 * Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
 */
-ThreadPool::ThreadPool() {
+ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
   progressPollIdleThread=false;
   pollingProgressThread=-1;
-  number_of_threads=getEnvironmentVariable("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
-  main_thread_is_worker=getEnvironmentVariable("EDAT_MAIN_THREAD_WORKER", false);
+  number_of_threads=configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
+  main_thread_is_worker=configuration.get("EDAT_MAIN_THREAD_WORKER", false);
 
   actionThreads = new std::thread[number_of_threads];
   active_thread_conditions=new std::condition_variable[number_of_threads];
@@ -52,7 +52,7 @@ ThreadPool::ThreadPool() {
 * (or zero) if the main thread is a worker.
 */
 void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
-  int thread_to_core_mapping=getEnvironmentMapVariable("EDAT_THREAD_MAPPING", thread_mapping_lookup, THREAD_MAPPING_AUTO);
+  int thread_to_core_mapping=configuration.get("EDAT_THREAD_MAPPING", thread_mapping_lookup, THREAD_MAPPING_AUTO);
 
   if (thread_to_core_mapping != THREAD_MAPPING_AUTO) {
     int total_num_cores=std::thread::hardware_concurrency();
@@ -74,7 +74,7 @@ void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
     }
   }
 
-  if (getEnvironmentVariable("EDAT_REPORT_THREAD_MAPPING", false)) {
+  if (configuration.get("EDAT_REPORT_THREAD_MAPPING", false)) {
     for (int i=0;i<number_of_threads; i++) {
           std::unique_lock<std::mutex> lck(active_thread_mutex[i]);
           active_thread_conditions[i].notify_one();
@@ -202,7 +202,7 @@ int ThreadPool::get_index_of_idle_thread() {
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
   bool reported_mapping=false;
-  bool should_report_mapping=getEnvironmentVariable("EDAT_REPORT_THREAD_MAPPING", false);
+  bool should_report_mapping=configuration.get("EDAT_REPORT_THREAD_MAPPING", false);
 
   while (1) {
     std::unique_lock<std::mutex> lck(active_thread_mutex[myThreadId]);

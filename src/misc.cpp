@@ -34,38 +34,3 @@ int getBaseTypeSize(int type) {
   return -1;
 }
 
-/**
-* Retrieves a boolean environment variable or returns a default value if this is not found
-*/
-bool getEnvironmentVariable(const char* name, bool default_value) {
-  if(const char* env_value = std::getenv(name)) {
-    if (strlen(env_value) > 0) {
-      return (strcmp(env_value, "true") == 0);
-    }
-  }
-  return default_value;
-}
-
-/**
-* Retrieves an unsigned int environment variable or returns a default value if this is not found
-*/
-unsigned int getEnvironmentVariable(const char* name, unsigned int default_value) {
-  if(const char* env_value = std::getenv(name)) {
-    if (strlen(env_value) > 0) {
-      return atoi(env_value);
-    }
-  }
-  return default_value;
-}
-
-/**
-* Retrieves an integer environment variable or returns a default value if this is not found
-*/
-int getEnvironmentVariable(const char* name, int default_value) {
-  if(const char* env_value = std::getenv(name)) {
-    if (strlen(env_value) > 0) {
-      return atoi(env_value);
-    }
-  }
-  return default_value;
-}
