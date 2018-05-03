@@ -5,7 +5,7 @@
 #include <string.h>
 
 // These are configuration keys that might be found set in the environment and if so we want to read and store their values
-std::string Configuration::envKeys[] = { "EDAT_NUM_THREADS", "EDAT_MAIN_THREAD_WORKER", "EDAT_REPORT_THREAD_MAPPING", "EDAT_PROGRESS_THREAD" };
+std::string Configuration::envKeys[] = { "EDAT_NUM_THREADS", "EDAT_MAIN_THREAD_WORKER", "EDAT_REPORT_THREAD_MAPPING", "EDAT_PROGRESS_THREAD", "EDAT_RESILIENCE" };
 
 /**
 * The constructor which will initialise the configuration settings from the environment variables (if set) and then from the provided
