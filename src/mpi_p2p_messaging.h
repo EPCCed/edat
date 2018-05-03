@@ -12,7 +12,7 @@ class MPI_P2P_Messaging : public Messaging {
   int my_rank, total_ranks, reply_from_master;
   int terminated_id, mode=0;
   int * termination_codes, *pingback_termination_codes;
-  MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL;
+  MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL, terminate_send_req=MPI_REQUEST_NULL;
   std::map<MPI_Request, char*> outstandingSendRequests;
   std::map<MPI_Request, PendingTaskDescriptor*> outstandingRefluxTasks;
   std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex, mpi_mutex;

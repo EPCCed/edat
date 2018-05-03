@@ -44,8 +44,6 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &total_ranks);
   std::srand(std::time(nullptr));
-  char * mpi_buffer = (char*) malloc((sizeof(int) * MAX_TERMINATION_COUNT) + MPI_BSEND_OVERHEAD);
-  MPI_Buffer_attach(mpi_buffer, MAX_TERMINATION_COUNT*sizeof(int) + MPI_BSEND_OVERHEAD );
   if (protectMPI) mpi_mutex.unlock();
   if (my_rank == 0) {
     termination_codes=new int[total_ranks];
@@ -267,7 +265,8 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
       terminated_id=std::rand();
       if (my_rank != 0) {
         if (protectMPI) mpi_mutex.lock();
-        MPI_Bsend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD);
+        if (terminate_send_req != MPI_REQUEST_NULL) MPI_Cancel(&terminate_send_req);
+        MPI_Isend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &terminate_send_req);
         if (termination_pingback_request == MPI_REQUEST_NULL) {
           MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
         }
@@ -337,8 +336,9 @@ bool MPI_P2P_Messaging::handleTerminationProtocolMessagesAsWorker() {
     MPI_Test(&termination_pingback_request, &completed, MPI_STATUS_IGNORE);
     if (completed) {
       int not_completed=-1;
+      if (terminate_send_req != MPI_REQUEST_NULL) MPI_Cancel(&terminate_send_req);
       // Send the master either my termination id or that I am active
-      MPI_Bsend(terminated ? &terminated_id : &not_completed, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD);
+      MPI_Isend(terminated ? &terminated_id : &not_completed, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &terminate_send_req);
       // Irrespective register the reply recieve which tells the worker whether it should terminate or not
       MPI_Irecv(&reply_from_master, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &termination_completed_request);
     }
