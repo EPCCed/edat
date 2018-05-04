@@ -265,8 +265,9 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
       terminated_id=std::rand();
       if (my_rank != 0) {
         if (protectMPI) mpi_mutex.lock();
-        if (terminate_send_req != MPI_REQUEST_NULL) MPI_Cancel(&terminate_send_req);
-        MPI_Isend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &terminate_send_req);
+        int sendTerminationIdFlag=(terminate_send_req == MPI_REQUEST_NULL);
+        if (!sendTerminationIdFlag) MPI_Test(&terminate_send_req, &sendTerminationIdFlag, MPI_STATUS_IGNORE);
+        if (sendTerminationIdFlag) MPI_Isend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &terminate_send_req);
         if (termination_pingback_request == MPI_REQUEST_NULL) {
           MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, MPI_COMM_WORLD, &termination_pingback_request);
         }
@@ -336,9 +337,12 @@ bool MPI_P2P_Messaging::handleTerminationProtocolMessagesAsWorker() {
     MPI_Test(&termination_pingback_request, &completed, MPI_STATUS_IGNORE);
     if (completed) {
       int not_completed=-1;
-      if (terminate_send_req != MPI_REQUEST_NULL) MPI_Cancel(&terminate_send_req);
+      if (terminate_send_pingback != MPI_REQUEST_NULL) {
+        MPI_Cancel(&terminate_send_pingback);
+        MPI_Wait(&terminate_send_pingback, MPI_STATUS_IGNORE);
+      }
       // Send the master either my termination id or that I am active
-      MPI_Isend(terminated ? &terminated_id : &not_completed, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &terminate_send_req);
+      MPI_Isend(terminated ? &terminated_id : &not_completed, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &terminate_send_pingback);
       // Irrespective register the reply recieve which tells the worker whether it should terminate or not
       MPI_Irecv(&reply_from_master, 1, MPI_INT, 0, MPI_TERMINATION_CONFIRM_TAG, MPI_COMM_WORLD, &termination_completed_request);
     }
