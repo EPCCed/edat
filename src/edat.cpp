@@ -21,6 +21,7 @@ static ContextManager * contextManager;
 static Configuration * configuration;
 
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
+static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
 
 int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   configuration=new Configuration(edat_config);
@@ -168,12 +169,32 @@ void* edatCreateContext(int contextType) {
 }
 
 /**
+* Pauses this task until a number of dependencies (events have arrived) are met. These events are then returned to the caller.
+*/
+EDAT_Event* edatWait(int num_dependencies, ...) {
+  va_list valist;
+  va_start(valist, num_dependencies);
+  std::vector<std::pair<int, std::string>> dependencies = generateDependencyVector(num_dependencies, valist);
+  va_end(valist);
+  return scheduler->pauseTask(dependencies);
+}
+
+/**
 * Will schedule a specific task, this is common functionality for all the different call permutations in the API. It will extract out the dependencies
 * and package these up before calling into the scheduler
 */
 static void scheduleProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, bool persistent, int num_dependencies, va_list valist) {
-  int my_rank=messaging->getRank();
+  scheduler->registerTask(task_fn, task_name, generateDependencyVector(num_dependencies, valist), persistent);
+}
+
+/**
+* A helper function to generate the vector of dependencies from the variable arguments list. This is used when scheduling tasks and pausing a task
+* to wait for the arrival of events
+*/
+static std::vector<std::pair<int, std::string>> generateDependencyVector(int num_dependencies, va_list valist) {
   std::vector<std::pair<int, std::string>> dependencies;
+  int my_rank=messaging->getRank();
+
   for (int i=0; i<num_dependencies; i++) {
     int src=va_arg(valist, int);
     if (src == EDAT_SELF) src=my_rank;
@@ -186,5 +207,5 @@ static void scheduleProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string 
       dependencies.push_back(std::pair<int, std::string>(src, std::string(event_id)));
     }
   }
-  scheduler->registerTask(task_fn, task_name, dependencies, persistent);
+  return dependencies;
 }

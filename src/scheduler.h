@@ -77,33 +77,53 @@ public:
     }
     return s_cmp < 0;
   }
+
+  void display() {
+    printf("Key: %s from %d\n", s.c_str(), i);
+  }
 };
 
-struct PendingTaskDescriptor {
-  std::map<DependencyKey, int*> outstandingDependencies, originalDependencies;
+enum TaskDescriptorType { PENDING, PAUSED };
+
+struct TaskDescriptor {
+  std::map<DependencyKey, int*> outstandingDependencies;
   std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
   std::vector<DependencyKey> taskDependencyOrder;
-  bool freeData, persistent;
   int numArrivedEvents;
+  virtual TaskDescriptorType getDescriptorType() = 0;
+};
+
+struct PendingTaskDescriptor : TaskDescriptor {
+  std::map<DependencyKey, int*> originalDependencies;
+  bool freeData, persistent;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
+  virtual TaskDescriptorType getDescriptorType() {return PENDING;}
+};
+
+struct PausedTaskDescriptor : TaskDescriptor {
+  virtual TaskDescriptorType getDescriptorType() {return PAUSED;}
 };
 
 class Scheduler {
     int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
     std::vector<PendingTaskDescriptor*> registeredTasks;
+    std::vector<PausedTaskDescriptor*> pausedTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
     Configuration & configuration;
     ThreadPool & threadPool;
     std::mutex taskAndEvent_mutex;
     static void threadBootstrapperFunction(void*);
-    std::pair<PendingTaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
+    std::pair<TaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
     void consumeEventsByPersistentTasks();
     bool checkProgressPersistentTasks();
     std::vector<PendingTaskDescriptor*>::iterator locatePendingTaskFromName(std::string);
+    static EDAT_Event * generateEventsPayload(TaskDescriptor*, std::set<int>*);
+    void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
     Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
+    EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
     bool isFinished();
     void readyToRunTask(PendingTaskDescriptor*);
