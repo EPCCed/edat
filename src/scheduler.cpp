@@ -142,6 +142,7 @@ EDAT_Event* Scheduler::pauseTask(std::vector<std::pair<int, std::string>> depend
   } else {
     pausedTasks.push_back(pausedTask);
     threadPool.pauseThread(pausedTask, &outstandTaskEvt_lock);
+    return generateEventsPayload(pausedTask, NULL);
   }
 }
 

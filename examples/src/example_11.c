@@ -8,11 +8,12 @@ int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 0);
-    edatWait(2, 1, "hello", EDAT_SELF, "fireback");
-    printf("Passed wait\n");
+    EDAT_Event * events = edatWait(2, 1, "hello", EDAT_SELF, "fireback");
+    printf("Passed wait first size is %d and second size is %d element(s)\n", events[0].metadata.number_elements, events[1].metadata.number_elements);
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "taskwaiter");
   } else if (edatGetRank() == 1) {
-    edatFireEvent(NULL, EDAT_NOTYPE, 0, 0, "hello");
+    int d=44;
+    edatFireEvent(&d, EDAT_INT, 1, 0, "hello");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, 0, "taskwaiter");
   }
   edatFinalise();
