@@ -14,6 +14,8 @@
 #define THREAD_MAPPING_LINEAR 1
 #define THREAD_MAPPING_LINEARFROMCORE 1
 
+#define NUMBER_POLL_THREAD_ITERATIONS_IGNORE_THREADBUSY 10
+
 static std::map<const char*, int> thread_mapping_lookup={{"auto", THREAD_MAPPING_AUTO},
   {"linear", THREAD_MAPPING_LINEAR}, {"linearfromcore", THREAD_MAPPING_LINEARFROMCORE}} ;
 
@@ -26,30 +28,47 @@ ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
   number_of_threads=configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
   main_thread_is_worker=configuration.get("EDAT_MAIN_THREAD_WORKER", false);
 
-  actionThreads = new std::thread[number_of_threads];
-  active_thread_conditions=new std::condition_variable[number_of_threads];
-  active_thread_mutex = new std::mutex[number_of_threads];
-
-  threadCommands = new ThreadPoolCommand[number_of_threads];
   threadBusy = new bool[number_of_threads];
-  threadStart = new bool[number_of_threads];
   next_suggested_idle_thread = 0;
   int i;
   for (i = 0; i < number_of_threads; i++) {
-    threadBusy[i] = false;
-    threadStart[i] = false;
+    threadBusy[i] = (i==0 && main_thread_is_worker);
   }
-  for (i = 0; i < number_of_threads; i++) {
-    actionThreads[i]=std::thread(&ThreadPool::threadEntryProcedure, this, i);
-  }
+
+  workers=new WorkerThread[number_of_threads];
   mapThreadsToCores(main_thread_is_worker);
-  if (main_thread_is_worker) threadBusy[0] = true;
+
+  for (int i=0;i<number_of_threads;i++) {
+    new (&workers[i]) WorkerThread();
+    if (i==0 && main_thread_is_worker) {
+      // If the main thread is a worker then link the active thread to this
+      workers[i].activeThread=new ThreadPackage(std::this_thread::get_id());
+    } else {
+      workers[i].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, i), workers[i].core_id);
+    }
+  }
+
+  // If the main thread is not a worker then still track it (needed for pausing and resuming the main thread)
+  if (!main_thread_is_worker) mainThreadPackage=new ThreadPackage(std::this_thread::get_id());
+
+  if (configuration.get("EDAT_REPORT_THREAD_MAPPING", false)) {
+    std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+    // If we want to report the mapping of threads to cores then instruct all workers (apart from main worker if main maps to worker 0) to report this
+    for (int i=0;i<number_of_threads; i++) {
+      if (!threadBusy[i]) {
+        threadBusy[i]=true;
+        workers[i].threadCommand.setCallFunction(threadReportCoreIdFunction);
+        workers[i].threadCommand.setData(new int(i));
+        workers[i].activeThread->resume();
+      }
+    }
+  }
 }
 
 /**
 * Maps the threads to cores by setting the affinity if required. There are a number of options here, linear will just go from core 0 all the way to core n and cycle
 * round. Linear from core will go from the process core. Both approaches will start off from plus one if we don't include the main thread as a worker and the current core
-* (or zero) if the main thread is a worker.
+* (or zero) if the main thread is a worker. Doesn't do the physical mapping (that is done in the thread package), but instead sets the core_id of the worker
 */
 void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
   int thread_to_core_mapping=configuration.get("EDAT_THREAD_MAPPING", thread_mapping_lookup, THREAD_MAPPING_AUTO);
@@ -65,21 +84,113 @@ void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
         } else if (thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
           core_id=(i+my_core+(main_thread_is_worker ? 0 : 1)) % total_num_cores;
         }
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(core_id, &cpuset);
-        int rc = pthread_setaffinity_np(actionThreads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
-        if (rc != 0) raiseError("Error setting pthread affinity in mapping threads to cores");
+        workers[i].core_id=core_id;
       }
     }
   }
+}
 
-  if (configuration.get("EDAT_REPORT_THREAD_MAPPING", false)) {
-    for (int i=0;i<number_of_threads; i++) {
-          std::unique_lock<std::mutex> lck(active_thread_mutex[i]);
-          active_thread_conditions[i].notify_one();
+/**
+* Will pause a specific thread running on a worker as represented by the descriptor provided. This will locate the thread, pause it and then create a new thread
+* (or reuse an existing one) to then keep the worker busy.
+*/
+void ThreadPool::pauseThread(PausedTaskDescriptor * pausedTaskDescriptor, std::unique_lock<std::mutex> * lock) {
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  std::thread::id this_id = std::this_thread::get_id();
+  int threadIndex=findIndexFromThreadId(this_id);
+  if (threadIndex >= 0) {
+    // If the thread is currently running on a worker
+    std::unique_lock<std::mutex> pausedAndWaitingLock(workers[threadIndex].pausedAndWaitingMutex);
+
+    ThreadPackage * thisThread=workers[threadIndex].activeThread;
+
+    workers[threadIndex].pausedThreads.insert(std::pair<PausedTaskDescriptor*, ThreadPackage*>(pausedTaskDescriptor, thisThread));
+
+    // This thread is now not active so update the status
+    threadBusy[threadIndex]=false;
+
+    if (workers[threadIndex].idleThreads.empty()) {
+      // If there are no idle threads then create a new one to be the new active thread
+      workers[threadIndex].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, threadIndex), workers[threadIndex].core_id);
+    } else {
+      // If there is an idle thread then we are going to reactivate it
+      ThreadPackage * reactivated=workers[threadIndex].idleThreads.front();
+      workers[threadIndex].idleThreads.pop();
+      workers[threadIndex].activeThread=reactivated;
+      reactivated->resume();
+    }
+
+    std::unique_lock<std::mutex> pausedTasksLock(pausedTasksToWorkersMutex);
+    // Now pops in the mapping from the descriptor to the specific worker that has paused that task (for resumption later on)
+    pausedTasksToWorkers.insert(std::pair<PausedTaskDescriptor*, int>(pausedTaskDescriptor, threadIndex));
+    pausedTasksLock.unlock();
+    pausedAndWaitingLock.unlock();
+    thread_start_lock.unlock();
+    // We explicitly unlock the provided lock here as otherwise there can be a race conflict with resume
+    if (lock != NULL) lock->unlock();
+    thisThread->pause();  // Pause this thread here
+  } else {
+    thread_start_lock.unlock();
+    // If the thread is not running on the worker then it might be the main program entry point if this is not set to be a worker
+    if (!main_thread_is_worker && mainThreadPackage->doesMatch(this_id)) {
+      // If it is the main program entry point & this is not set to be a worker then handle this here
+      pausedMainThreadDescriptor = pausedTaskDescriptor;
+      // We explicitly unlock the provided lock here as otherwise there can be a race conflict with resume
+      if (lock != NULL) lock->unlock();
+      mainThreadPackage->pause();
+    } else {
+      raiseError("Locally running thread not found");
     }
   }
+}
+
+/**
+* Marks a thread for resumption, if the worker is currently busy then it will add it to a ready (waiting to run) queue. Otherwise will explicitly activate the thread
+*/
+void ThreadPool::markThreadResume(PausedTaskDescriptor * pausedTaskDescriptor) {
+  std::unique_lock<std::mutex> pausedTasksLock(pausedTasksToWorkersMutex);
+  std::map<PausedTaskDescriptor*, int>::iterator pausedTasksToWorkersIt=pausedTasksToWorkers.find(pausedTaskDescriptor);
+  if (pausedTasksToWorkersIt != pausedTasksToWorkers.end()) {
+    // If the paused task descriptor corresponds to a worker that is holding the thread in a paused state
+    int threadIndex=pausedTasksToWorkersIt->second;
+    pausedTasksToWorkers.erase(pausedTasksToWorkersIt); // Remove this mapping (descriptor -> worker index)
+
+    std::unique_lock<std::mutex> pausedAndWaitingLock(workers[threadIndex].pausedAndWaitingMutex);
+    // For the specific worker find the thread package associated with the paused task descriptor
+    std::map<PausedTaskDescriptor*, ThreadPackage*>::iterator it = workers[threadIndex].pausedThreads.find(pausedTaskDescriptor);
+    if (it != workers[threadIndex].pausedThreads.end()) {
+      workers[threadIndex].pausedThreads.erase(it); // Remove this mapping
+      workers[threadIndex].waitingThreads.push(it->second); // Place the paused thread package on the waiting (ready to run) queue
+
+      std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+      if (!threadBusy[threadIndex]) {
+        // If the worker is not busy then reactivate it here, this will effectively find the thread placed on the wait queue, pause the worker and resume to the other thread
+        threadBusy[threadIndex] = true;
+        workers[threadIndex].threadCommand.setCallFunction(NULL);
+        workers[threadIndex].activeThread->resume();
+      }
+    } else {
+      raiseError("Can not resume thread as not found");
+    }
+  } else {
+    // If there is no mapping from the paused task descriptor to a worker, then it might be the main thread running not as a worker - if so then handle
+    if (!main_thread_is_worker && pausedMainThreadDescriptor == pausedTaskDescriptor) {
+      pausedMainThreadDescriptor=NULL;
+      mainThreadPackage->resume();
+    } else {
+      raiseError("Can not resume thread as the descriptor is not found");
+    }
+  }
+}
+
+/**
+* Locates the worker index that is running an active thread with the provided thread Id. Returns -1 if none is found
+*/
+int ThreadPool::findIndexFromThreadId(std::thread::id threadIDToFind) {
+  for (int i = 0; i < number_of_threads; i++) {
+    if (workers[i].activeThread->doesMatch(threadIDToFind)) return i;
+  }
+  return -1;
 }
 
 /**
@@ -90,6 +201,8 @@ bool ThreadPool::isThreadPoolFinished() {
   int i;
   for (i = 0; i < number_of_threads; i++) {
     if (threadBusy[i]) return false;
+    std::unique_lock<std::mutex> pausedLock(workers[i].pausedAndWaitingMutex);
+    if (!workers[i].pausedThreads.empty() || !workers[i].waitingThreads.empty()) return false;
   }
   return threadQueue.empty();
 }
@@ -113,7 +226,11 @@ void ThreadPool::setMessaging(Messaging * messaging) {
 * idle.) In the case of one worker only, then we need to inform this straight away to poll for progress.
 */
 void ThreadPool::notifyMainThreadIsSleeping() {
-  if (main_thread_is_worker) threadBusy[0] = false;
+  if (main_thread_is_worker) {
+    threadBusy[0] = false;
+    // Creates a new active thread so that we can now use the worker to run tasks
+    workers[0].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, 0), workers[0].core_id);
+  }
   if (number_of_threads == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
 }
 
@@ -127,10 +244,8 @@ void ThreadPool::launchThreadToPollForProgressIfPossible() {
   if (idleThreadId != -1) {
     threadBusy[idleThreadId] = true;
     thread_start_lock.unlock();
-    std::unique_lock<std::mutex> lck(active_thread_mutex[idleThreadId]);
-    threadCommands[idleThreadId].setCallFunction(NULL);
-    threadStart[idleThreadId] = true;
-    active_thread_conditions[idleThreadId].notify_one();
+    workers[idleThreadId].threadCommand.setCallFunction(NULL);
+    workers[idleThreadId].activeThread->resume();
   }
 }
 
@@ -144,13 +259,9 @@ void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
   if (idleThreadId != -1) {
     threadBusy[idleThreadId] = true;
     thread_start_lock.unlock();
-    std::unique_lock<std::mutex> lck(active_thread_mutex[idleThreadId]);
-    threadCommands[idleThreadId].setCallFunction(callFunction);
-    threadCommands[idleThreadId].setData(args);
-
-    threadStart[idleThreadId] = true;
-
-    active_thread_conditions[idleThreadId].notify_one();
+    workers[idleThreadId].threadCommand.setCallFunction(callFunction);
+    workers[idleThreadId].threadCommand.setData(args);
+    workers[idleThreadId].activeThread->resume();
   } else {
     PendingThreadContainer tc;
     tc.callFunction=callFunction;
@@ -194,29 +305,29 @@ int ThreadPool::get_index_of_idle_thread() {
 }
 
 /**
+* Function called by threads to report their core mapping if configured by the user
+*/
+void ThreadPool::threadReportCoreIdFunction(void * pthreadRawData) {
+  int * myThreadId=(int*) pthreadRawData;
+  std::cout << "Thread #" << *myThreadId << ": on core " << sched_getcpu() << "\n";
+  delete myThreadId;
+}
+
+/**
 * Internal thread entry procedure, the threads will sit in here asleep via the condition variable and then be woken up when they
 * need to be activated and run the function call with arguments that has been set for them already. After thread execution it will then
-* check any further outstanding threads in the queue and execute these one at a time if appropriate. Once all applicable threads are
+* check any further outstanding threads in the queue and/or any paused threads eligable for execution. If any are found then it will execute
+* these one at a time if appropriate. Once all applicable threads are
 * run then if we have no progress thread this will poll for progress (as it is now an idle thread) if there are no other threads doing
 * the polling. It might be interupted from this polling at any point, which is fine.
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
-  bool reported_mapping=false;
   bool should_report_mapping=configuration.get("EDAT_REPORT_THREAD_MAPPING", false);
 
   while (1) {
-    std::unique_lock<std::mutex> lck(active_thread_mutex[myThreadId]);
-    while (!threadStart[myThreadId]) {
-      active_thread_conditions[myThreadId].wait(lck);
-      if (should_report_mapping && !reported_mapping) {
-        reported_mapping=true;
-        std::cout << "Thread #" << myThreadId << ": on core " << sched_getcpu() << "\n";
-      }
-    }
-    lck.unlock();
-    threadStart[myThreadId] = false;
-    if (threadCommands[myThreadId].getCallFunction() != NULL) {
-      threadCommands[myThreadId].issueFunctionCall();
+    workers[myThreadId].activeThread->pause();
+    if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
+      workers[myThreadId].threadCommand.issueFunctionCall();
     }
     bool pollQueue=true;
     while (pollQueue) {
@@ -227,9 +338,26 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         thread_start_lock.unlock();
         pc.callFunction(pc.args);
       } else {
-        pollQueue=false;
-        // Return this thread back to the pool, do this in here to avoid a queued entry falling between cracks
-        threadBusy[myThreadId] = false;
+        // Check no paused tasks that need to be reactivated (currently limited to the same thread)
+        std::unique_lock<std::mutex> pausedAndWaitingLock(workers[myThreadId].pausedAndWaitingMutex);
+        if (!workers[myThreadId].waitingThreads.empty()) {
+          // First grab the thread to reactivate from the head of the queue
+          ThreadPackage * reactivateThread=workers[myThreadId].waitingThreads.front();
+          workers[myThreadId].waitingThreads.pop();
+
+          ThreadPackage * myThread=workers[myThreadId].activeThread; // This is me (I need this context to pause on here.)
+          workers[myThreadId].idleThreads.push(myThread); // Add me as an idle thread that can be reused in future
+
+          workers[myThreadId].activeThread=reactivateThread;  // The active thread is now the reactivated one
+          pausedAndWaitingLock.unlock();
+          thread_start_lock.unlock();
+          workers[myThreadId].activeThread->resume(); // Resume the reactivated thread
+          myThread->pause();  // Pause myself (worker given over to the reactivated thread)
+        } else {
+          pollQueue=false;
+          // Return this thread back to the pool, do this in here to avoid a queued entry falling between cracks
+          threadBusy[myThreadId] = false;
+        }
       }
     }
 
@@ -239,10 +367,28 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
           std::lock_guard<std::mutex> guard(pollingProgressThreadMutex);
           pollingProgressThread=myThreadId;
         }
+        int non_lock_iterations=0;
         bool continue_poll=true;
         bool firstIt=true; // Always do a poll on the first iteration
-        while (firstIt || (!threadStart[myThreadId] && continue_poll)) {
+        while (firstIt || continue_poll) {
           continue_poll=messaging->pollForEvents();
+          if (continue_poll) {
+            // Try to lock the thread_start_mutex and check the thread busy status for this thread. If this is not possible then allow a number of polling
+            // iterations to proceed without the lock, but there is a maximum number as you don't want to starve a task waiting for the thread!
+            std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex, std::defer_lock);
+            bool isLocked=thread_start_lock.try_lock();
+            if (!isLocked) {
+              non_lock_iterations++;
+              if (non_lock_iterations > NUMBER_POLL_THREAD_ITERATIONS_IGNORE_THREADBUSY) {
+                thread_start_lock.lock();
+                isLocked=true;
+              }
+            }
+            if (isLocked) {
+              continue_poll=!threadBusy[myThreadId];
+              non_lock_iterations=0;
+            }
+          }
           firstIt=false;
         }
         {

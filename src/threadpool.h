@@ -6,8 +6,10 @@
 #include <mutex>
 #include <queue>
 #include "configuration.h"
+#include "threadpackage.h"
 
 class Messaging;
+struct PausedTaskDescriptor;
 
 class ThreadPoolCommand {
   void (*callFunction)(void *);
@@ -25,17 +27,27 @@ struct PendingThreadContainer {
   void *args;
 };
 
+struct WorkerThread {
+  ThreadPackage * activeThread;
+  std::map<PausedTaskDescriptor*, ThreadPackage*> pausedThreads;
+  std::queue<ThreadPackage*> waitingThreads, idleThreads;
+  std::mutex pausedAndWaitingMutex;
+  int core_id=-1;
+  ThreadPoolCommand threadCommand;
+};
+
 class ThreadPool {
   Configuration & configuration;
   int number_of_threads, pollingProgressThread;
   bool main_thread_is_worker;
-  std::thread * actionThreads;
-  std::condition_variable * active_thread_conditions;
-  std::mutex * active_thread_mutex, thread_start_mutex, progressMutex, pollingProgressThreadMutex;
+  ThreadPackage * mainThreadPackage;
+  PausedTaskDescriptor* pausedMainThreadDescriptor=NULL;
+  WorkerThread * workers;
+  std::mutex thread_start_mutex, progressMutex, pollingProgressThreadMutex, pausedTasksToWorkersMutex;
   std::queue<PendingThreadContainer> threadQueue;
+  std::map<PausedTaskDescriptor*, int> pausedTasksToWorkers;
 
-  ThreadPoolCommand *threadCommands;
-  bool *threadBusy, *threadStart, progressPollIdleThread;
+  bool *threadBusy, progressPollIdleThread;
   int next_suggested_idle_thread;
   Messaging * messaging=NULL;
 
@@ -43,12 +55,16 @@ class ThreadPool {
   int get_index_of_idle_thread();
   void mapThreadsToCores(bool);
   void launchThreadToPollForProgressIfPossible();
+  int findIndexFromThreadId(std::thread::id);
+  static void threadReportCoreIdFunction(void *);
  public:
   ThreadPool(Configuration&);
   void startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
   void notifyMainThreadIsSleeping();
+  void pauseThread(PausedTaskDescriptor*, std::unique_lock<std::mutex>*);
+  void markThreadResume(PausedTaskDescriptor*);
 };
 
 #endif /* SRC_THREADPOOL_H_ */

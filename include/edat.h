@@ -55,6 +55,7 @@ int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Ev
 int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
 void* edatCreateContext(int);
+EDAT_Event* edatWait(int, ...);
 
 #ifdef __cplusplus
 }
