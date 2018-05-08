@@ -9,6 +9,7 @@
 #include "mpi_p2p_messaging.h"
 #include "contextmanager.h"
 #include "metrics.h"
+#include "resilience.h"
 
 #ifndef DO_METRICS
 #define DO_METRICS false
@@ -29,6 +30,12 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   scheduler=new Scheduler(*threadPool, *configuration);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
+
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    resilienceInit();
+    resilience::process_ledger->setMessaging(messaging);
+  }
+
   #if DO_METRICS
     metricsInit();
     metrics::METRICS->timerStart("edat");
@@ -47,6 +54,11 @@ int edatFinalise(void) {
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
+
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    resilience::process_ledger->finalise();
+  }
+
   #if DO_METRICS
     metrics::METRICS->timerStop("edat");
     metrics::METRICS->finalise();
@@ -118,8 +130,13 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #if DO_METRICS
     metrics::METRICS->timerStart("FireEvent");
   #endif
-  if (target == EDAT_SELF) target=messaging->getRank();
-  messaging->fireEvent(data, data_count, data_type, target, false, event_id);
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    if (target == EDAT_SELF) target=messaging->getRank();
+    resilience::process_ledger->loadEvent(data, data_count, data_type, target, false, event_id);
+  } else {
+    if (target == EDAT_SELF) target=messaging->getRank();
+    messaging->fireEvent(data, data_count, data_type, target, false, event_id);
+  }
   #if DO_METRICS
     metrics::METRICS->timerStop("FireEvent");
   #endif
