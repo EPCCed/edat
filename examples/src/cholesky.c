@@ -20,8 +20,8 @@ void extractBlock(double *, int, int, int, double *);
 void updateBlock(double *, int, int, int, double *);
 
 // compiled fortran BLAS routines
-extern void dpotrf_(char *, int *, double *, int *, int *);
-extern void dtrsm_(char *, char *, char *, char *, int *, int *, const double *, double *, int *, double *, int *);
+extern void dpotrf_(const char *, int *, double *, int *, int *);
+extern void dtrsm_(const char *, const char *, const char *, const char *, int *, int *, const double *, double *, int *, double *, int *);
 
 // EDAT tasks
 void dpotrfTask(EDAT_Event*, int);
