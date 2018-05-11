@@ -19,6 +19,7 @@ public:
   ThreadPackage(std::thread*, int);
 
   bool doesMatch(std::thread::id);
+  std::thread::id getThreadID(void) {return thread->get_id();};
   void pause();
   void resume();
 };
