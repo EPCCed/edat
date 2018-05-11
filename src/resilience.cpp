@@ -4,25 +4,23 @@
 #include <thread>
 #include <map>
 #include <queue>
-#include <iostream>
 
 namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-void resilienceInit(Configuration& configuration, Messaging* messaging) {
-  resilience::process_ledger = new EDAT_Ledger(configuration);
+void resilienceInit(Configuration& configuration, Messaging* messaging, std::thread::id main_thread_id) {
+  resilience::process_ledger = new EDAT_Ledger(configuration, main_thread_id);
   resilience::process_ledger->setMessaging(messaging);
 
   int my_rank = messaging->getRank();
 
-  std::cout << "[" << my_rank << "] " << "EDAT Resilience initialised."
-  << std::endl;
-
   return;
 }
 
-EDAT_Ledger::EDAT_Ledger(Configuration & aconfig) : configuration(aconfig) {}
+EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, std::thread::id thread_id) : configuration(aconfig) {
+  main_thread_id = thread_id;
+}
 
 void EDAT_Ledger::setMessaging(Messaging* messaging) {
   this->messaging = messaging;

@@ -7,7 +7,7 @@
 #include <map>
 #include <queue>
 
-void resilienceInit(Configuration&, Messaging*);
+void resilienceInit(Configuration&, Messaging*, std::thread::id);
 
 struct LoadedEvent {
   void * data;
@@ -23,9 +23,11 @@ private:
   Configuration & configuration;
   Messaging * messaging;
   std::map<std::thread::id,std::queue<LoadedEvent>> event_battery;
+  std::thread::id main_thread_id;
 public:
-  EDAT_Ledger(Configuration&);
+  EDAT_Ledger(Configuration&, std::thread::id);
   void setMessaging(Messaging*);
+  std::thread::id getMainThreadID(void) { return main_thread_id; };
   void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
   void fireCannon(std::thread::id);
   void finalise(void);
