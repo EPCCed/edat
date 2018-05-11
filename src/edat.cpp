@@ -34,7 +34,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   threadPool->setMessaging(messaging);
 
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceInit(*configuration, messaging);
+    resilienceInit(*configuration, messaging, std::this_thread::get_id());
   }
 
   #if DO_METRICS
@@ -131,11 +131,10 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #if DO_METRICS
     metrics::METRICS->timerStart("FireEvent");
   #endif
-  if (configuration->get("EDAT_RESILIENCE", false)) {
-    if (target == EDAT_SELF) target=messaging->getRank();
+  if (target == EDAT_SELF) target=messaging->getRank();
+  if (configuration->get("EDAT_RESILIENCE", false) && std::this_thread::get_id() != resilience::process_ledger->getMainThreadID()) {
     resilience::process_ledger->loadEvent(std::this_thread::get_id(), data, data_count, data_type, target, false, event_id);
   } else {
-    if (target == EDAT_SELF) target=messaging->getRank();
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }
   #if DO_METRICS
