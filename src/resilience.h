@@ -1,10 +1,13 @@
 #ifndef SRC_RESILIENCE_H
 #define SRC_RESILIENCE_H
 
+#include "configuration.h"
 #include "messaging.h"
+#include <thread>
+#include <map>
 #include <queue>
 
-void resilienceInit(void);
+void resilienceInit(Configuration&, Messaging*);
 
 struct LoadedEvent {
   void * data;
@@ -17,12 +20,14 @@ struct LoadedEvent {
 
 class EDAT_Ledger {
 private:
+  Configuration & configuration;
   Messaging * messaging;
-  std::queue<LoadedEvent> event_cannon;
+  std::map<std::thread::id,std::queue<LoadedEvent>> event_battery;
 public:
+  EDAT_Ledger(Configuration&);
   void setMessaging(Messaging*);
-  void loadEvent(void*, int, int, int, bool, const char *);
-  void fireCannon(void);
+  void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
+  void fireCannon(std::thread::id);
   void finalise(void);
 };
 

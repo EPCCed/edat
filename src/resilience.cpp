@@ -1,15 +1,28 @@
 #include "resilience.h"
 #include "messaging.h"
+#include "threadpool.h"
+#include <thread>
+#include <map>
+#include <queue>
+#include <iostream>
 
 namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-void resilienceInit(void) {
-  resilience::process_ledger = new EDAT_Ledger();
+void resilienceInit(Configuration& configuration, Messaging* messaging) {
+  resilience::process_ledger = new EDAT_Ledger(configuration);
+  resilience::process_ledger->setMessaging(messaging);
+
+  int my_rank = messaging->getRank();
+
+  std::cout << "[" << my_rank << "] " << "EDAT Resilience initialised."
+  << std::endl;
 
   return;
 }
+
+EDAT_Ledger::EDAT_Ledger(Configuration & aconfig) : configuration(aconfig) {}
 
 void EDAT_Ledger::setMessaging(Messaging* messaging) {
   this->messaging = messaging;
@@ -17,8 +30,9 @@ void EDAT_Ledger::setMessaging(Messaging* messaging) {
   return;
 }
 
-void EDAT_Ledger::loadEvent(void * data, int data_count, int data_type,
-  int target, bool persistent, const char * event_id) {
+void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
+                            int data_count, int data_type, int target,
+                            bool persistent, const char * event_id) {
   LoadedEvent event;
   event.data = data;
   event.data_count = data_count;
@@ -27,19 +41,28 @@ void EDAT_Ledger::loadEvent(void * data, int data_count, int data_type,
   event.persistent = persistent;
   event.event_id = event_id;
 
-  resilience::process_ledger->event_cannon.push(event);
+  std::map<std::thread::id,std::queue<LoadedEvent>>::iterator iter = event_battery.find(thread_id);
+  if (iter == event_battery.end()) {
+    std::queue<LoadedEvent> event_cannon;
+    event_cannon.push(event);
+    event_battery.emplace(thread_id, event_cannon);
+  } else {
+    event_battery.at(thread_id).push(event);
+  }
 
   return;
 }
 
-void EDAT_Ledger::fireCannon(void) {
-  LoadedEvent event;
+void EDAT_Ledger::fireCannon(std::thread::id thread_id) {
+  std::map<std::thread::id, std::queue<LoadedEvent>>::iterator iter = event_battery.find(thread_id);
 
-  while (!resilience::process_ledger->event_cannon.empty()) {
-    event = resilience::process_ledger->event_cannon.front();
-    messaging->fireEvent(event.data, event.data_count, event.data_type,
-      event.target, event.persistent, event.event_id);
-    resilience::process_ledger->event_cannon.pop();
+  if (iter != event_battery.end()) {
+    while (!event_battery.at(thread_id).empty()) {
+      LoadedEvent event = event_battery.at(thread_id).front();
+      messaging->fireEvent(event.data, event.data_count, event.data_type,
+        event.target, event.persistent, event.event_id);
+      event_battery.at(thread_id).pop();
+    }
   }
 
   return;
