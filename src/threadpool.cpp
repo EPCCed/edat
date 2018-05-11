@@ -331,7 +331,6 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       workers[myThreadId].threadCommand.issueFunctionCall();
     }
     if (configuration.get("EDAT_RESILIENCE", false)) {
-      std::cout << "threadEntryProcedure: firing cannon at " << workers[myThreadId].activeThread->getThreadID() << std::endl;
       resilience::process_ledger->fireCannon(workers[myThreadId].activeThread->getThreadID());
     }
     bool pollQueue=true;
