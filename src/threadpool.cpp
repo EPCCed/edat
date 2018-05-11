@@ -1,5 +1,6 @@
 #include "threadpool.h"
 #include "messaging.h"
+#include "resilience.h"
 #include <stdlib.h>
 #include <thread>
 #include <condition_variable>
@@ -329,6 +330,10 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
       workers[myThreadId].threadCommand.issueFunctionCall();
     }
+    if (configuration.get("EDAT_RESILIENCE", false)) {
+      std::cout << "threadEntryProcedure: firing cannon at " << workers[myThreadId].activeThread->getThreadID() << std::endl;
+      resilience::process_ledger->fireCannon(workers[myThreadId].activeThread->getThreadID());
+    }
     bool pollQueue=true;
     while (pollQueue) {
       std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
@@ -399,4 +404,5 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       }
     }
   }
+
 }
