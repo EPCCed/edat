@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <string>
 #include <string.h>
+#include <thread>
 #include "edat.h"
 #include "threadpool.h"
 #include "scheduler.h"
@@ -33,8 +34,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   threadPool->setMessaging(messaging);
 
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceInit();
-    resilience::process_ledger->setMessaging(messaging);
+    resilienceInit(*configuration, messaging);
   }
 
   #if DO_METRICS
@@ -133,7 +133,7 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #endif
   if (configuration->get("EDAT_RESILIENCE", false)) {
     if (target == EDAT_SELF) target=messaging->getRank();
-    resilience::process_ledger->loadEvent(data, data_count, data_type, target, false, event_id);
+    resilience::process_ledger->loadEvent(std::this_thread::get_id(), data, data_count, data_type, target, false, event_id);
   } else {
     if (target == EDAT_SELF) target=messaging->getRank();
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
