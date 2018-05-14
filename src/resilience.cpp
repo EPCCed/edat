@@ -13,8 +13,6 @@ void resilienceInit(Configuration& configuration, Messaging* messaging, std::thr
   resilience::process_ledger = new EDAT_Ledger(configuration, main_thread_id);
   resilience::process_ledger->setMessaging(messaging);
 
-  int my_rank = messaging->getRank();
-
   return;
 }
 
@@ -32,12 +30,17 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
                             int data_count, int data_type, int target,
                             bool persistent, const char * event_id) {
   LoadedEvent event;
-  event.data = data;
   event.data_count = data_count;
   event.data_type = data_type;
   event.target = target;
   event.persistent = persistent;
   event.event_id = event_id;
+
+  int data_size = data_count * messaging->getTypeSize(data_type);
+  if (data != NULL) {
+    event.data = malloc(data_size);
+    memcpy(event.data, data, data_size);
+  }
 
   std::map<std::thread::id,std::queue<LoadedEvent>>::iterator iter = event_battery.find(thread_id);
   if (iter == event_battery.end()) {
@@ -59,6 +62,7 @@ void EDAT_Ledger::fireCannon(std::thread::id thread_id) {
       LoadedEvent event = event_battery.at(thread_id).front();
       messaging->fireEvent(event.data, event.data_count, event.data_type,
         event.target, event.persistent, event.event_id);
+      if (event.data != NULL) free(event.data);
       event_battery.at(thread_id).pop();
     }
   }
