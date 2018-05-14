@@ -341,6 +341,9 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         threadQueue.pop();
         thread_start_lock.unlock();
         pc.callFunction(pc.args);
+        if (configuration.get("EDAT_RESILIENCE", false)) {
+          resilience::process_ledger->fireCannon(workers[myThreadId].activeThread->getThreadID());
+        }
       } else {
         // Check no paused tasks that need to be reactivated (currently limited to the same thread)
         std::unique_lock<std::mutex> pausedAndWaitingLock(workers[myThreadId].pausedAndWaitingMutex);
