@@ -1,6 +1,7 @@
 #include "resilience.h"
 #include "messaging.h"
 #include "threadpool.h"
+#include <iostream>
 #include <thread>
 #include <map>
 #include <queue>
@@ -12,6 +13,8 @@ namespace resilience {
 void resilienceInit(Configuration& configuration, Messaging* messaging, std::thread::id main_thread_id) {
   resilience::process_ledger = new EDAT_Ledger(configuration, main_thread_id);
   resilience::process_ledger->setMessaging(messaging);
+
+  if (!messaging->getRank()) std::cout << "EDAT resilience initialised." << std::endl;
 
   return;
 }
