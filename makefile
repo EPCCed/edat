@@ -33,4 +33,4 @@ $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 .PHONEY: clean
 clean:
 	$(rm) $(OBJDIR)	
-	$(rm) libedat.so
+	$(rm) libedat.so libedat.a
