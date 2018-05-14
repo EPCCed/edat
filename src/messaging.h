@@ -29,7 +29,6 @@ protected:
   virtual void startProgressThread();
   Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
   virtual bool performSinglePoll(int*) = 0;
-  virtual int getTypeSize(int);
 public:
   virtual void runPollForEvents() = 0;
   virtual bool pollForEvents();
@@ -42,6 +41,7 @@ public:
   virtual bool isFinished()=0;
   virtual void attachMainThread(std::condition_variable*, std::mutex*, bool*);
   virtual bool doesProgressThreadExist() { return progress_thread; }
+  virtual int getTypeSize(int);
 };
 
 #endif
