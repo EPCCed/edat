@@ -10,12 +10,12 @@
 void resilienceInit(Configuration&, Messaging*, std::thread::id);
 
 struct LoadedEvent {
-  void * data;
+  void * data = NULL;
   int data_count;
   int data_type;
   int target;
   bool persistent;
-  const char * event_id;
+  const char * event_id = NULL;
 };
 
 class EDAT_Ledger {
