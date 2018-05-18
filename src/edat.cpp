@@ -55,11 +55,11 @@ int edatFinalise(void) {
   return 0;
 }
 
-int edatGetRank() {
+int edatGetRank(void) {
   return messaging->getRank();
 }
 
-int edatGetNumRanks() {
+int edatGetNumRanks(void) {
   return messaging->getNumRanks();
 }
 

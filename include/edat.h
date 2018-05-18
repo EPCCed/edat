@@ -15,6 +15,7 @@ extern "C" {
 #define EDAT_DOUBLE 3
 #define EDAT_BYTE 4
 #define EDAT_ADDRESS 5
+#define EDAT_LONG 6
 
 #define EDAT_ALL -1
 #define EDAT_ANY -2
@@ -41,8 +42,8 @@ typedef struct edat_struct_event EDAT_Event;
 
 int edatInit(int *, char ***, struct edat_struct_configuration*);
 int edatFinalise(void);
-int edatGetRank();
-int edatGetNumRanks();
+int edatGetRank(void);
+int edatGetNumRanks(void);
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
 int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
 int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);

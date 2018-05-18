@@ -29,6 +29,7 @@ int getBaseTypeSize(int type) {
   if (type == EDAT_DOUBLE) return sizeof(double);
   if (type == EDAT_BYTE) return sizeof(char);
   if (type == EDAT_ADDRESS) return sizeof(char*);
+  if (type == EDAT_LONG) return sizeof(long);
   if (type == EDAT_NOTYPE) return 0;
   raiseError("Error in type matching\n");
   return -1;
