@@ -39,7 +39,7 @@ struct WorkerThread {
 class ThreadPool {
   Configuration & configuration;
   int number_of_threads, pollingProgressThread;
-  bool main_thread_is_worker;
+  bool main_thread_is_worker, restartAnotherPoller;
   ThreadPackage * mainThreadPackage;
   PausedTaskDescriptor* pausedMainThreadDescriptor=NULL;
   WorkerThread * workers;
@@ -65,6 +65,7 @@ class ThreadPool {
   void notifyMainThreadIsSleeping();
   void pauseThread(PausedTaskDescriptor*, std::unique_lock<std::mutex>*);
   void markThreadResume(PausedTaskDescriptor*);
+  void resetPolling();
 };
 
 #endif /* SRC_THREADPOOL_H_ */

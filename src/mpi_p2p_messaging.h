@@ -8,7 +8,7 @@
 #include "configuration.h"
 
 class MPI_P2P_Messaging : public Messaging {
-  bool protectMPI, mpiInitHere, terminated;
+  bool protectMPI, mpiInitHere, terminated, eligable_for_termination;
   int my_rank, total_ranks, reply_from_master;
   int terminated_id, mode=0;
   int * termination_codes, *pingback_termination_codes;
@@ -31,7 +31,9 @@ protected:
   bool performSinglePoll(int*);
 public:
   MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
+  virtual void resetPolling();
   virtual void runPollForEvents();
+  virtual void setEligableForTermination() { eligable_for_termination=true; };
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, bool, const char *);
   virtual void fireEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));

@@ -51,6 +51,7 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
     for (int i=0;i<total_ranks;i++) termination_codes[i]=-1;
   }
   terminated=false;
+  eligable_for_termination=false;
   if (doesProgressThreadExist()) startProgressThread();
 }
 
@@ -61,6 +62,20 @@ void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, in
 
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent, const char * event_id) {
   handleFiringOfEvent(data, data_count, data_type, target, persistent, event_id, NULL);
+}
+
+void MPI_P2P_Messaging::resetPolling() {
+  mode=0;
+  terminated_id=0;
+  terminated=false;
+  eligable_for_termination=false;
+  if (my_rank == 0) {
+    for (int i=0;i<total_ranks;i++) {
+      termination_codes[i]=-1;
+      pingback_termination_codes[i]=-1;
+    }
+  }
+  Messaging::resetPolling();
 }
 
 /**
@@ -280,7 +295,7 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   #if DO_METRICS
     metrics::METRICS->timerStop("performSinglePoll");
   #endif
-  return handleTerminationProtocol();
+  return eligable_for_termination ? handleTerminationProtocol() : true;
 }
 
 /**

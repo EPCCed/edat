@@ -45,6 +45,7 @@ int edatFinalise(void) {
 
   messaging->attachMainThread(cv, m, completed);
   threadPool->notifyMainThreadIsSleeping();
+  messaging->setEligableForTermination();
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
@@ -52,6 +53,22 @@ int edatFinalise(void) {
     metrics::METRICS->timerStop("edat");
     metrics::METRICS->finalise();
   #endif
+  return 0;
+}
+
+int edatPauseMainThread(void) {
+  std::mutex * m = new std::mutex();
+  std::condition_variable * cv = new std::condition_variable();
+  bool * completed = new bool();
+
+  messaging->attachMainThread(cv, m, completed);
+  threadPool->notifyMainThreadIsSleeping();
+  messaging->setEligableForTermination();
+  std::unique_lock<std::mutex> lk(*m);
+  cv->wait(lk, [completed]{return *completed;});
+
+  messaging->resetPolling();
+  threadPool->resetPolling();
   return 0;
 }
 

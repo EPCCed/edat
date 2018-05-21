@@ -10,7 +10,7 @@
 * and want the core mapping to be unchanged.)
 */
 ThreadPackage::ThreadPackage(std::thread * tp, int core_id) : thread(tp), m(new std::mutex()), cv(new std::condition_variable()),
-    completed(false) {
+    completed(false), abort_thread(false) {
   if (core_id != -1) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -29,6 +29,11 @@ bool ThreadPackage::doesMatch(std::thread::id checkingThreadId) {
   } else {
     return threadId == checkingThreadId;
   }
+}
+
+void ThreadPackage::abort() {
+  abort_thread=true;
+  resume();
 }
 
 /**

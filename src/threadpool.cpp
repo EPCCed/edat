@@ -24,6 +24,7 @@ static std::map<const char*, int> thread_mapping_lookup={{"auto", THREAD_MAPPING
 */
 ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
   progressPollIdleThread=false;
+  restartAnotherPoller=false;
   pollingProgressThread=-1;
   number_of_threads=configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
   main_thread_is_worker=configuration.get("EDAT_MAIN_THREAD_WORKER", false);
@@ -162,13 +163,22 @@ void ThreadPool::markThreadResume(PausedTaskDescriptor * pausedTaskDescriptor) {
       workers[threadIndex].pausedThreads.erase(it); // Remove this mapping
       workers[threadIndex].waitingThreads.push(it->second); // Place the paused thread package on the waiting (ready to run) queue
 
-      std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
-      if (!threadBusy[threadIndex]) {
-        // If the worker is not busy then reactivate it here, this will effectively find the thread placed on the wait queue, pause the worker and resume to the other thread
-        threadBusy[threadIndex] = true;
-        workers[threadIndex].threadCommand.setCallFunction(NULL);
-        workers[threadIndex].activeThread->resume();
+      {
+        std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+        if (!threadBusy[threadIndex]) {
+          // If the worker is not busy then reactivate it here, this will effectively find the thread placed on the wait queue, pause the worker and resume to the other thread
+          threadBusy[threadIndex] = true;
+          workers[threadIndex].threadCommand.setCallFunction(NULL);
+          workers[threadIndex].activeThread->resume();
+        }
       }
+
+      if (progressPollIdleThread) {
+        // If we reactivate the polling thread then can starve it. Hence if this is the case inform that thread it should attempt to reactivate another thread to poll
+        std::unique_lock<std::mutex> pollingProgressLock(pollingProgressThreadMutex);
+        if (pollingProgressThread==threadIndex) restartAnotherPoller=true;
+      }
+
     } else {
       raiseError("Can not resume thread as not found");
     }
@@ -227,11 +237,28 @@ void ThreadPool::setMessaging(Messaging * messaging) {
 */
 void ThreadPool::notifyMainThreadIsSleeping() {
   if (main_thread_is_worker) {
+    std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
     threadBusy[0] = false;
     // Creates a new active thread so that we can now use the worker to run tasks
     workers[0].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, 0), workers[0].core_id);
   }
   if (number_of_threads == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
+}
+
+/**
+* Resets the polling of progress, this is required when we pause the framework but don't finalise and effectively then want to restart for the next
+* set of asynchronous tasks
+*/
+void ThreadPool::resetPolling() {
+  if (main_thread_is_worker) {
+    std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+    workers[0].activeThread->abort();
+    workers[0].activeThread=new ThreadPackage(std::this_thread::get_id());
+    threadBusy[0] = true;
+  }
+  if (progressPollIdleThread) {
+    launchThreadToPollForProgressIfPossible();
+  }
 }
 
 /**
@@ -242,6 +269,9 @@ void ThreadPool::launchThreadToPollForProgressIfPossible() {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int idleThreadId = get_index_of_idle_thread();
   if (idleThreadId != -1) {
+    // Do this to ensure that have waited until there is no thread polling for progress currently (hence be a bit careful where this is called from)
+    progressMutex.lock();
+    progressMutex.unlock();
     threadBusy[idleThreadId] = true;
     thread_start_lock.unlock();
     workers[idleThreadId].threadCommand.setCallFunction(NULL);
@@ -324,14 +354,21 @@ void ThreadPool::threadReportCoreIdFunction(void * pthreadRawData) {
 void ThreadPool::threadEntryProcedure(int myThreadId) {
   bool should_report_mapping=configuration.get("EDAT_REPORT_THREAD_MAPPING", false);
 
+  ThreadPackage * myThreadPackage=workers[myThreadId].activeThread;
+
   while (1) {
-    workers[myThreadId].activeThread->pause();
+    myThreadPackage->pause();
+    if (myThreadPackage->shouldAbort()) {
+      delete myThreadPackage;
+      return;
+    }
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
       workers[myThreadId].threadCommand.issueFunctionCall();
     }
-    bool pollQueue=true;
+    bool pollQueue=true, restartPoll=false;
     while (pollQueue) {
       std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+
       if (!threadQueue.empty()) {
         PendingThreadContainer pc=threadQueue.front();
         threadQueue.pop();
@@ -345,14 +382,13 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
           ThreadPackage * reactivateThread=workers[myThreadId].waitingThreads.front();
           workers[myThreadId].waitingThreads.pop();
 
-          ThreadPackage * myThread=workers[myThreadId].activeThread; // This is me (I need this context to pause on here.)
-          workers[myThreadId].idleThreads.push(myThread); // Add me as an idle thread that can be reused in future
+          workers[myThreadId].idleThreads.push(myThreadPackage); // Add me as an idle thread that can be reused in future
 
           workers[myThreadId].activeThread=reactivateThread;  // The active thread is now the reactivated one
           pausedAndWaitingLock.unlock();
           thread_start_lock.unlock();
           workers[myThreadId].activeThread->resume(); // Resume the reactivated thread
-          myThread->pause();  // Pause myself (worker given over to the reactivated thread)
+          myThreadPackage->pause();  // Pause myself (worker given over to the reactivated thread)
         } else {
           pollQueue=false;
           // Return this thread back to the pool, do this in here to avoid a queued entry falling between cracks
@@ -394,8 +430,11 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         {
           std::lock_guard<std::mutex> guard(pollingProgressThreadMutex);
           pollingProgressThread=-1;
+          restartPoll=restartAnotherPoller;
+          if (restartAnotherPoller) restartAnotherPoller=false;
         }
         progressMutex.unlock();
+        if (restartPoll) launchThreadToPollForProgressIfPossible();
       }
     }
   }

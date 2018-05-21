@@ -42,6 +42,7 @@ typedef struct edat_struct_event EDAT_Event;
 
 int edatInit(int *, char ***, struct edat_struct_configuration*);
 int edatFinalise(void);
+int edatPauseMainThread(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
