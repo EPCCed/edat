@@ -20,6 +20,8 @@ static Messaging * messaging;
 static ContextManager * contextManager;
 static Configuration * configuration;
 
+static bool edatActive;
+
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
 
@@ -30,6 +32,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   scheduler=new Scheduler(*threadPool, *configuration);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
+  edatActive=true;
   #if DO_METRICS
     metricsInit();
     metrics::METRICS->timerStart("edat");
@@ -38,21 +41,24 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
 }
 
 int edatFinalise(void) {
-  // Puts the thread to sleep and will wake it up when there are no more events and tasks.
-  std::mutex * m = new std::mutex();
-  std::condition_variable * cv = new std::condition_variable();
-  bool * completed = new bool();
+  if (edatActive) {
+    // Puts the thread to sleep and will wake it up when there are no more events and tasks.
+    std::mutex * m = new std::mutex();
+    std::condition_variable * cv = new std::condition_variable();
+    bool * completed = new bool();
 
-  messaging->attachMainThread(cv, m, completed);
-  threadPool->notifyMainThreadIsSleeping();
-  messaging->setEligableForTermination();
-  std::unique_lock<std::mutex> lk(*m);
-  cv->wait(lk, [completed]{return *completed;});
+    messaging->attachMainThread(cv, m, completed);
+    threadPool->notifyMainThreadIsSleeping();
+    messaging->setEligableForTermination();
+    std::unique_lock<std::mutex> lk(*m);
+    cv->wait(lk, [completed]{return *completed;});
+  }
   messaging->finalise();
   #if DO_METRICS
     metrics::METRICS->timerStop("edat");
     metrics::METRICS->finalise();
   #endif
+  edatActive=false;
   return 0;
 }
 
@@ -67,8 +73,14 @@ int edatPauseMainThread(void) {
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
 
+  edatActive=false;
+  return 0;
+}
+
+int edatRestart() {
   messaging->resetPolling();
   threadPool->resetPolling();
+  edatActive=true;
   return 0;
 }
 
