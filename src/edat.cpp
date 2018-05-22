@@ -35,7 +35,6 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   edatActive=true;
   #if DO_METRICS
     metricsInit();
-    metrics::METRICS->timerStart("edat");
   #endif
   return 0;
 }
@@ -55,7 +54,6 @@ int edatFinalise(void) {
   }
   messaging->finalise();
   #if DO_METRICS
-    metrics::METRICS->timerStop("edat");
     metrics::METRICS->finalise();
   #endif
   edatActive=false;
@@ -94,14 +92,14 @@ int edatGetNumRanks(void) {
 
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("SchedulePersistentTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", true, num_dependencies, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("SchedulePersistentTask");
+    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
   return 0;
 }
@@ -116,14 +114,14 @@ int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const cha
 
 int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("ScheduleTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("ScheduleTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", false, num_dependencies, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("ScheduleTask");
+    metrics::METRICS->timerStop("ScheduleTask", timer_key);
   #endif
   return 0;
 }
@@ -146,24 +144,24 @@ int edatIsTaskScheduled(const char * task_name) {
 
 int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("FireEvent");
+    unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   #if DO_METRICS
-    metrics::METRICS->timerStop("FireEvent");
+    metrics::METRICS->timerStop("FireEvent", timer_key);
   #endif
   return 0;
 }
 
 int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("FirePersistentEvent");
+    unsigned long int timer_key = metrics::METRICS->timerStart("FirePersistentEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, true, event_id);
   #if DO_METRICS
-    metrics::METRICS->timerStop("FirePersistentEvent");
+    metrics::METRICS->timerStop("FirePersistentEvent", timer_key);
   #endif
   return 0;
 }
