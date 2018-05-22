@@ -6,7 +6,6 @@
 #include <mutex>
 #include <map>
 #include <chrono>
-#include <queue>
 
 using ns = std::chrono::duration<double,std::nano>;
 
@@ -18,7 +17,7 @@ struct Timings {
   ns max = ns::min();
   ns sum = ns::zero();
   ns avg = ns::zero();
-  std::queue<std::chrono::steady_clock::time_point> start_times;
+  std::map<unsigned long int,std::chrono::steady_clock::time_point> start_times;
 };
 
 class EDAT_Metrics {
@@ -26,13 +25,14 @@ private:
   const int RANK = edatGetRank();
   std::mutex event_times_mutex;
   std::map<std::string,Timings> event_times;
-  void process();
-  void writeOut();
+  unsigned long int getTimerKey(void);
+  void process(void);
+  void writeOut(void);
 
 public:
-  void timerStart(std::string);
-  void timerStop(std::string);
-  void finalise();
+  unsigned long int timerStart(std::string);
+  void timerStop(std::string, unsigned long int);
+  void finalise(void);
 };
 
 namespace metrics {
