@@ -3,6 +3,7 @@
 
 #include "edat.h"
 #include <string>
+#include <mutex>
 #include <map>
 #include <chrono>
 #include <queue>
@@ -23,6 +24,7 @@ struct Timings {
 class EDAT_Metrics {
 private:
   const int RANK = edatGetRank();
+  std::mutex event_times_mutex;
   std::map<std::string,Timings> event_times;
   void process();
   void writeOut();

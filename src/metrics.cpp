@@ -1,6 +1,7 @@
 #include "metrics.h"
 #include <iostream>
 #include <sstream>
+#include <mutex>
 #include <map>
 #include <queue>
 #include <string>
@@ -21,6 +22,9 @@ void EDAT_Metrics::timerStart(std::string event_name) {
   // if emplace finds that the map already has an entry with the key event_name
   // it will just do nothing, so this is safe
   Timings walltimes = Timings();
+
+  std::lock_guard<std::mutex> lock(event_times_mutex);
+
   event_times.emplace(event_name, walltimes);
 
   event_times.at(event_name).num_events++;
@@ -35,9 +39,11 @@ void EDAT_Metrics::timerStop(std::string event_name) {
   // this means we assume that an event with the same name will not start and
   // finish before this call to timerStop has had chance to pop its start time
   // - this may or may not be a safe assumption
+  std::chrono::steady_clock::time_point t_stop = std::chrono::steady_clock::now();
+
+  std::lock_guard<std::mutex> lock(event_times_mutex);
   std::chrono::steady_clock::time_point t_start = event_times.at(event_name).start_times.front();
   event_times.at(event_name).start_times.pop();
-  std::chrono::steady_clock::time_point t_stop = std::chrono::steady_clock::now();
 
   ns delta_t = t_stop - t_start;
 
