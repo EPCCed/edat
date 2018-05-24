@@ -7,7 +7,7 @@
 #include <map>
 #include <chrono>
 
-using ns = std::chrono::duration<double,std::nano>;
+using ns = std::chrono::duration<long long int,std::nano>;
 
 void metricsInit(void);
 
