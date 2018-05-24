@@ -25,6 +25,7 @@ private:
   const int RANK = edatGetRank();
   std::mutex event_times_mutex;
   std::map<std::string,Timings> event_times;
+  int task_time_bins[10] = {0};
   unsigned long int getTimerKey(void);
   void process(void);
   void writeOut(void);

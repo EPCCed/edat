@@ -1,10 +1,12 @@
 #include "metrics.h"
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <mutex>
 #include <map>
 #include <string>
 #include <chrono>
+#include <cmath>
 
 namespace metrics {
   EDAT_Metrics * METRICS;
@@ -44,11 +46,19 @@ void EDAT_Metrics::timerStop(std::string event_name, unsigned long int timer_key
     = event_times.at(event_name).start_times.at(timer_key);
   event_times.at(event_name).start_times.erase(timer_key);
 
-  ns delta_t = t_stop - t_start;
+  ns delta_time = t_stop - t_start;
 
-  if (delta_t > event_times.at(event_name).max) event_times.at(event_name).max = delta_t;
-  if (delta_t < event_times.at(event_name).min) event_times.at(event_name).min = delta_t;
-  event_times.at(event_name).sum += delta_t;
+  if (delta_time > event_times.at(event_name).max) event_times.at(event_name).max = delta_time;
+  if (delta_time < event_times.at(event_name).min) event_times.at(event_name).min = delta_time;
+  event_times.at(event_name).sum += delta_time;
+
+  if (!event_name.compare("Task")) {
+    double dbl_delta_time = std::chrono::duration_cast<std::chrono::duration<double>>(delta_time).count();
+    int magnitude = (int) std::trunc(std::log10(dbl_delta_time));
+    if (magnitude < -7) magnitude = -7;
+    if (magnitude > 2) magnitude = 2;
+    task_time_bins[magnitude + 7]++;
+  }
 
   return;
 }
@@ -99,6 +109,10 @@ void EDAT_Metrics::writeOut(void) {
       << average.count() << "\t" << min.count() << "\t" << max.count()
       << "\t" << sum.count() << "\n";
   }
+  buffer << "Task Timing [log10(seconds)]: \nMagnitude:  <=-7";
+  for (int mag=-6; mag<2; mag++) buffer << " " << std::setw(5) << mag;
+  buffer << "   >=2\n    Count:";
+  for (int mag=-7; mag<3; mag++) buffer << " " << std::setw(5) << task_time_bins[mag+7];
   std::cout << buffer.str() << std::endl;
 
   return;
