@@ -54,7 +54,7 @@ void EDAT_Metrics::timerStop(std::string event_name, unsigned long int timer_key
 
   if (!event_name.compare("Task")) {
     double dbl_delta_time = std::chrono::duration_cast<std::chrono::duration<double>>(delta_time).count();
-    int magnitude = (int) std::trunc(std::log10(dbl_delta_time));
+    int magnitude = (int) std::floor(std::log10(dbl_delta_time));
     if (magnitude < -7) magnitude = -7;
     if (magnitude > 2) magnitude = 2;
     task_time_bins[magnitude + 7]++;
