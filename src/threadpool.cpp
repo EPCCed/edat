@@ -1,5 +1,6 @@
 #include "threadpool.h"
 #include "messaging.h"
+#include "metrics.h"
 #include <stdlib.h>
 #include <thread>
 #include <condition_variable>
@@ -9,6 +10,10 @@
 #include <iostream>
 #include <sched.h>
 #include "misc.h"
+
+#ifndef DO_METRICS
+#define DO_METRICS false
+#endif
 
 #define THREAD_MAPPING_AUTO 0
 #define THREAD_MAPPING_LINEAR 1
@@ -363,7 +368,13 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       return;
     }
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
+      #if DO_METRICS
+        unsigned long int timer_key = metrics::METRICS->timerStart("Task");
+      #endif
       workers[myThreadId].threadCommand.issueFunctionCall();
+      #if DO_METRICS
+        metrics::METRICS->timerStop("Task", timer_key);
+      #endif
     }
     bool pollQueue=true, restartPoll=false;
     while (pollQueue) {
@@ -373,7 +384,13 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         PendingThreadContainer pc=threadQueue.front();
         threadQueue.pop();
         thread_start_lock.unlock();
+        #if DO_METRICS
+          unsigned long int timer_key = metrics::METRICS->timerStart("Task");
+        #endif
         pc.callFunction(pc.args);
+        #if DO_METRICS
+          metrics::METRICS->timerStop("Task", timer_key);
+        #endif
       } else {
         // Check no paused tasks that need to be reactivated (currently limited to the same thread)
         std::unique_lock<std::mutex> pausedAndWaitingLock(workers[myThreadId].pausedAndWaitingMutex);
