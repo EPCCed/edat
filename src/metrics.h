@@ -23,6 +23,7 @@ struct Timings {
 class EDAT_Metrics {
 private:
   const int RANK = edatGetRank();
+  unsigned long int edat_timer_key;
   std::mutex event_times_mutex;
   std::map<std::string,Timings> event_times;
   int task_time_bins[10] = {0};
@@ -31,6 +32,7 @@ private:
   void writeOut(void);
 
 public:
+  void edatTimerStart(void);
   unsigned long int timerStart(std::string);
   void timerStop(std::string, unsigned long int);
   void finalise(void);

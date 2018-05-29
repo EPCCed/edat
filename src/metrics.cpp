@@ -15,6 +15,13 @@ namespace metrics {
 void metricsInit(void) {
   // create an EDAT_Metrics object which everyone can access
   metrics::METRICS = new EDAT_Metrics();
+  metrics::METRICS->edatTimerStart();
+
+  return;
+}
+
+void EDAT_Metrics::edatTimerStart(void) {
+  edat_timer_key = timerStart("EDAT");
 
   return;
 }
@@ -120,6 +127,7 @@ void EDAT_Metrics::writeOut(void) {
 
 void EDAT_Metrics::finalise(void) {
   // process, report results, and delete the metrics::METRICS object
+  timerStop("EDAT", edat_timer_key);
   this->process();
   this->writeOut();
 
