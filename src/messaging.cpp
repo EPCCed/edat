@@ -34,6 +34,11 @@ void Messaging::startProgressThread() {
   if (progress_thread) pollingThread=new std::thread(&Messaging::entryThreadPollForEvents, this);
 }
 
+void Messaging::resetPolling() {
+  continue_polling=true;
+  startProgressThread();
+}
+
 /**
 * Performs a single poll for events and general progress (called when not running with a progress thread.) Note that only one thread at a time
 * should be active here hence the protection.

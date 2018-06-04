@@ -22,6 +22,8 @@ static Messaging * messaging;
 static ContextManager * contextManager;
 static Configuration * configuration;
 
+static bool edatActive;
+
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
 
@@ -32,26 +34,46 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   scheduler=new Scheduler(*threadPool, *configuration);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
-
   if (configuration->get("EDAT_RESILIENCE", false)) {
     resilienceInit(*configuration, messaging, std::this_thread::get_id());
   }
 
+  edatActive=true;
   #if DO_METRICS
-    metricsInit();
-    metrics::METRICS->timerStart("edat");
+    metricsInit(*configuration);
   #endif
   return 0;
 }
 
 int edatFinalise(void) {
-  // Puts the thread to sleep and will wake it up when there are no more events and tasks.
+  if (edatActive) {
+    // Puts the thread to sleep and will wake it up when there are no more events and tasks.
+    std::mutex * m = new std::mutex();
+    std::condition_variable * cv = new std::condition_variable();
+    bool * completed = new bool();
+
+    messaging->attachMainThread(cv, m, completed);
+    threadPool->notifyMainThreadIsSleeping();
+    messaging->setEligableForTermination();
+    std::unique_lock<std::mutex> lk(*m);
+    cv->wait(lk, [completed]{return *completed;});
+  }
+  messaging->finalise();
+  #if DO_METRICS
+    metrics::METRICS->finalise();
+  #endif
+  edatActive=false;
+  return 0;
+}
+
+int edatPauseMainThread(void) {
   std::mutex * m = new std::mutex();
   std::condition_variable * cv = new std::condition_variable();
   bool * completed = new bool();
 
   messaging->attachMainThread(cv, m, completed);
   threadPool->notifyMainThreadIsSleeping();
+  messaging->setEligableForTermination();
   std::unique_lock<std::mutex> lk(*m);
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
@@ -59,32 +81,39 @@ int edatFinalise(void) {
   if (configuration->get("EDAT_RESILIENCE", false)) {
     resilience::process_ledger->finalise();
   }
-
   #if DO_METRICS
-    metrics::METRICS->timerStop("edat");
     metrics::METRICS->finalise();
   #endif
+
+  edatActive=false;
   return 0;
 }
 
-int edatGetRank() {
+int edatRestart() {
+  messaging->resetPolling();
+  threadPool->resetPolling();
+  edatActive=true;
+  return 0;
+}
+
+int edatGetRank(void) {
   return messaging->getRank();
 }
 
-int edatGetNumRanks() {
+int edatGetNumRanks(void) {
   return messaging->getNumRanks();
 }
 
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("SchedulePersistentTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", true, num_dependencies, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("SchedulePersistentTask");
+    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
   return 0;
 }
@@ -99,14 +128,14 @@ int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const cha
 
 int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("ScheduleTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("ScheduleTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, "", false, num_dependencies, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("ScheduleTask");
+    metrics::METRICS->timerStop("ScheduleTask", timer_key);
   #endif
   return 0;
 }
@@ -129,7 +158,7 @@ int edatIsTaskScheduled(const char * task_name) {
 
 int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("FireEvent");
+    unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   if (configuration->get("EDAT_RESILIENCE", false) && std::this_thread::get_id() != resilience::process_ledger->getMainThreadID()) {
@@ -138,19 +167,19 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }
   #if DO_METRICS
-    metrics::METRICS->timerStop("FireEvent");
+    metrics::METRICS->timerStop("FireEvent", timer_key);
   #endif
   return 0;
 }
 
 int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
-    metrics::METRICS->timerStart("FirePersistentEvent");
+    unsigned long int timer_key = metrics::METRICS->timerStart("FirePersistentEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   messaging->fireEvent(data, data_count, data_type, target, true, event_id);
   #if DO_METRICS
-    metrics::METRICS->timerStop("FirePersistentEvent");
+    metrics::METRICS->timerStop("FirePersistentEvent", timer_key);
   #endif
   return 0;
 }

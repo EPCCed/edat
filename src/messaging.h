@@ -26,14 +26,15 @@ protected:
   int it_count;
   virtual bool fireASingleLocalEvent();
   virtual bool checkForLocalTermination();
-  virtual void startProgressThread();
   Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
   virtual bool performSinglePoll(int*) = 0;
+  virtual void startProgressThread();
 public:
+  virtual void resetPolling();
   virtual void runPollForEvents() = 0;
+  virtual void setEligableForTermination() = 0;
   virtual bool pollForEvents();
   virtual void finalise();
-  virtual void ceasePollingForEvents() { continue_polling = false; }
   virtual void fireEvent(void *, int, int, int, bool, const char *) = 0;
   virtual void fireEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int)) = 0;
   virtual int getRank()=0;

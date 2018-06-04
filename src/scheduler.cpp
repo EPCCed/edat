@@ -154,13 +154,13 @@ EDAT_Event* Scheduler::pauseTask(std::vector<std::pair<int, std::string>> depend
 */
 void Scheduler::consumeEventsByPersistentTasks() {
   #if DO_METRICS
-    metrics::METRICS->timerStart("consumeEventsByPersistentTasks");
+    unsigned long int timer_key = metrics::METRICS->timerStart("consumeEventsByPersistentTasks");
   #endif
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   bool consumingEvents=checkProgressPersistentTasks();
   while (consumingEvents) consumingEvents=checkProgressPersistentTasks();
   #if DO_METRICS
-    metrics::METRICS->timerStop("consumeEventsByPersistentTasks");
+    metrics::METRICS->timerStop("consumeEventsByPersistentTasks", timer_key);
   #endif
 }
 
