@@ -34,14 +34,14 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   scheduler=new Scheduler(*threadPool, *configuration);
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
+  #if DO_METRICS
+    metricsInit(*configuration);
+  #endif
   if (configuration->get("EDAT_RESILIENCE", false)) {
     resilienceInit(*configuration, messaging, std::this_thread::get_id());
   }
 
   edatActive=true;
-  #if DO_METRICS
-    metricsInit(*configuration);
-  #endif
   return 0;
 }
 
