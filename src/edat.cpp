@@ -61,6 +61,10 @@ int edatFinalise(void) {
 }
 
 int edatPauseMainThread(void) {
+#if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("PauseMainThread");
+#endif
+
   std::mutex * m = new std::mutex();
   std::condition_variable * cv = new std::condition_variable();
   bool * completed = new bool();
@@ -69,6 +73,9 @@ int edatPauseMainThread(void) {
   threadPool->notifyMainThreadIsSleeping();
   messaging->setEligableForTermination();
   std::unique_lock<std::mutex> lk(*m);
+#if DO_METRICS
+  metrics::METRICS->timerStop("PauseMainThread", timer_key);
+#endif
   cv->wait(lk, [completed]{return *completed;});
 
   edatActive=false;
