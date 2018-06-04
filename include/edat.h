@@ -46,6 +46,8 @@ int edatRestart(void);
 int edatPauseMainThread(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
+int edatGetNumThreads(void);
+int edatGetThread(void);
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
 int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
 int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);

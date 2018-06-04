@@ -90,6 +90,14 @@ int edatGetNumRanks(void) {
   return messaging->getNumRanks();
 }
 
+int edatGetNumThreads(void) {
+  return threadPool->getNumberOfThreads();
+}
+
+int edatGetThread(void) {
+  return threadPool->getCurrentThreadId();
+}
+
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
