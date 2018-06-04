@@ -2,14 +2,16 @@
 #define SRC_METRICS_H
 
 #include "edat.h"
+#include "configuration.h"
 #include <string>
 #include <mutex>
 #include <map>
+#include <vector>
 #include <chrono>
 
 using ns = std::chrono::duration<long long int,std::nano>;
 
-void metricsInit(void);
+void metricsInit(Configuration & configuration);
 
 struct Timings {
   int num_events = 0;
@@ -22,19 +24,25 @@ struct Timings {
 
 class EDAT_Metrics {
 private:
+  Configuration & configuration;
   const int RANK = edatGetRank();
+  int num_threads;
   unsigned long int edat_timer_key;
   std::mutex event_times_mutex;
   std::map<std::string,Timings> event_times;
+  std::vector<ns> thread_active;
+  std::vector<double> thread_active_pc;
   int task_time_bins[10] = {0};
   unsigned long int getTimerKey(void);
   void process(void);
   void writeOut(void);
 
 public:
+  EDAT_Metrics(Configuration & aconfig);
   void edatTimerStart(void);
   unsigned long int timerStart(std::string);
   void timerStop(std::string, unsigned long int);
+  void threadReport(int myThreadId, ns active_time);
   void finalise(void);
 };
 

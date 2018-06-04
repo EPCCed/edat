@@ -34,7 +34,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   threadPool->setMessaging(messaging);
   edatActive=true;
   #if DO_METRICS
-    metricsInit();
+    metricsInit(*configuration);
   #endif
   return 0;
 }

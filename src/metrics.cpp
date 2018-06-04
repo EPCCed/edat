@@ -7,17 +7,24 @@
 #include <string>
 #include <chrono>
 #include <cmath>
+#include <thread>
 
 namespace metrics {
   EDAT_Metrics * METRICS;
 }
 
-void metricsInit(void) {
+void metricsInit(Configuration & configuration) {
   // create an EDAT_Metrics object which everyone can access
-  metrics::METRICS = new EDAT_Metrics();
+  metrics::METRICS = new EDAT_Metrics(configuration);
   metrics::METRICS->edatTimerStart();
 
   return;
+}
+
+EDAT_Metrics::EDAT_Metrics(Configuration & aconfig) : configuration(aconfig) {
+  num_threads = configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
+  thread_active.resize(num_threads, ns::zero());
+  thread_active_pc.resize(num_threads, 0.0);
 }
 
 void EDAT_Metrics::edatTimerStart(void) {
@@ -70,6 +77,12 @@ void EDAT_Metrics::timerStop(std::string event_name, unsigned long int timer_key
   return;
 }
 
+void EDAT_Metrics::threadReport(int myThreadId, ns active_time) {
+  thread_active[myThreadId] += active_time;
+
+  return;
+}
+
 unsigned long int EDAT_Metrics::getTimerKey(void) {
   // statically initialises a ulong int and increments on every call
   // thread-safe
@@ -83,10 +96,14 @@ unsigned long int EDAT_Metrics::getTimerKey(void) {
 void EDAT_Metrics::process(void) {
   // at the moment this general sounding member function just finishes
   // calculating the average
-  std::map<std::string,Timings>::iterator iter;
+  std::map<std::string,Timings>::iterator et_iter;
 
-  for (iter=event_times.begin(); iter!=event_times.end(); ++iter) {
-    iter->second.avg = iter->second.sum / iter->second.num_events;
+  for (et_iter=event_times.begin(); et_iter!=event_times.end(); ++et_iter) {
+    et_iter->second.avg = et_iter->second.sum / et_iter->second.num_events;
+  }
+
+  for (int i=0; i<num_threads; ++i) {
+    thread_active_pc[i] = 100 * (double) thread_active[i].count() / event_times.at("EDAT").avg.count();
   }
 
   return;
@@ -116,10 +133,17 @@ void EDAT_Metrics::writeOut(void) {
       << average.count() << "\t" << min.count() << "\t" << max.count()
       << "\t" << sum.count() << "\n";
   }
+
   buffer << "Task Timing [log10(seconds)]: \nMagnitude:  <=-7";
   for (int mag=-6; mag<2; mag++) buffer << " " << std::setw(5) << mag;
   buffer << "   >=2\n    Count:";
   for (int mag=-7; mag<3; mag++) buffer << " " << std::setw(5) << task_time_bins[mag+7];
+  buffer << "\n";
+
+  buffer << "Thread Activity: [% of EDAT time]\n";
+  for (int i = 0; i<num_threads; ++i) buffer << "{" << i << ":" << std::fixed << std::setprecision(2) << thread_active_pc[i] << "%} ";
+
+  // send buffer to stdout
   std::cout << buffer.str() << std::endl;
 
   return;

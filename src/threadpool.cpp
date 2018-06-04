@@ -9,6 +9,7 @@
 #include <string.h>
 #include <iostream>
 #include <sched.h>
+#include <chrono>
 #include "misc.h"
 
 #ifndef DO_METRICS
@@ -358,11 +359,17 @@ void ThreadPool::threadReportCoreIdFunction(void * pthreadRawData) {
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
   bool should_report_mapping=configuration.get("EDAT_REPORT_THREAD_MAPPING", false);
+  #if DO_METRICS
+    std::chrono::steady_clock::time_point thread_activated;
+  #endif
 
   ThreadPackage * myThreadPackage=workers[myThreadId].activeThread;
 
   while (1) {
     myThreadPackage->pause();
+    #if DO_METRICS
+      thread_activated = std::chrono::steady_clock::now();
+    #endif
     if (myThreadPackage->shouldAbort()) {
       delete myThreadPackage;
       return;
@@ -413,6 +420,9 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         }
       }
     }
+    #ifdef DO_METRICS
+      metrics::METRICS->threadReport(myThreadId, std::chrono::steady_clock::now() - thread_activated);
+    #endif
 
     if (progressPollIdleThread && messaging != NULL) {
       if (progressMutex.try_lock()) {
