@@ -420,7 +420,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         }
       }
     }
-    #ifdef DO_METRICS
+    #if DO_METRICS
       metrics::METRICS->threadReport(myThreadId, std::chrono::steady_clock::now() - thread_activated);
     #endif
 
