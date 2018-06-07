@@ -66,6 +66,8 @@ class ThreadPool {
   void pauseThread(PausedTaskDescriptor*, std::unique_lock<std::mutex>*);
   void markThreadResume(PausedTaskDescriptor*);
   void resetPolling();
+  int getNumberOfThreads() { return number_of_threads; }
+  int getCurrentThreadId();
 };
 
 #endif /* SRC_THREADPOOL_H_ */

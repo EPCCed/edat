@@ -99,6 +99,14 @@ void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
 }
 
 /**
+* Retrieves the ID of the thread which has called this or -1 if it is the master thread
+*/
+int ThreadPool::getCurrentThreadId() {
+  std::thread::id this_id = std::this_thread::get_id();
+  return findIndexFromThreadId(this_id);
+}
+
+/**
 * Will pause a specific thread running on a worker as represented by the descriptor provided. This will locate the thread, pause it and then create a new thread
 * (or reuse an existing one) to then keep the worker busy.
 */
