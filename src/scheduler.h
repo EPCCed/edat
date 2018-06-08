@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+long long int generateTaskID(void);
+
 class SpecificEvent {
   int source_pid, message_length, raw_data_length, message_type;
   char* data;
@@ -90,6 +92,7 @@ struct TaskDescriptor {
   std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
   std::vector<DependencyKey> taskDependencyOrder;
   int numArrivedEvents;
+  long long int task_id = generateTaskID();
   virtual TaskDescriptorType getDescriptorType() = 0;
 };
 

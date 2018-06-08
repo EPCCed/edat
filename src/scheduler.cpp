@@ -16,6 +16,14 @@
 #define DO_METRICS false
 #endif
 
+long long int generateTaskID(void) {
+  static std::mutex task_id_mutex;
+  static long long int task_id = 0;
+
+  std::lock_guard<std::mutex> lock(task_id_mutex);
+  return task_id++;
+}
+
 /**
 * Registers a task with EDAT, this will determine (and consume) outstanding events & then if applicable will mark ready for execution. Otherwise
 * it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
@@ -382,7 +390,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
+  threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
 
 EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, std::set<int> * eventsThatAreContexts) {
@@ -429,7 +437,6 @@ EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, st
 */
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
-
   std::set<int> eventsThatAreContexts;
 
   EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);

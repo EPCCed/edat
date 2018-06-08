@@ -25,6 +25,7 @@ class ThreadPoolCommand {
 struct PendingThreadContainer {
   void (*callFunction)(void *);
   void *args;
+  long long int task_id;
 };
 
 struct WorkerThread {
@@ -33,6 +34,7 @@ struct WorkerThread {
   std::queue<ThreadPackage*> waitingThreads, idleThreads;
   std::mutex pausedAndWaitingMutex;
   int core_id=-1;
+  long long int active_task_id=-1;
   ThreadPoolCommand threadCommand;
 };
 
@@ -59,7 +61,7 @@ class ThreadPool {
   static void threadReportCoreIdFunction(void *);
  public:
   ThreadPool(Configuration&);
-  void startThread(void (*)(void *), void *);
+  void startThread(void (*)(void *), void *, long long int);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
   void notifyMainThreadIsSleeping();

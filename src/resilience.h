@@ -4,6 +4,7 @@
 #include "configuration.h"
 #include "messaging.h"
 #include <thread>
+#include <mutex>
 #include <map>
 #include <queue>
 
@@ -22,14 +23,16 @@ class EDAT_Ledger {
 private:
   Configuration & configuration;
   Messaging * messaging;
-  std::map<std::thread::id,std::queue<LoadedEvent>> event_battery;
   std::thread::id main_thread_id;
+  std::map<std::thread::id,long long int> active_tasks;
+  std::map<long long int,std::queue<LoadedEvent>> event_battery;
+  void fireCannon(long long int);
 public:
-  EDAT_Ledger(Configuration&, std::thread::id);
-  void setMessaging(Messaging*);
+  EDAT_Ledger(Configuration&, Messaging*, std::thread::id);
   std::thread::id getMainThreadID(void) { return main_thread_id; };
   void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
-  void fireCannon(std::thread::id);
+  void taskActiveOnThread(std::thread::id, long long int);
+  void taskComplete(long long int);
   void finalise(void);
 };
 

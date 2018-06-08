@@ -298,7 +298,7 @@ void ThreadPool::launchThreadToPollForProgressIfPossible() {
 * Will attemp to start a thread by mapping the calling function and arguments to a free thread. If this is not possible (they are all busy) then it will
 * queue up the thread and arguments to then be executed by the next available thread when it becomes idle.
 */
-void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
+void ThreadPool::startThread(void (*callFunction)(void *), void *args, long long int task_id) {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int idleThreadId = get_index_of_idle_thread();
   if (idleThreadId != -1) {
@@ -306,11 +306,13 @@ void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
     thread_start_lock.unlock();
     workers[idleThreadId].threadCommand.setCallFunction(callFunction);
     workers[idleThreadId].threadCommand.setData(args);
+    workers[idleThreadId].active_task_id = task_id;
     workers[idleThreadId].activeThread->resume();
   } else {
     PendingThreadContainer tc;
     tc.callFunction=callFunction;
     tc.args=args;
+    tc.task_id = task_id;
     threadQueue.push(tc);
   }
 }
@@ -387,13 +389,16 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       #if DO_METRICS
         unsigned long int timer_key = metrics::METRICS->timerStart("Task");
       #endif
+      if (configuration.get("EDAT_RESILIENCE", false)) {
+        resilience::process_ledger->taskActiveOnThread(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
+      }
       workers[myThreadId].threadCommand.issueFunctionCall();
+      if (configuration.get("EDAT_RESILIENCE", false)) {
+        resilience::process_ledger->taskComplete(workers[myThreadId].active_task_id);
+      }
       #if DO_METRICS
         metrics::METRICS->timerStop("Task", timer_key);
       #endif
-    }
-    if (configuration.get("EDAT_RESILIENCE", false)) {
-      resilience::process_ledger->fireCannon(workers[myThreadId].activeThread->getThreadID());
     }
     bool pollQueue=true, restartPoll=false;
     while (pollQueue) {
@@ -406,9 +411,13 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         #if DO_METRICS
           unsigned long int timer_key = metrics::METRICS->timerStart("Task");
         #endif
+        if (configuration.get("EDAT_RESILIENCE", false)) {
+          workers[myThreadId].active_task_id = pc.task_id;
+          resilience::process_ledger->taskActiveOnThread(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
+        }
         pc.callFunction(pc.args);
         if (configuration.get("EDAT_RESILIENCE", false)) {
-          resilience::process_ledger->fireCannon(workers[myThreadId].activeThread->getThreadID());
+          resilience::process_ledger->taskComplete(workers[myThreadId].active_task_id);
         }
         #if DO_METRICS
           metrics::METRICS->timerStop("Task", timer_key);
@@ -433,6 +442,9 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
           // Return this thread back to the pool, do this in here to avoid a queued entry falling between cracks
           threadBusy[myThreadId] = false;
         }
+      }
+      if (configuration.get("EDAT_RESILIENCE", false)) {
+        workers[myThreadId].active_task_id = -1;
       }
     }
     #if DO_METRICS
