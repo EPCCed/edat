@@ -1,6 +1,6 @@
 #include "resilience.h"
+#include "configuration.h"
 #include "messaging.h"
-#include "threadpool.h"
 #include <iostream>
 #include <thread>
 #include <mutex>
