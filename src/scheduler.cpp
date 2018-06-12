@@ -17,6 +17,10 @@
 #define DO_METRICS false
 #endif
 
+/**
+* Generates a unique identifier for each task, used by resilience to track
+* which tasks are active, and store data for restart
+*/
 long long int generateTaskID(void) {
   static std::mutex task_id_mutex;
   static long long int task_id = 0;
