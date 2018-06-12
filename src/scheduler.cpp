@@ -3,6 +3,7 @@
 #include "threadpool.h"
 #include "misc.h"
 #include "metrics.h"
+#include "resilience.h"
 #include <map>
 #include <string>
 #include <mutex>
@@ -390,6 +391,10 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
+  if (configuration.get("EDAT_RESILIENCE", false)) {
+    if (taskDescriptor->persistent) taskDescriptor->task_id = generateTaskID();
+    resilience::process_ledger->storeArrivedEvents(taskDescriptor->task_id,taskDescriptor->arrivedEvents);
+  }
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
 

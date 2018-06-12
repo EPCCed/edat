@@ -1,6 +1,7 @@
 #include "resilience.h"
 #include "configuration.h"
 #include "messaging.h"
+#include "scheduler.h"
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -15,7 +16,6 @@ void resilienceInit(Configuration& configuration, Messaging* messaging, std::thr
   resilience::process_ledger = new EDAT_Ledger(configuration, messaging, main_thread_id);
 
   if (!messaging->getRank()) std::cout << "EDAT resilience initialised." << std::endl;
-
   return;
 }
 
@@ -26,17 +26,17 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 
 void EDAT_Ledger::fireCannon(long long int task_id) {
   std::map<long long int, std::queue<LoadedEvent>>::iterator iter = event_battery.find(task_id);
+  LoadedEvent event;
 
   if (iter != event_battery.end()) {
-    while (!event_battery.at(task_id).empty()) {
-      LoadedEvent event = event_battery.at(task_id).front();
+    while (!iter->second.empty()) {
+      event = iter->second.front();
       messaging->fireEvent(event.data, event.data_count, event.data_type,
         event.target, event.persistent, event.event_id);
       if (event.data != NULL) free(event.data);
-      event_battery.at(task_id).pop();
+      iter->second.pop();
     }
   }
-
   return;
 }
 
@@ -64,9 +64,25 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
     event_cannon.push(event);
     event_battery.emplace(task_id, event_cannon);
   } else {
-    event_battery.at(task_id).push(event);
+    iter->second.push(event);
+  }
+  return;
+}
+
+void EDAT_Ledger::storeArrivedEvents(long long int task_id, std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events) {
+  std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events_copy;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
+  std::queue<SpecificEvent*> evt_q;
+  SpecificEvent * spec_evt;
+
+  for (iter=arrived_events.begin(); iter!=arrived_events.end(); iter++) {
+    spec_evt = new SpecificEvent(*(iter->second.front()));
+    evt_q.push(spec_evt);
+    arrived_events_copy.emplace(iter->first,evt_q);
+    evt_q.pop();
   }
 
+  arrived_events_store.emplace(task_id, arrived_events_copy);
   return;
 }
 
@@ -76,12 +92,17 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, long long int ta
 }
 
 void EDAT_Ledger::taskComplete(long long int task_id) {
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
+
+  for (iter=arrived_events_store.at(task_id).begin(); iter!=arrived_events_store.at(task_id).end(); iter++) {
+    delete iter->second.front();
+  }
+  arrived_events_store.erase(task_id);
   fireCannon(task_id);
   return;
 }
 
 void EDAT_Ledger::finalise(void) {
   delete this;
-
   return;
 }

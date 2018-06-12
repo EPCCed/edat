@@ -3,6 +3,7 @@
 
 #include "configuration.h"
 #include "messaging.h"
+#include "scheduler.h"
 #include <thread>
 #include <mutex>
 #include <map>
@@ -26,11 +27,13 @@ private:
   std::thread::id main_thread_id;
   std::map<std::thread::id,long long int> active_tasks;
   std::map<long long int,std::queue<LoadedEvent>> event_battery;
+  std::map<long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;
   void fireCannon(long long int);
 public:
   EDAT_Ledger(Configuration&, Messaging*, std::thread::id);
   std::thread::id getMainThreadID(void) { return main_thread_id; };
   void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
+  void storeArrivedEvents(long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>);
   void taskActiveOnThread(std::thread::id, long long int);
   void taskComplete(long long int);
   void finalise(void);
