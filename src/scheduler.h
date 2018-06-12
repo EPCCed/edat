@@ -113,8 +113,8 @@ class Scheduler {
     std::vector<PendingTaskDescriptor*> registeredTasks;
     std::vector<PausedTaskDescriptor*> pausedTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
-    Configuration & configuration;
     ThreadPool & threadPool;
+    Configuration & configuration;
     std::mutex taskAndEvent_mutex;
     static void threadBootstrapperFunction(void*);
     std::pair<TaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
