@@ -25,7 +25,8 @@ private:
   Configuration & configuration;
   Messaging * messaging;
   std::thread::id main_thread_id;
-  std::map<std::thread::id,long long int> active_tasks;
+  std::mutex at_mutex, eb_mutex, aes_mutex;
+  std::map<std::thread::id,std::queue<long long int>> active_tasks;
   std::map<long long int,std::queue<LoadedEvent>> event_battery;
   std::map<long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;
   void fireCannon(long long int);
@@ -35,7 +36,7 @@ public:
   void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
   void storeArrivedEvents(long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>);
   void taskActiveOnThread(std::thread::id, long long int);
-  void taskComplete(long long int);
+  void taskComplete(std::thread::id, long long int);
   void finalise(void);
 };
 

@@ -47,6 +47,9 @@ void EDAT_Ledger::fireCannon(long long int task_id) {
       iter->second.pop();
     }
   }
+
+  std::lock_guard<std::mutex> lock(eb_mutex);
+  event_battery.erase(task_id);
   return;
 }
 
@@ -65,7 +68,7 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
   event.persistent = persistent;
   event.event_id = event_id;
 
-  long long int task_id = active_tasks.at(thread_id);
+  long long int task_id = active_tasks.at(thread_id).back();
 
   int data_size = data_count * messaging->getTypeSize(data_type);
   if (data != NULL) {
@@ -77,6 +80,7 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
   if (iter == event_battery.end()) {
     std::queue<LoadedEvent> event_cannon;
     event_cannon.push(event);
+    std::lock_guard<std::mutex> lock(eb_mutex);
     event_battery.emplace(task_id, event_cannon);
   } else {
     iter->second.push(event);
@@ -91,17 +95,42 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
 void EDAT_Ledger::storeArrivedEvents(long long int task_id, std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events) {
   std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events_copy;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
-  std::queue<SpecificEvent*> evt_q;
+  std::queue<SpecificEvent*> event_queue;
   SpecificEvent * spec_evt;
+  unsigned int queue_size, i;
 
   for (iter=arrived_events.begin(); iter!=arrived_events.end(); iter++) {
-    spec_evt = new SpecificEvent(*(iter->second.front()));
-    evt_q.push(spec_evt);
-    arrived_events_copy.emplace(iter->first,evt_q);
-    evt_q.pop();
+    queue_size = iter->second.size();
+    if (queue_size > 1) {
+      // queues aren't really meant to be iterated through, so this is a bit
+      // messy...
+      SpecificEvent* temp_queue[queue_size];
+      i = 0;
+      while (!iter->second.empty()) {
+        // create copies of each specific event and push them to the new queue
+        // also take note of the original
+        spec_evt = new SpecificEvent(*(iter->second.front()));
+        event_queue.push(spec_evt);
+        temp_queue[i] = iter->second.front();
+        iter->second.pop();
+        i++;
+      }
+      for (i=0; i<queue_size; i++) {
+        // now restore the original queue
+        iter->second.push(temp_queue[i]);
+      }
+      arrived_events_copy.emplace(iter->first,event_queue);
+    } else {
+      spec_evt = new SpecificEvent(*(iter->second.front()));
+      event_queue.push(spec_evt);
+      arrived_events_copy.emplace(iter->first,event_queue);
+    }
+    while (!event_queue.empty()) event_queue.pop();
   }
 
+  aes_mutex.lock();
   arrived_events_store.emplace(task_id, arrived_events_copy);
+  aes_mutex.unlock();
   return;
 }
 
@@ -113,7 +142,16 @@ void EDAT_Ledger::storeArrivedEvents(long long int task_id, std::map<DependencyK
 * things.
 */
 void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, long long int task_id) {
-  active_tasks[thread_id] = task_id;
+  std::map<std::thread::id,std::queue<long long int>>::iterator iter = active_tasks.find(thread_id);
+
+  if (iter == active_tasks.end()) {
+    std::queue<long long int> task_id_queue;
+    task_id_queue.push(task_id);
+    std::lock_guard<std::mutex> lock(at_mutex);
+    active_tasks.emplace(thread_id, task_id_queue);
+  } else {
+    iter->second.push(task_id);
+  }
   return;
 }
 
@@ -121,13 +159,19 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, long long int ta
 * Once a task has completed we can pass the events it fired on to messaging,
 * delete the events on which it was dependent, and update the ledger.
 */
-void EDAT_Ledger::taskComplete(long long int task_id) {
+void EDAT_Ledger::taskComplete(std::thread::id thread_id, long long int task_id) {
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
 
+  active_tasks.at(thread_id).pop();
   for (iter=arrived_events_store.at(task_id).begin(); iter!=arrived_events_store.at(task_id).end(); iter++) {
-    delete iter->second.front();
+    while (!iter->second.empty()) {
+      delete iter->second.front();
+      iter->second.pop();
+    }
   }
+  aes_mutex.lock();
   arrived_events_store.erase(task_id);
+  aes_mutex.unlock();
   fireCannon(task_id);
   return;
 }

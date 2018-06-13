@@ -394,7 +394,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       }
       workers[myThreadId].threadCommand.issueFunctionCall();
       if (configuration.get("EDAT_RESILIENCE", false)) {
-        resilience::process_ledger->taskComplete(workers[myThreadId].active_task_id);
+        resilience::process_ledger->taskComplete(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
       }
       #if DO_METRICS
         metrics::METRICS->timerStop("Task", timer_key);
@@ -417,7 +417,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         }
         pc.callFunction(pc.args);
         if (configuration.get("EDAT_RESILIENCE", false)) {
-          resilience::process_ledger->taskComplete(workers[myThreadId].active_task_id);
+          resilience::process_ledger->taskComplete(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
         }
         #if DO_METRICS
           metrics::METRICS->timerStop("Task", timer_key);
