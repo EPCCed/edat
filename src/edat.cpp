@@ -86,7 +86,6 @@ int edatPauseMainThread(void) {
   metrics::METRICS->timerStop("PauseMainThread", timer_key);
 #endif
   cv->wait(lk, [completed]{return *completed;});
-  messaging->finalise();
 
   edatActive=false;
   return 0;
