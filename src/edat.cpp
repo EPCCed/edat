@@ -59,6 +59,9 @@ int edatFinalise(void) {
     cv->wait(lk, [completed]{return *completed;});
   }
   messaging->finalise();
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    resilience::process_ledger->finalise();
+  }
   #if DO_METRICS
     metrics::METRICS->finalise();
   #endif
@@ -84,13 +87,6 @@ int edatPauseMainThread(void) {
 #endif
   cv->wait(lk, [completed]{return *completed;});
   messaging->finalise();
-
-  if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilience::process_ledger->finalise();
-  }
-  #if DO_METRICS
-    metrics::METRICS->finalise();
-  #endif
 
   edatActive=false;
   return 0;
