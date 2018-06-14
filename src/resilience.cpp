@@ -21,7 +21,10 @@ namespace resilience {
 void resilienceInit(Configuration& configuration, Messaging* messaging, std::thread::id main_thread_id) {
   resilience::process_ledger = new EDAT_Ledger(configuration, messaging, main_thread_id);
 
-  if (!messaging->getRank()) std::cout << "EDAT resilience initialised." << std::endl;
+  if (!messaging->getRank()) {
+    std::cout << "EDAT resilience initialised." << std::endl;
+    std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
+  }
   return;
 }
 
