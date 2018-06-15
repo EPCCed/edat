@@ -10,6 +10,7 @@ int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
     int * d = (int*) malloc(sizeof(int) * 10);
+    printf("[%d] main, ptr = %p\n", edatGetRank(), d);
     int i;
     for (i=0;i<10;i++) {
       d[i]=i;
@@ -32,6 +33,6 @@ void my_task(EDAT_Event * events, int num_events) {
 }
 
 void reflux_task(EDAT_Event * events, int num_events) {
-  printf("Done\n");
+  printf("[%d] Reflux task, ptr = %p\n", edatGetRank(), (int *) events[0].data);
   free(events[0].data);
 }
