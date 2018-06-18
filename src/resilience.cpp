@@ -37,12 +37,12 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 * Called on task completion, hands off events which were fired from the task
 * to the messaging system
 */
-void EDAT_Ledger::fireCannon(long long int task_id) {
-  std::map<long long int, std::queue<LoadedEvent>>::iterator iter = event_battery.find(task_id);
+void EDAT_Ledger::unloadEvents(long long int task_id) {
+  std::map<long long int, std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
   LoadedEvent event;
 
-  if (iter != event_battery.end()) {
-    eb_mutex.lock();
+  if (iter != loaded_events_store.end()) {
+    les_mutex.lock();
     while (!iter->second.empty()) {
       event = iter->second.front();
       messaging->fireEvent(event.data, event.data_count, event.data_type,
@@ -50,10 +50,10 @@ void EDAT_Ledger::fireCannon(long long int task_id) {
       if (event.data != NULL) free(event.data);
       iter->second.pop();
     }
-    event_battery.erase(task_id);
-    eb_mutex.unlock();
+    loaded_events_store.erase(task_id);
+    les_mutex.unlock();
   }
-  
+
   return;
 }
 
@@ -80,12 +80,12 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
     memcpy(event.data, data, data_size);
   }
 
-  std::map<long long int,std::queue<LoadedEvent>>::iterator iter = event_battery.find(task_id);
-  if (iter == event_battery.end()) {
+  std::map<long long int,std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
+  if (iter == loaded_events_store.end()) {
     std::queue<LoadedEvent> event_cannon;
     event_cannon.push(event);
-    std::lock_guard<std::mutex> lock(eb_mutex);
-    event_battery.emplace(task_id, event_cannon);
+    std::lock_guard<std::mutex> lock(les_mutex);
+    loaded_events_store.emplace(task_id, event_cannon);
   } else {
     iter->second.push(event);
   }
@@ -176,7 +176,7 @@ void EDAT_Ledger::taskComplete(std::thread::id thread_id, long long int task_id)
   aes_mutex.lock();
   arrived_events_store.erase(task_id);
   aes_mutex.unlock();
-  fireCannon(task_id);
+  unloadEvents(task_id);
   return;
 }
 

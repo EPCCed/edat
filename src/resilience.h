@@ -25,11 +25,11 @@ private:
   Configuration & configuration;
   Messaging * messaging;
   std::thread::id main_thread_id;
-  std::mutex at_mutex, eb_mutex, aes_mutex;
+  std::mutex at_mutex, les_mutex, aes_mutex;
   std::map<std::thread::id,std::queue<long long int>> active_tasks;
-  std::map<long long int,std::queue<LoadedEvent>> event_battery;
+  std::map<long long int,std::queue<LoadedEvent>> loaded_events_store;
   std::map<long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;
-  void fireCannon(long long int);
+  void unloadEvents(long long int);
 public:
   EDAT_Ledger(Configuration&, Messaging*, std::thread::id);
   std::thread::id getMainThreadID(void) { return main_thread_id; };
