@@ -42,6 +42,7 @@ void EDAT_Ledger::fireCannon(long long int task_id) {
   LoadedEvent event;
 
   if (iter != event_battery.end()) {
+    eb_mutex.lock();
     while (!iter->second.empty()) {
       event = iter->second.front();
       messaging->fireEvent(event.data, event.data_count, event.data_type,
@@ -49,10 +50,10 @@ void EDAT_Ledger::fireCannon(long long int task_id) {
       if (event.data != NULL) free(event.data);
       iter->second.pop();
     }
+    event_battery.erase(task_id);
+    eb_mutex.unlock();
   }
-
-  std::lock_guard<std::mutex> lock(eb_mutex);
-  event_battery.erase(task_id);
+  
   return;
 }
 
