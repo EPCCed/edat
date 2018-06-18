@@ -11,8 +11,6 @@
 
 using ns = std::chrono::duration<long long int,std::nano>;
 
-void metricsInit(Configuration & configuration);
-
 struct Timings {
   int num_events = 0;
   ns min = ns::max();
@@ -25,7 +23,6 @@ struct Timings {
 class EDAT_Metrics {
 private:
   Configuration & configuration;
-  const int RANK = edatGetRank();
   int num_threads;
   unsigned long int edat_timer_key;
   std::mutex event_times_mutex;

@@ -30,11 +30,14 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   threadPool=new ThreadPool(*configuration);
   contextManager=new ContextManager(*configuration);
   scheduler=new Scheduler(*threadPool, *configuration);
+  #if DO_METRICS
+    metrics::METRICS = new EDAT_Metrics(*configuration);
+  #endif
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   edatActive=true;
   #if DO_METRICS
-    metricsInit(*configuration);
+    metrics::METRICS->edatTimerStart();
   #endif
   return 0;
 }
