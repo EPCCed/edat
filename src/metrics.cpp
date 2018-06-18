@@ -13,14 +13,6 @@ namespace metrics {
   EDAT_Metrics * METRICS;
 }
 
-void metricsInit(Configuration & configuration) {
-  // create an EDAT_Metrics object which everyone can access
-  metrics::METRICS = new EDAT_Metrics(configuration);
-  metrics::METRICS->edatTimerStart();
-
-  return;
-}
-
 EDAT_Metrics::EDAT_Metrics(Configuration & aconfig) : configuration(aconfig) {
   num_threads = configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
   thread_active.resize(num_threads, ns::zero());
@@ -114,6 +106,7 @@ void EDAT_Metrics::writeOut(void) {
   // one another
   std::stringstream buffer;
   std::map<std::string,Timings>::iterator event;
+  const int RANK = edatGetRank();
 
   std::chrono::duration<double> average;
   std::chrono::duration<double> min;
