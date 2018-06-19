@@ -25,7 +25,9 @@ private:
   Configuration & configuration;
   Messaging * messaging;
   std::thread::id main_thread_id;
-  std::mutex at_mutex, les_mutex, aes_mutex;
+  std::mutex at_mutex, les_mutex, aes_mutex, ct_mutex, ft_mutex;
+  std::queue<long long int> completed_tasks;
+  std::queue<long long int> failed_tasks;
   std::map<std::thread::id,std::queue<long long int>> active_tasks;
   std::map<long long int,std::queue<LoadedEvent>> loaded_events_store;
   std::map<long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;

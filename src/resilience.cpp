@@ -177,6 +177,9 @@ void EDAT_Ledger::taskComplete(std::thread::id thread_id, long long int task_id)
   arrived_events_store.erase(task_id);
   aes_mutex.unlock();
   unloadEvents(task_id);
+  ct_mutex.lock();
+  completed_tasks.push(task_id);
+  ct_mutex.unlock();
   return;
 }
 
