@@ -9,8 +9,6 @@
 #include <map>
 #include <queue>
 
-void resilienceInit(Configuration&, Messaging*, std::thread::id);
-
 struct LoadedEvent {
   void * data = NULL;
   int data_count;

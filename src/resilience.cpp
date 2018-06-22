@@ -14,23 +14,11 @@ namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-/**
-* Instantiates the process ledger and reports to stdout that EDAT is running
-* resiliently
-*/
-void resilienceInit(Configuration& configuration, Messaging* messaging, std::thread::id main_thread_id) {
-  resilience::process_ledger = new EDAT_Ledger(configuration, messaging, main_thread_id);
-
+EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::thread::id thread_id) : configuration(aconfig), messaging(amessaging), main_thread_id(thread_id)  {
   if (!messaging->getRank()) {
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
   }
-  return;
-}
-
-EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::thread::id thread_id) : configuration(aconfig) {
-  messaging = amessaging;
-  main_thread_id = thread_id;
 }
 
 /**
