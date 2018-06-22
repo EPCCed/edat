@@ -21,13 +21,13 @@
 * Generates a unique identifier for each task, used by resilience to track
 * which tasks are active, and store data for restart
 */
-taskID_t generateTaskID(void) {
+void TaskDescriptor::generateTaskID(void) {
   // we statically initialise task_id to 1, and use 0 for no task
   static std::mutex task_id_mutex;
-  static taskID_t task_id = 1;
+  static taskID_t new_task_id = 1;
 
   std::lock_guard<std::mutex> lock(task_id_mutex);
-  return task_id++;
+  task_id = new_task_id++;
 }
 
 /**
@@ -397,7 +397,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
   if (configuration.get("EDAT_RESILIENCE", false)) {
-    if (taskDescriptor->persistent) taskDescriptor->task_id = generateTaskID();
+    if (taskDescriptor->persistent) taskDescriptor->generateTaskID();
     resilience::process_ledger->storeArrivedEvents(taskDescriptor->task_id,taskDescriptor->arrivedEvents);
   }
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);

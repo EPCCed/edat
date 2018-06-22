@@ -15,8 +15,6 @@
 
 typedef unsigned long long int taskID_t;
 
-taskID_t generateTaskID(void);
-
 class SpecificEvent {
   int source_pid, message_length, raw_data_length, message_type;
   char* data;
@@ -94,7 +92,9 @@ struct TaskDescriptor {
   std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
   std::vector<DependencyKey> taskDependencyOrder;
   int numArrivedEvents;
-  taskID_t task_id = generateTaskID();
+  taskID_t task_id;
+  TaskDescriptor(void) { generateTaskID(); }
+  void generateTaskID(void);
   virtual TaskDescriptorType getDescriptorType() = 0;
 };
 
