@@ -37,8 +37,8 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 * Called on task completion, hands off events which were fired from the task
 * to the messaging system
 */
-void EDAT_Ledger::unloadEvents(long long int task_id) {
-  std::map<long long int, std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
+void EDAT_Ledger::unloadEvents(taskID_t task_id) {
+  std::map<taskID_t, std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
   LoadedEvent event;
 
   if (iter != loaded_events_store.end()) {
@@ -72,7 +72,7 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
   event.persistent = persistent;
   event.event_id = event_id;
 
-  long long int task_id = active_tasks.at(thread_id).back();
+  taskID_t task_id = active_tasks.at(thread_id).back();
 
   int data_size = data_count * messaging->getTypeSize(data_type);
   if (data != NULL) {
@@ -80,7 +80,7 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
     memcpy(event.data, data, data_size);
   }
 
-  std::map<long long int,std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
+  std::map<taskID_t,std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
   if (iter == loaded_events_store.end()) {
     std::queue<LoadedEvent> event_cannon;
     event_cannon.push(event);
@@ -96,7 +96,7 @@ void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
 * Events which have arrived and triggered the running of a task are copied and
 * stored until the task completes, in case it needs to be restarted.
 */
-void EDAT_Ledger::storeArrivedEvents(long long int task_id, std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events) {
+void EDAT_Ledger::storeArrivedEvents(taskID_t task_id, std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events) {
   std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events_copy;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
   std::queue<SpecificEvent*> event_queue;
@@ -145,11 +145,11 @@ void EDAT_Ledger::storeArrivedEvents(long long int task_id, std::map<DependencyK
 * functionality, and we don't need to worry about the thread moving on to other
 * things.
 */
-void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, long long int task_id) {
-  std::map<std::thread::id,std::queue<long long int>>::iterator iter = active_tasks.find(thread_id);
+void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, taskID_t task_id) {
+  std::map<std::thread::id,std::queue<taskID_t>>::iterator iter = active_tasks.find(thread_id);
 
   if (iter == active_tasks.end()) {
-    std::queue<long long int> task_id_queue;
+    std::queue<taskID_t> task_id_queue;
     task_id_queue.push(task_id);
     std::lock_guard<std::mutex> lock(at_mutex);
     active_tasks.emplace(thread_id, task_id_queue);
@@ -163,7 +163,7 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, long long int ta
 * Once a task has completed we can pass the events it fired on to messaging,
 * delete the events on which it was dependent, and update the ledger.
 */
-void EDAT_Ledger::taskComplete(std::thread::id thread_id, long long int task_id) {
+void EDAT_Ledger::taskComplete(std::thread::id thread_id, taskID_t task_id) {
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
 
   active_tasks.at(thread_id).pop();

@@ -21,9 +21,10 @@
 * Generates a unique identifier for each task, used by resilience to track
 * which tasks are active, and store data for restart
 */
-long long int generateTaskID(void) {
+taskID_t generateTaskID(void) {
+  // we statically initialise task_id to 1, and use 0 for no task
   static std::mutex task_id_mutex;
-  static long long int task_id = 0;
+  static taskID_t task_id = 1;
 
   std::lock_guard<std::mutex> lock(task_id_mutex);
   return task_id++;

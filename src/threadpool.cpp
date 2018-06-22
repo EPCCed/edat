@@ -298,7 +298,7 @@ void ThreadPool::launchThreadToPollForProgressIfPossible() {
 * Will attemp to start a thread by mapping the calling function and arguments to a free thread. If this is not possible (they are all busy) then it will
 * queue up the thread and arguments to then be executed by the next available thread when it becomes idle.
 */
-void ThreadPool::startThread(void (*callFunction)(void *), void *args, long long int task_id) {
+void ThreadPool::startThread(void (*callFunction)(void *), void *args, taskID_t task_id) {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int idleThreadId = get_index_of_idle_thread();
   if (idleThreadId != -1) {
@@ -444,7 +444,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         }
       }
       if (configuration.get("EDAT_RESILIENCE", false)) {
-        workers[myThreadId].active_task_id = -1;
+        workers[myThreadId].active_task_id = 0;
       }
     }
     #if DO_METRICS

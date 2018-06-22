@@ -26,19 +26,19 @@ private:
   Messaging * messaging;
   std::thread::id main_thread_id;
   std::mutex at_mutex, les_mutex, aes_mutex, ct_mutex, ft_mutex;
-  std::queue<long long int> completed_tasks;
-  std::queue<long long int> failed_tasks;
-  std::map<std::thread::id,std::queue<long long int>> active_tasks;
-  std::map<long long int,std::queue<LoadedEvent>> loaded_events_store;
-  std::map<long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;
-  void unloadEvents(long long int);
+  std::queue<taskID_t> completed_tasks;
+  std::queue<taskID_t> failed_tasks;
+  std::map<std::thread::id,std::queue<taskID_t>> active_tasks;
+  std::map<taskID_t,std::queue<LoadedEvent>> loaded_events_store;
+  std::map<taskID_t,std::map<DependencyKey,std::queue<SpecificEvent*>>> arrived_events_store;
+  void unloadEvents(taskID_t);
 public:
   EDAT_Ledger(Configuration&, Messaging*, std::thread::id);
   std::thread::id getMainThreadID(void) { return main_thread_id; };
   void loadEvent(std::thread::id, void*, int, int, int, bool, const char *);
-  void storeArrivedEvents(long long int,std::map<DependencyKey,std::queue<SpecificEvent*>>);
-  void taskActiveOnThread(std::thread::id, long long int);
-  void taskComplete(std::thread::id, long long int);
+  void storeArrivedEvents(taskID_t,std::map<DependencyKey,std::queue<SpecificEvent*>>);
+  void taskActiveOnThread(std::thread::id, taskID_t);
+  void taskComplete(std::thread::id, taskID_t);
   void finalise(void);
 };
 

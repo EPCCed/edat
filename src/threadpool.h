@@ -8,6 +8,8 @@
 #include "configuration.h"
 #include "threadpackage.h"
 
+typedef unsigned long long int taskID_t;
+
 class Messaging;
 struct PausedTaskDescriptor;
 
@@ -25,7 +27,7 @@ class ThreadPoolCommand {
 struct PendingThreadContainer {
   void (*callFunction)(void *);
   void *args;
-  long long int task_id;
+  taskID_t task_id;
 };
 
 struct WorkerThread {
@@ -34,7 +36,7 @@ struct WorkerThread {
   std::queue<ThreadPackage*> waitingThreads, idleThreads;
   std::mutex pausedAndWaitingMutex;
   int core_id=-1;
-  long long int active_task_id=-1;
+  taskID_t active_task_id=0;
   ThreadPoolCommand threadCommand;
 };
 
@@ -61,7 +63,7 @@ class ThreadPool {
   static void threadReportCoreIdFunction(void *);
  public:
   ThreadPool(Configuration&);
-  void startThread(void (*)(void *), void *, long long int);
+  void startThread(void (*)(void *), void *, taskID_t);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
   void notifyMainThreadIsSleeping();
