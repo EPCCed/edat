@@ -4,3 +4,28 @@ Events are _fired_ from a source to target process. Firing of events can occur a
 # Firing an event
 The API call to fire an event is `int edatFireEvent(void* data, int data_type, int number_elements, int target_rank, const char * event_identifier)`, as mentioned above this call is non-blocking (returns immediately) and explicitly copies any provided data into a separate buffer space. In addition to an explicit integer target rank (e.g. 0 to process zero, 1 to process one etc) the user can also provide __EDAT_SELF__ to send the event to itself and __EDAT_ALL__ to send the event to all process (effectively you can think of this as a broadcast, broadcasting the event to all processes including itself.)
 
+A number of data types are predefined by EDAT
+
+EDAT type | Description
+--------- | -----------
+EDAT_NOTYPE | No type, often used when no payload data is sent
+EDAT_INT | Sending of integer value(s)
+EDAT_LONG  | Sending of long integer value(s)
+EDAT_FLOAT | Sending of single precision floating point value(s)
+EDAT_DOUBLE | Sending of double precision floating point value(s)
+EDAT_BYTE | Sending of byte(s) of data, this is finest grained type of data
+EDAT_ADDRESS | Sending of pointer address(es) to some data, this is of most use when the event is sent to the same process
+
+If the programmer is not going to send any payload data then it is suggested that _NULL_ is used for the data value, _EDAT_NOTYPE_ for the type and _0_ for the number of elements, e.g. `edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "event1")`
+
+An event is consumed as a dependency to a corresponding task and all events must have been consumed for the code to terminate.
+
+# Persistent events
+
+Like tasks, there is also a distinction between transitory and persistent events but this is more subtle. The tasks we have discussed up until this point are transitory, i.e. they are consumed as a dependency to a task. It is also possible for events to be persistent, where they are not consumed but instead will effectively fire time and time again. Note that the firing is done locally, i.e. even if a persistent event is sent from a remote process then the fact it is persistent it handled by the target.
+
+The API call for persistent events is `int edatFirePersistentEvent(void* data, int data_type, int number_elements, int target_rank, const char * event_identifier)`. Note that there is no need for persistent events to have been consumed for termination to occur.
+
+# Reflux events
+
+It might be useful for a task to execute on the source when an event is physically delivered to the target process, this is known as a reflux event and the API is ``int edatFireEventWithReflux(void* data, int data_type, int number_elements, int target_rank, const char * event_identifier, void(*)(EDAT_Event* events, int number_of_events))`. Basically it is similar to firing an event, but with a task function as an addition argument which is called like any other task function. 
