@@ -25,7 +25,7 @@ number_elements | int | The number of elements (of type _data_type_) in the payl
 source | int | The rank of the process that sent this event
 event_id | char * | The Event IDentifier (EID)
 
-All transitory tasks that have been scheduled must be executed before the code can terminate.
+All transitory tasks that have been scheduled must be executed before the code can terminate. Note that you should *not* free the event payload data provided to the task function as this will be done automatically by the EDAT runtime upon task completion.
 
 # Persistent tasks
 Whilst transitory tasks only execute once, i.e. they are scheduled and when their depedencies are met they are then moved to a ready queue for execution by a worker thread when one becomes available. Instead persistent tasks are not moved to the ready queue but instead a copy is made. There are a number of guarantees associated with persistent tasks in terms of the order of consumption of events. When an event arrives that matches the dependencies of a persistent task then this event will be _consumed_ by that persistent task. If a persisitent task depends on multiple events (e.g. event _a_ and _b_), then if multiple instances of event _a_ arrive then multiple instances of the scheduled persistent task will consume this event. In this example the first event _b_ arriving will be consumed by the first instance of the scheduled persistent task that is waiting for this. Hence we guarantee that we are never in a situation where multiple instances of persistent task are scheduled and each is partially fulfilled by separate event dependencies (as this could result in deadlock.)  
