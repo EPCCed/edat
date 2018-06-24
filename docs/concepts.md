@@ -7,6 +7,10 @@ Tasks are some collection of instructions that will operate together to form som
 
 Splitting parallel code up into independent tasks that only interact via their dependencies (events) often results in a far more loosely coupled and asynchronous code that can greatly help with performance and scalability. 
 
+There are two types of task:
+* __Transient__ tasks are scheduled and will be eligable for execution on a worker thread when all dependencies are met. Once the task has been scheduled for execution it is removed from the pending queue (i.e. there is a one to one mapping of scheduled transient tasks to their execution.) All transient tasks must have executed before a code can terminate.
+* __Persistent__ tasks are similar to transient tasks, but once a task is eligible for execution it is not deleted from the pending queue. Instead these persist and can execute multiple times, whenever the dependencies are met. Hence there is no longer a one to one mapping as a single scheduled task might execute multiple times and multiple instances of a single persistent task can be running concurrently on separate worker threads. There is no requirement for persistent tasks to have been executed for the code to terminate. 
+
 ## Events
 Events are send from one process to another (it can be the same process) and are the major way in which tasks and processes will interact. Events are labelled with an identifier (EID) and may contain some optional payload data that the tasks can then process. Whilst this might look a bit like a message, such as that of MPI, crucially the way in which events are sent and delivered to tasks is entirely abstracted from the programmer. Therefore one can concentrate on what interacts rather than the low level details of how.
 
