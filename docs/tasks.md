@@ -27,6 +27,34 @@ event_id | char * | The Event IDentifier (EID)
 
 All transitory tasks that have been scheduled must be executed before the code can terminate. Note that you should *not* free the event payload data provided to the task function as this will be done automatically by the EDAT runtime upon task completion.
 
+```c
+#include "edat.h"
+#include <stdio.h>
+
+void my_task(EDAT_Event*, int);
+
+int main(int argc, char * argv[]) {
+  edatInit(&argc, &argv, NULL);
+  edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
+  if (edatGetRank() == 0) {
+    int d=33;
+    edatFireEvent(&d, EDAT_INT, 1, EDAT_ALL, "my_task");
+  }
+  edatFinalise();
+  return 0;
+}
+
+void my_task(EDAT_Event * events, int num_events) {
+  if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
+    printf("[%d] Hello world %d from %d!\n", edatGetRank(), *((int *) events[0].data), events[0].metadata.source);
+  } else {
+    printf("Event has no payload data or it is not an integer\n");
+  }
+}
+```
+
+The example code here illustrates each process scheduling a task (the _my_task_ function) with 1 event dependency. This even can originate from any process and it must have the identifier _my_task_. Process 0 will then fire an event with payload data of a single integer (value _33_) to every process including itself (due to the _EDAT_ALL_, see <a href="https://github.com/EPCCed/edat/blob/master/docs/events.md">events documentation</a> for more details.) Once this event arrives on each process then the task will be mapped to an idle worker thread for execution and it will do some error checking on the meta data and display the associated message.
+
 # Persistent tasks
 Whilst transitory tasks only execute once, i.e. they are scheduled and when their depedencies are met they are then moved to a ready queue for execution by a worker thread when one becomes available. Instead persistent tasks are not moved to the ready queue but instead a copy is made. There are a number of guarantees associated with persistent tasks in terms of the order of consumption of events. When an event arrives that matches the dependencies of a persistent task then this event will be _consumed_ by that persistent task. If a persisitent task depends on multiple events (e.g. event _a_ and _b_), then if multiple instances of event _a_ arrive then multiple instances of the scheduled persistent task will consume this event. In this example the first event _b_ arriving will be consumed by the first instance of the scheduled persistent task that is waiting for this. Hence we guarantee that we are never in a situation where multiple instances of persistent task are scheduled and each is partially fulfilled by separate event dependencies (as this could result in deadlock.)  
 
