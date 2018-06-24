@@ -20,6 +20,34 @@ If the programmer is not going to send any payload data then it is suggested tha
 
 An event is consumed as a dependency to a corresponding task and all events must have been consumed for the code to terminate.
 
+```c
+#include "edat.h"
+#include <stdio.h>
+
+void my_task(EDAT_Event*, int);
+
+int main(int argc, char * argv[]) {
+  edatInit(&argc, &argv, NULL);
+  if (edatGetRank() == 0) {
+    edatScheduleTask(my_task, 1, EDAT_ALL, "my_event");
+  }
+  int d=10;
+  edatFireEvent(&d, EDAT_INT, 1, 0, "my_event");
+  edatFinalise();
+  return 0;
+}
+
+void my_task(EDAT_Event * events, int num_events) {
+  int i=0, value=0;
+  for (i=0;i<num_events;i++) {
+    value+=*((int*) events[i].data);
+  }
+  printf("Total summed value is %d\n", value);
+}
+```
+
+This example implements a reduction on process 0, where values from each process are summed up and displayed. Process 0 schedules the task (function name _my_task_) with an event dependency which is to recieve events from all processes with the identifier _my_event_. Each process then fires an event to process 0 with the integer payload data of _10_. Note that as soon as the _edatFireEvent_ call returns then the programmer can reuse the _d_ variable no problem. The _my_task_ task will then be mapped to an idle worker thread for execution once a corresponding event from all processes has been received and it will add up the integer values from each and display the sum.
+
 # Persistent events
 
 Like tasks, there is also a distinction between transitory and persistent events but this is more subtle. The tasks we have discussed up until this point are transitory, i.e. they are consumed as a dependency to a task. It is also possible for events to be persistent, where they are not consumed but instead will effectively fire time and time again. Note that the firing is done locally, i.e. even if a persistent event is sent from a remote process then the fact it is persistent it handled by the target.
