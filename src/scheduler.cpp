@@ -13,6 +13,8 @@
 #include <utility>
 #include <set>
 
+#include <iostream>
+
 #ifndef DO_METRICS
 #define DO_METRICS false
 #endif
@@ -28,6 +30,63 @@ void TaskDescriptor::generateTaskID(void) {
 
   std::lock_guard<std::mutex> lock(task_id_mutex);
   task_id = new_task_id++;
+}
+
+/**
+* Constructs an ActiveTaskDescriptor by taking a deep copy of a
+* PendingTaskDescriptor. ATDs are created immediately before a task is handed
+* off to the threadpool.
+*/
+ActiveTaskDescriptor::ActiveTaskDescriptor(PendingTaskDescriptor& ptd) {
+    std::map<DependencyKey,int*>::iterator oDiter;
+    std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
+    std::queue<SpecificEvent*> event_queue;
+    SpecificEvent * spec_evt;
+    unsigned int queue_size, i;
+
+    for (oDiter = ptd.outstandingDependencies.begin(); oDiter != ptd.outstandingDependencies.end(); oDiter++) {
+      outstandingDependencies[oDiter->first] = new int(*(oDiter->second));
+    }
+    for (aEiter = ptd.arrivedEvents.begin(); aEiter != ptd.arrivedEvents.end(); aEiter++) {
+      queue_size = aEiter->second.size();
+        if (queue_size > 1) {
+          // queues aren't really meant to be iterated through, so this is a bit
+          // messy...
+          SpecificEvent* temp_queue[queue_size];
+          i = 0;
+          while (!aEiter->second.empty()) {
+            // create copies of each specific event and push them to the new queue
+            // also take note of the original
+            spec_evt = new SpecificEvent(*(aEiter->second.front()));
+            event_queue.push(spec_evt);
+            temp_queue[i] = aEiter->second.front();
+            aEiter->second.pop();
+            i++;
+          }
+          for (i=0; i<queue_size; i++) {
+            // now restore the original queue
+            aEiter->second.push(temp_queue[i]);
+          }
+          arrivedEvents.emplace(aEiter->first,event_queue);
+        } else {
+          spec_evt = new SpecificEvent(*(aEiter->second.front()));
+          arrivedEvents[aEiter->first].push(spec_evt);
+        }
+        while (!event_queue.empty()) event_queue.pop();
+    }
+
+    taskDependencyOrder = ptd.taskDependencyOrder;
+    numArrivedEvents = ptd.numArrivedEvents;
+    task_id = ptd.task_id;
+
+    for (oDiter = ptd.originalDependencies.begin(); oDiter != ptd.originalDependencies.end(); oDiter++) {
+      originalDependencies[oDiter->first] = new int(*(oDiter->second));
+    }
+
+    freeData = ptd.freeData;
+    persistent = ptd.persistent;
+    task_name = ptd.task_name;
+    task_fn = ptd.task_fn;
 }
 
 /**
@@ -396,10 +455,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  if (configuration.get("EDAT_RESILIENCE", false)) {
-    if (taskDescriptor->persistent) taskDescriptor->generateTaskID();
-    resilience::process_ledger->storeArrivedEvents(taskDescriptor->task_id,taskDescriptor->arrivedEvents);
-  }
+  if (configuration.get("EDAT_RESILIENCE", false)) taskDescriptor->resilient = true;
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
 
@@ -448,6 +504,12 @@ EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, st
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   std::set<int> eventsThatAreContexts;
+  std::thread::id thread_id = std::this_thread::get_id();
+
+  if (taskContainer->resilient) {
+    if (taskContainer->persistent) taskContainer->generateTaskID();
+    resilience::process_ledger->taskActiveOnThread(thread_id, taskContainer);
+  }
 
   EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
   taskContainer->task_fn(events_payload, taskContainer->numArrivedEvents);
@@ -455,6 +517,11 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     free(events_payload[j].metadata.event_id);
     if (taskContainer->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
+
+  if (taskContainer->resilient) {
+    resilience::process_ledger->taskComplete(thread_id, taskContainer->task_id);
+  }
+
   delete events_payload;
   free(pthreadRawData);
 }

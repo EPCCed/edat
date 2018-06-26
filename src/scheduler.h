@@ -62,6 +62,12 @@ class SpecificEvent {
   bool isAContext() { return this->aContext; }
 };
 
+struct HeldEvent {
+  int target;
+  const char * event_id;
+  SpecificEvent * spec_evt;
+};
+
 class DependencyKey {
   std::string s;
   int i;
@@ -85,7 +91,7 @@ public:
   }
 };
 
-enum TaskDescriptorType { PENDING, PAUSED };
+enum TaskDescriptorType { PENDING, PAUSED, ACTIVE };
 
 struct TaskDescriptor {
   std::map<DependencyKey, int*> outstandingDependencies;
@@ -100,10 +106,16 @@ struct TaskDescriptor {
 
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
-  bool freeData, persistent;
+  bool freeData, persistent, resilient;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
+};
+
+struct ActiveTaskDescriptor : PendingTaskDescriptor {
+  std::queue<HeldEvent> firedEvents;
+  ActiveTaskDescriptor(PendingTaskDescriptor&);
+  virtual TaskDescriptorType getDescriptorType() {return ACTIVE;}
 };
 
 struct PausedTaskDescriptor : TaskDescriptor {
