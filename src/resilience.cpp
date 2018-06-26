@@ -9,7 +9,7 @@
 #include <queue>
 
 namespace resilience {
-  // put the resilience ledger for each process in to a seperate namespace
+  // put the in-process resilience ledger in to a seperate namespace
   // to avoid conflicts
   EDAT_Ledger * process_ledger;
 }
@@ -22,24 +22,28 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 }
 
 /**
+* Simple look-up function for what task is running on a thread
+*/ 
+taskID_t EDAT_Ledger::getCurrentlyActiveTask(std::thread::id thread_id) {
+  std::lock_guard<std::mutex> lock(id_mutex);
+  return threadID_to_taskID.at(thread_id).back();
+}
+
+/**
 * Called on task completion, hands off events which were fired from the task
 * to the messaging system
 */
-void EDAT_Ledger::unloadEvents(taskID_t task_id) {
-  std::map<taskID_t, std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
-  LoadedEvent event;
+void EDAT_Ledger::releaseFiredEvents(taskID_t task_id) {
+  std::lock_guard<std::mutex> lock(at_mutex);
+  ActiveTaskDescriptor * atd = active_tasks.at(task_id);
+  HeldEvent held_event;
 
-  if (iter != loaded_events_store.end()) {
-    les_mutex.lock();
-    while (!iter->second.empty()) {
-      event = iter->second.front();
-      messaging->fireEvent(event.data, event.data_count, event.data_type,
-        event.target, event.persistent, event.event_id);
-      if (event.data != NULL) free(event.data);
-      iter->second.pop();
-    }
-    loaded_events_store.erase(task_id);
-    les_mutex.unlock();
+  while (!atd->firedEvents.empty()) {
+    held_event = atd->firedEvents.front();
+    messaging->fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.event_id);
+    free(held_event.spec_evt->getData());
+    delete held_event.spec_evt;
+    atd->firedEvents.pop();
   }
 
   return;
@@ -50,79 +54,29 @@ void EDAT_Ledger::unloadEvents(taskID_t task_id) {
 * and std::thread::id is used to link the event to a task_id. Events will not be
 * fired until the task completes.
 */
-void EDAT_Ledger::loadEvent(std::thread::id thread_id, void * data,
+void EDAT_Ledger::holdFiredEvent(std::thread::id thread_id, void * data,
                             int data_count, int data_type, int target,
                             bool persistent, const char * event_id) {
-  LoadedEvent event;
-  event.data_count = data_count;
-  event.data_type = data_type;
-  event.target = target;
-  event.persistent = persistent;
-  event.event_id = event_id;
-
-  taskID_t task_id = active_tasks.at(thread_id).back();
-
+  HeldEvent held_event;
+  taskID_t task_id = getCurrentlyActiveTask(thread_id);
   int data_size = data_count * messaging->getTypeSize(data_type);
+  SpecificEvent * spec_evt = new SpecificEvent(messaging->getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
+
   if (data != NULL) {
-    event.data = malloc(data_size);
-    memcpy(event.data, data, data_size);
+    // do this so application developer can safely free after 'firing' an event
+    char * data_copy = (char *) malloc(data_size);
+    memcpy(data_copy, data, data_size);
+    spec_evt->setData(data_copy);
   }
 
-  std::map<taskID_t,std::queue<LoadedEvent>>::iterator iter = loaded_events_store.find(task_id);
-  if (iter == loaded_events_store.end()) {
-    std::queue<LoadedEvent> event_cannon;
-    event_cannon.push(event);
-    std::lock_guard<std::mutex> lock(les_mutex);
-    loaded_events_store.emplace(task_id, event_cannon);
-  } else {
-    iter->second.push(event);
-  }
-  return;
-}
+  held_event.target = target;
+  held_event.event_id = event_id;
+  held_event.spec_evt = spec_evt;
 
-/**
-* Events which have arrived and triggered the running of a task are copied and
-* stored until the task completes, in case it needs to be restarted.
-*/
-void EDAT_Ledger::storeArrivedEvents(taskID_t task_id, std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events) {
-  std::map<DependencyKey,std::queue<SpecificEvent*>> arrived_events_copy;
-  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
-  std::queue<SpecificEvent*> event_queue;
-  SpecificEvent * spec_evt;
-  unsigned int queue_size, i;
+  at_mutex.lock();
+  active_tasks.at(task_id)->firedEvents.push(held_event);
+  at_mutex.unlock();
 
-  for (iter=arrived_events.begin(); iter!=arrived_events.end(); iter++) {
-    queue_size = iter->second.size();
-    if (queue_size > 1) {
-      // queues aren't really meant to be iterated through, so this is a bit
-      // messy...
-      SpecificEvent* temp_queue[queue_size];
-      i = 0;
-      while (!iter->second.empty()) {
-        // create copies of each specific event and push them to the new queue
-        // also take note of the original
-        spec_evt = new SpecificEvent(*(iter->second.front()));
-        event_queue.push(spec_evt);
-        temp_queue[i] = iter->second.front();
-        iter->second.pop();
-        i++;
-      }
-      for (i=0; i<queue_size; i++) {
-        // now restore the original queue
-        iter->second.push(temp_queue[i]);
-      }
-      arrived_events_copy.emplace(iter->first,event_queue);
-    } else {
-      spec_evt = new SpecificEvent(*(iter->second.front()));
-      event_queue.push(spec_evt);
-      arrived_events_copy.emplace(iter->first,event_queue);
-    }
-    while (!event_queue.empty()) event_queue.pop();
-  }
-
-  aes_mutex.lock();
-  arrived_events_store.emplace(task_id, arrived_events_copy);
-  aes_mutex.unlock();
   return;
 }
 
@@ -133,17 +87,26 @@ void EDAT_Ledger::storeArrivedEvents(taskID_t task_id, std::map<DependencyKey,st
 * functionality, and we don't need to worry about the thread moving on to other
 * things.
 */
-void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, taskID_t task_id) {
-  std::map<std::thread::id,std::queue<taskID_t>>::iterator iter = active_tasks.find(thread_id);
+void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescriptor * ptd) {
+  ActiveTaskDescriptor * atd = new ActiveTaskDescriptor(*ptd);
+  std::map<std::thread::id,std::queue<taskID_t>>::iterator ttt_iter = threadID_to_taskID.find(thread_id);
 
-  if (iter == active_tasks.end()) {
+  at_mutex.lock();
+  active_tasks.emplace(ptd->task_id, atd);
+  at_mutex.unlock();
+
+  if (ttt_iter == threadID_to_taskID.end()) {
     std::queue<taskID_t> task_id_queue;
-    task_id_queue.push(task_id);
-    std::lock_guard<std::mutex> lock(at_mutex);
-    active_tasks.emplace(thread_id, task_id_queue);
+    task_id_queue.push(ptd->task_id);
+    id_mutex.lock();
+    threadID_to_taskID.emplace(thread_id, task_id_queue);
+    id_mutex.unlock();
   } else {
-    iter->second.push(task_id);
+    id_mutex.lock();
+    ttt_iter->second.push(ptd->task_id);
+    id_mutex.unlock();
   }
+
   return;
 }
 
@@ -152,27 +115,35 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, taskID_t task_id
 * delete the events on which it was dependent, and update the ledger.
 */
 void EDAT_Ledger::taskComplete(std::thread::id thread_id, taskID_t task_id) {
-  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator iter;
+  std::map<DependencyKey,int*>::iterator oDiter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
 
-  active_tasks.at(thread_id).pop();
-  for (iter=arrived_events_store.at(task_id).begin(); iter!=arrived_events_store.at(task_id).end(); iter++) {
-    while (!iter->second.empty()) {
-      delete iter->second.front();
-      iter->second.pop();
+  id_mutex.lock();
+  threadID_to_taskID.at(thread_id).pop();
+  id_mutex.unlock();
+  releaseFiredEvents(task_id);
+
+  std::lock_guard<std::mutex> lock(at_mutex);
+  ActiveTaskDescriptor * atd = active_tasks.at(task_id);
+  for (oDiter = atd->outstandingDependencies.begin(); oDiter != atd->outstandingDependencies.end(); oDiter++) {
+    delete oDiter->second;
+  }
+  for (aEiter = atd->arrivedEvents.begin(); aEiter != atd->arrivedEvents.end(); aEiter++) {
+    while (!aEiter->second.empty()) {
+      delete aEiter->second.front();
+      aEiter->second.pop();
     }
   }
-  aes_mutex.lock();
-  arrived_events_store.erase(task_id);
-  aes_mutex.unlock();
-  unloadEvents(task_id);
-  ct_mutex.lock();
-  completed_tasks.push(task_id);
-  ct_mutex.unlock();
+  for (oDiter = atd->originalDependencies.begin(); oDiter != atd->originalDependencies.end(); oDiter++) {
+    delete oDiter->second;
+  }
+  active_tasks.erase(task_id);
+
   return;
 }
 
 /**
-* Called by edatFinalise, just deleted the ledger.
+* Called by edatFinalise, just deletes the ledger.
 */
 void EDAT_Ledger::finalise(void) {
   delete this;
