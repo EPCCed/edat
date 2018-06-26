@@ -389,13 +389,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       #if DO_METRICS
         unsigned long int timer_key = metrics::METRICS->timerStart("Task");
       #endif
-      if (configuration.get("EDAT_RESILIENCE", false)) {
-        resilience::process_ledger->taskActiveOnThread(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
-      }
       workers[myThreadId].threadCommand.issueFunctionCall();
-      if (configuration.get("EDAT_RESILIENCE", false)) {
-        resilience::process_ledger->taskComplete(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
-      }
       #if DO_METRICS
         metrics::METRICS->timerStop("Task", timer_key);
       #endif
@@ -413,12 +407,8 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         #endif
         if (configuration.get("EDAT_RESILIENCE", false)) {
           workers[myThreadId].active_task_id = pc.task_id;
-          resilience::process_ledger->taskActiveOnThread(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
         }
         pc.callFunction(pc.args);
-        if (configuration.get("EDAT_RESILIENCE", false)) {
-          resilience::process_ledger->taskComplete(workers[myThreadId].activeThread->getThreadID(), workers[myThreadId].active_task_id);
-        }
         #if DO_METRICS
           metrics::METRICS->timerStop("Task", timer_key);
         #endif
