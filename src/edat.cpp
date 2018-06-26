@@ -174,7 +174,7 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   if (configuration->get("EDAT_RESILIENCE", false) && std::this_thread::get_id() != resilience::process_ledger->getMainThreadID()) {
-    resilience::process_ledger->loadEvent(std::this_thread::get_id(), data, data_count, data_type, target, false, event_id);
+    resilience::process_ledger->holdFiredEvent(std::this_thread::get_id(), data, data_count, data_type, target, false, event_id);
   } else {
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }
