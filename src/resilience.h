@@ -25,7 +25,7 @@ public:
   EDAT_Ledger(Configuration&, Messaging*, std::thread::id);
   std::thread::id getMainThreadID(void) { return main_thread_id; };
   void holdFiredEvent(std::thread::id, void*, int, int, int, bool, const char *);
-  void taskActiveOnThread(std::thread::id, PendingTaskDescriptor*);
+  void taskActiveOnThread(std::thread::id, PendingTaskDescriptor&);
   void taskComplete(std::thread::id, taskID_t);
   void finalise(void);
 };

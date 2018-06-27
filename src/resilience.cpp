@@ -23,7 +23,7 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 
 /**
 * Simple look-up function for what task is running on a thread
-*/ 
+*/
 taskID_t EDAT_Ledger::getCurrentlyActiveTask(std::thread::id thread_id) {
   std::lock_guard<std::mutex> lock(id_mutex);
   return threadID_to_taskID.at(thread_id).back();
@@ -87,23 +87,23 @@ void EDAT_Ledger::holdFiredEvent(std::thread::id thread_id, void * data,
 * functionality, and we don't need to worry about the thread moving on to other
 * things.
 */
-void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescriptor * ptd) {
-  ActiveTaskDescriptor * atd = new ActiveTaskDescriptor(*ptd);
+void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescriptor& ptd) {
+  ActiveTaskDescriptor * atd = new ActiveTaskDescriptor(ptd);
   std::map<std::thread::id,std::queue<taskID_t>>::iterator ttt_iter = threadID_to_taskID.find(thread_id);
 
   at_mutex.lock();
-  active_tasks.emplace(ptd->task_id, atd);
+  active_tasks.emplace(ptd.task_id, atd);
   at_mutex.unlock();
 
   if (ttt_iter == threadID_to_taskID.end()) {
     std::queue<taskID_t> task_id_queue;
-    task_id_queue.push(ptd->task_id);
+    task_id_queue.push(ptd.task_id);
     id_mutex.lock();
     threadID_to_taskID.emplace(thread_id, task_id_queue);
     id_mutex.unlock();
   } else {
     id_mutex.lock();
-    ttt_iter->second.push(ptd->task_id);
+    ttt_iter->second.push(ptd.task_id);
     id_mutex.unlock();
   }
 
@@ -115,28 +115,14 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescr
 * delete the events on which it was dependent, and update the ledger.
 */
 void EDAT_Ledger::taskComplete(std::thread::id thread_id, taskID_t task_id) {
-  std::map<DependencyKey,int*>::iterator oDiter;
-  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
-
   id_mutex.lock();
   threadID_to_taskID.at(thread_id).pop();
   id_mutex.unlock();
+
   releaseFiredEvents(task_id);
 
   std::lock_guard<std::mutex> lock(at_mutex);
-  ActiveTaskDescriptor * atd = active_tasks.at(task_id);
-  for (oDiter = atd->outstandingDependencies.begin(); oDiter != atd->outstandingDependencies.end(); oDiter++) {
-    delete oDiter->second;
-  }
-  for (aEiter = atd->arrivedEvents.begin(); aEiter != atd->arrivedEvents.end(); aEiter++) {
-    while (!aEiter->second.empty()) {
-      delete aEiter->second.front();
-      aEiter->second.pop();
-    }
-  }
-  for (oDiter = atd->originalDependencies.begin(); oDiter != atd->originalDependencies.end(); oDiter++) {
-    delete oDiter->second;
-  }
+  delete active_tasks.at(task_id);
   active_tasks.erase(task_id);
 
   return;

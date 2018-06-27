@@ -38,16 +38,16 @@ void TaskDescriptor::generateTaskID(void) {
 * off to the threadpool.
 */
 ActiveTaskDescriptor::ActiveTaskDescriptor(PendingTaskDescriptor& ptd) {
-    std::map<DependencyKey,int*>::iterator oDiter;
+    std::map<DependencyKey,int*>::const_iterator oDiter;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
     std::queue<SpecificEvent*> event_queue;
     SpecificEvent * spec_evt;
     unsigned int queue_size, i;
 
-    for (oDiter = ptd.outstandingDependencies.begin(); oDiter != ptd.outstandingDependencies.end(); oDiter++) {
+    for (oDiter = ptd.outstandingDependencies.begin(); oDiter != ptd.outstandingDependencies.end(); ++oDiter) {
       outstandingDependencies[oDiter->first] = new int(*(oDiter->second));
     }
-    for (aEiter = ptd.arrivedEvents.begin(); aEiter != ptd.arrivedEvents.end(); aEiter++) {
+    for (aEiter = ptd.arrivedEvents.begin(); aEiter != ptd.arrivedEvents.end(); ++aEiter) {
       queue_size = aEiter->second.size();
         if (queue_size > 1) {
           // queues aren't really meant to be iterated through, so this is a bit
@@ -79,7 +79,7 @@ ActiveTaskDescriptor::ActiveTaskDescriptor(PendingTaskDescriptor& ptd) {
     numArrivedEvents = ptd.numArrivedEvents;
     task_id = ptd.task_id;
 
-    for (oDiter = ptd.originalDependencies.begin(); oDiter != ptd.originalDependencies.end(); oDiter++) {
+    for (oDiter = ptd.originalDependencies.begin(); oDiter != ptd.originalDependencies.end(); ++oDiter) {
       originalDependencies[oDiter->first] = new int(*(oDiter->second));
     }
 
@@ -87,6 +87,26 @@ ActiveTaskDescriptor::ActiveTaskDescriptor(PendingTaskDescriptor& ptd) {
     persistent = ptd.persistent;
     task_name = ptd.task_name;
     task_fn = ptd.task_fn;
+}
+/**
+* Destructor for ActiveTaskDescriptor. For every new a delete.
+*/
+ActiveTaskDescriptor::~ActiveTaskDescriptor() {
+  std::map<DependencyKey,int*>::iterator oDiter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
+
+  for (oDiter = outstandingDependencies.begin(); oDiter != outstandingDependencies.end(); ++oDiter) {
+    delete oDiter->second;
+  }
+  for (aEiter = arrivedEvents.begin(); aEiter != arrivedEvents.end(); ++aEiter) {
+    while (!aEiter->second.empty()) {
+      delete aEiter->second.front();
+      aEiter->second.pop();
+    }
+  }
+  for (oDiter = originalDependencies.begin(); oDiter != originalDependencies.end(); ++oDiter) {
+    delete oDiter->second;
+  }
 }
 
 /**
@@ -508,7 +528,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
 
   if (taskContainer->resilient) {
     if (taskContainer->persistent) taskContainer->generateTaskID();
-    resilience::process_ledger->taskActiveOnThread(thread_id, taskContainer);
+    resilience::process_ledger->taskActiveOnThread(thread_id, *taskContainer);
   }
 
   EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
