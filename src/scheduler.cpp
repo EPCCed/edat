@@ -524,7 +524,7 @@ EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, st
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   std::set<int> eventsThatAreContexts;
-  std::thread::id thread_id = std::this_thread::get_id();
+  const std::thread::id thread_id = std::this_thread::get_id();
 
   if (taskContainer->resilient) {
     if (taskContainer->persistent) taskContainer->generateTaskID();

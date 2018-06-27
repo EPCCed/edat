@@ -173,8 +173,13 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
     unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
-  if (configuration->get("EDAT_RESILIENCE", false) && std::this_thread::get_id() != resilience::process_ledger->getMainThreadID()) {
-    resilience::process_ledger->holdFiredEvent(std::this_thread::get_id(), data, data_count, data_type, target, false, event_id);
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    const std::thread::id thread_id = std::this_thread::get_id();
+    if (thread_id == resilience::process_ledger->getMainThreadID()) {
+      messaging->fireEvent(data, data_count, data_type, target, false, event_id);
+    } else {
+      resilience::process_ledger->holdFiredEvent(thread_id, data, data_count, data_type, target, false, event_id);
+    }      
   } else {
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }

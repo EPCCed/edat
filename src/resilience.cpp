@@ -14,7 +14,7 @@ namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::thread::id thread_id) : configuration(aconfig), messaging(amessaging), main_thread_id(thread_id)  {
+EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, const std::thread::id thread_id) : configuration(aconfig), messaging(amessaging), main_thread_id(thread_id)  {
   if (!messaging->getRank()) {
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
@@ -24,7 +24,7 @@ EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, std::t
 /**
 * Simple look-up function for what task is running on a thread
 */
-taskID_t EDAT_Ledger::getCurrentlyActiveTask(std::thread::id thread_id) {
+taskID_t EDAT_Ledger::getCurrentlyActiveTask(const std::thread::id thread_id) {
   std::lock_guard<std::mutex> lock(id_mutex);
   return threadID_to_taskID.at(thread_id).back();
 }
@@ -33,7 +33,7 @@ taskID_t EDAT_Ledger::getCurrentlyActiveTask(std::thread::id thread_id) {
 * Called on task completion, hands off events which were fired from the task
 * to the messaging system
 */
-void EDAT_Ledger::releaseFiredEvents(taskID_t task_id) {
+void EDAT_Ledger::releaseFiredEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
   HeldEvent held_event;
@@ -54,12 +54,12 @@ void EDAT_Ledger::releaseFiredEvents(taskID_t task_id) {
 * and std::thread::id is used to link the event to a task_id. Events will not be
 * fired until the task completes.
 */
-void EDAT_Ledger::holdFiredEvent(std::thread::id thread_id, void * data,
+void EDAT_Ledger::holdFiredEvent(const std::thread::id thread_id, void * data,
                             int data_count, int data_type, int target,
                             bool persistent, const char * event_id) {
   HeldEvent held_event;
-  taskID_t task_id = getCurrentlyActiveTask(thread_id);
-  int data_size = data_count * messaging->getTypeSize(data_type);
+  const taskID_t task_id = getCurrentlyActiveTask(thread_id);
+  const int data_size = data_count * messaging->getTypeSize(data_type);
   SpecificEvent * spec_evt = new SpecificEvent(messaging->getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
 
   if (data != NULL) {
@@ -87,7 +87,7 @@ void EDAT_Ledger::holdFiredEvent(std::thread::id thread_id, void * data,
 * functionality, and we don't need to worry about the thread moving on to other
 * things.
 */
-void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescriptor& ptd) {
+void EDAT_Ledger::taskActiveOnThread(const std::thread::id thread_id, PendingTaskDescriptor& ptd) {
   ActiveTaskDescriptor * atd = new ActiveTaskDescriptor(ptd);
   std::map<std::thread::id,std::queue<taskID_t>>::iterator ttt_iter = threadID_to_taskID.find(thread_id);
 
@@ -114,7 +114,7 @@ void EDAT_Ledger::taskActiveOnThread(std::thread::id thread_id, PendingTaskDescr
 * Once a task has completed we can pass the events it fired on to messaging,
 * delete the events on which it was dependent, and update the ledger.
 */
-void EDAT_Ledger::taskComplete(std::thread::id thread_id, taskID_t task_id) {
+void EDAT_Ledger::taskComplete(const std::thread::id thread_id, const taskID_t task_id) {
   id_mutex.lock();
   threadID_to_taskID.at(thread_id).pop();
   id_mutex.unlock();
