@@ -117,6 +117,7 @@ struct ActiveTaskDescriptor : PendingTaskDescriptor {
   ActiveTaskDescriptor(PendingTaskDescriptor&);
   virtual ~ActiveTaskDescriptor();
   virtual TaskDescriptorType getDescriptorType() {return ACTIVE;}
+  PendingTaskDescriptor* generatePendingTask();
 };
 
 struct PausedTaskDescriptor : TaskDescriptor {

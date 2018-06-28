@@ -13,8 +13,6 @@
 #include <utility>
 #include <set>
 
-#include <iostream>
-
 #ifndef DO_METRICS
 #define DO_METRICS false
 #endif
@@ -30,6 +28,8 @@ void TaskDescriptor::generateTaskID(void) {
 
   std::lock_guard<std::mutex> lock(task_id_mutex);
   task_id = new_task_id++;
+
+  return;
 }
 
 /**
@@ -107,6 +107,23 @@ ActiveTaskDescriptor::~ActiveTaskDescriptor() {
   for (oDiter = originalDependencies.begin(); oDiter != originalDependencies.end(); ++oDiter) {
     delete oDiter->second;
   }
+}
+
+PendingTaskDescriptor* ActiveTaskDescriptor::generatePendingTask() {
+  PendingTaskDescriptor * ptd = new PendingTaskDescriptor();
+
+  ptd->outstandingDependencies = outstandingDependencies;
+  ptd->arrivedEvents = arrivedEvents;
+  ptd->taskDependencyOrder = taskDependencyOrder;
+  ptd->numArrivedEvents = numArrivedEvents;
+  ptd->originalDependencies = originalDependencies;
+  ptd->freeData = freeData;
+  ptd->persistent = persistent;
+  ptd->resilient = resilient;
+  ptd->task_name = task_name;
+  ptd->task_fn = task_fn;
+
+  return ptd;
 }
 
 /**
