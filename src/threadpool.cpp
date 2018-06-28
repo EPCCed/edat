@@ -1,6 +1,5 @@
 #include "threadpool.h"
 #include "messaging.h"
-#include "resilience.h"
 #include "metrics.h"
 #include <stdlib.h>
 #include <thread>
@@ -405,9 +404,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
         #if DO_METRICS
           unsigned long int timer_key = metrics::METRICS->timerStart("Task");
         #endif
-        if (configuration.get("EDAT_RESILIENCE", false)) {
-          workers[myThreadId].active_task_id = pc.task_id;
-        }
+        workers[myThreadId].active_task_id = pc.task_id;
         pc.callFunction(pc.args);
         #if DO_METRICS
           metrics::METRICS->timerStop("Task", timer_key);
@@ -433,9 +430,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
           threadBusy[myThreadId] = false;
         }
       }
-      if (configuration.get("EDAT_RESILIENCE", false)) {
-        workers[myThreadId].active_task_id = 0;
-      }
+      workers[myThreadId].active_task_id = 0;
     }
     #if DO_METRICS
       metrics::METRICS->threadReport(myThreadId, std::chrono::steady_clock::now() - thread_activated);
