@@ -14,7 +14,7 @@ namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Messaging * amessaging, const std::thread::id thread_id) : configuration(aconfig), messaging(amessaging), main_thread_id(thread_id)  {
+EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Scheduler & ascheduler, Messaging * amessaging, const std::thread::id thread_id) : configuration(aconfig), scheduler(ascheduler), messaging(amessaging), main_thread_id(thread_id)  {
   if (!messaging->getRank()) {
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
@@ -33,7 +33,7 @@ taskID_t EDAT_Ledger::getCurrentlyActiveTask(const std::thread::id thread_id) {
 * Called on task completion, hands off events which were fired from the task
 * to the messaging system
 */
-void EDAT_Ledger::releaseFiredEvents(const taskID_t task_id) {
+void EDAT_Ledger::releaseHeldEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
   HeldEvent held_event;
@@ -41,6 +41,24 @@ void EDAT_Ledger::releaseFiredEvents(const taskID_t task_id) {
   while (!atd->firedEvents.empty()) {
     held_event = atd->firedEvents.front();
     messaging->fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.event_id);
+    free(held_event.spec_evt->getData());
+    delete held_event.spec_evt;
+    atd->firedEvents.pop();
+  }
+
+  return;
+}
+
+/**
+* Clears all events held for a task, presumably because that task has failed
+*/
+void EDAT_Ledger::purgeHeldEvents(const taskID_t task_id) {
+  std::lock_guard<std::mutex> lock(at_mutex);
+  ActiveTaskDescriptor * atd = active_tasks.at(task_id);
+  HeldEvent held_event;
+
+  while (!atd->firedEvents.empty()) {
+    held_event = atd->firedEvents.front();
     free(held_event.spec_evt->getData());
     delete held_event.spec_evt;
     atd->firedEvents.pop();
@@ -115,15 +133,54 @@ void EDAT_Ledger::taskActiveOnThread(const std::thread::id thread_id, PendingTas
 * delete the events on which it was dependent, and update the ledger.
 */
 void EDAT_Ledger::taskComplete(const std::thread::id thread_id, const taskID_t task_id) {
-  id_mutex.lock();
-  threadID_to_taskID.at(thread_id).pop();
-  id_mutex.unlock();
+  std::lock_guard<std::mutex> lock(failure_mutex);
+  if (failed_tasks.find(task_id) == failed_tasks.end()) {
+    completed_tasks.insert(task_id);
 
-  releaseFiredEvents(task_id);
+    id_mutex.lock();
+    threadID_to_taskID.at(thread_id).pop();
+    id_mutex.unlock();
 
-  std::lock_guard<std::mutex> lock(at_mutex);
-  delete active_tasks.at(task_id);
-  active_tasks.erase(task_id);
+    releaseHeldEvents(task_id);
+
+    std::lock_guard<std::mutex> lock(at_mutex);
+    delete active_tasks.at(task_id);
+    active_tasks.erase(task_id);
+  } else {
+    std::cout << "Task " << task_id << " attempted to complete, but has already been reported as failed, and resubmitted to the task scheduler." << std::endl;
+  }
+
+  return;
+}
+
+/**
+* Handles a failed thread by marking the task as failed and preventing events
+* from being fired. Then reschedules the task by submitting a fresh
+* PendingTaskContainer to Scheduler::readyToRunTask. New task ID is reported.
+*/
+void EDAT_Ledger::threadFailure(const std::thread::id thread_id) {
+  std::lock_guard<std::mutex> lock(failure_mutex);
+  const taskID_t task_id = getCurrentlyActiveTask(thread_id);
+
+  if (completed_tasks.find(task_id) == completed_tasks.end()) {
+    failed_tasks.insert(task_id);
+    std::cout << "Task " << task_id  << " has been reported as failed. Any held events will be purged." << std::endl;
+
+    purgeHeldEvents(task_id);
+    at_mutex.lock();
+    PendingTaskDescriptor * ptd = active_tasks.at(task_id)->generatePendingTask();
+    delete active_tasks.at(task_id);
+    active_tasks.erase(task_id);
+    at_mutex.unlock();
+
+    scheduler.readyToRunTask(ptd);
+
+    std::cout << "Task " << task_id << " rescheduled with new task ID: "
+    << ptd->task_id << std::endl;
+
+  } else {
+    std::cout << "Task " << task_id << " reported as failed, but has already successfully completed." << std::endl;
+  }
 
   return;
 }
