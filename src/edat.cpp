@@ -38,7 +38,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilience::process_ledger = new EDAT_Ledger(*configuration, messaging, std::this_thread::get_id());
+    resilience::process_ledger = new EDAT_Ledger(*configuration, *scheduler, messaging, std::this_thread::get_id());
   }
   edatActive=true;
   #if DO_METRICS
@@ -179,7 +179,7 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
       messaging->fireEvent(data, data_count, data_type, target, false, event_id);
     } else {
       resilience::process_ledger->holdFiredEvent(thread_id, data, data_count, data_type, target, false, event_id);
-    }      
+    }
   } else {
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }
@@ -239,6 +239,21 @@ EDAT_Event* edatWait(int num_dependencies, ...) {
   std::vector<std::pair<int, std::string>> dependencies = generateDependencyVector(num_dependencies, valist);
   va_end(valist);
   return scheduler->pauseTask(dependencies);
+}
+
+/**
+* Testing function, initiates simulated failure of a task
+*/
+void edatSyntheticFailure(void) {
+  if (configuration->get("EDAT_RESILIENCE", false)) {
+    const std::thread::id thread_id = std::this_thread::get_id();
+    resilience::process_ledger->threadFailure(thread_id);
+    std::cout << "Oh no! This task has failed! How terrible, and completely unexpected." << std::endl;
+  } else {
+    std::cout << "edatSyntheticFailure is unavailable when EDAT_RESILIENCE is not true." << std::endl;
+  }
+
+  return;
 }
 
 /**
