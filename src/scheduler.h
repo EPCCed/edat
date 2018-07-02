@@ -109,6 +109,7 @@ struct PendingTaskDescriptor : TaskDescriptor {
   bool freeData, persistent, resilient;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
+  void deepCopy(PendingTaskDescriptor&);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
 };
 

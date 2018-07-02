@@ -33,61 +33,69 @@ void TaskDescriptor::generateTaskID(void) {
 }
 
 /**
+* takes a deep copy of the supplied PendingTaskDescriptor and stores in this
+*/
+void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
+  std::map<DependencyKey,int*>::const_iterator oDiter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
+  std::queue<SpecificEvent*> event_queue;
+  SpecificEvent * spec_evt;
+  unsigned int queue_size, i;
+
+  for (oDiter = src.outstandingDependencies.begin(); oDiter != src.outstandingDependencies.end(); ++oDiter) {
+    outstandingDependencies[oDiter->first] = new int(*(oDiter->second));
+  }
+  for (aEiter = src.arrivedEvents.begin(); aEiter != src.arrivedEvents.end(); ++aEiter) {
+    queue_size = aEiter->second.size();
+      if (queue_size > 1) {
+        // queues aren't really meant to be iterated through, so this is a bit
+        // messy...
+        SpecificEvent* temp_queue[queue_size];
+        i = 0;
+        while (!aEiter->second.empty()) {
+          // create copies of each specific event and push them to the new queue
+          // also take note of the original
+          spec_evt = new SpecificEvent(*(aEiter->second.front()));
+          event_queue.push(spec_evt);
+          temp_queue[i] = aEiter->second.front();
+          aEiter->second.pop();
+          i++;
+        }
+        for (i=0; i<queue_size; i++) {
+          // now restore the original queue
+          aEiter->second.push(temp_queue[i]);
+        }
+        arrivedEvents.emplace(aEiter->first,event_queue);
+      } else {
+        spec_evt = new SpecificEvent(*(aEiter->second.front()));
+        arrivedEvents[aEiter->first].push(spec_evt);
+      }
+      while (!event_queue.empty()) event_queue.pop();
+  }
+
+  taskDependencyOrder = src.taskDependencyOrder;
+  numArrivedEvents = src.numArrivedEvents;
+  task_id = src.task_id;
+
+  for (oDiter = src.originalDependencies.begin(); oDiter != src.originalDependencies.end(); ++oDiter) {
+    originalDependencies[oDiter->first] = new int(*(oDiter->second));
+  }
+
+  freeData = src.freeData;
+  persistent = src.persistent;
+  task_name = src.task_name;
+  task_fn = src.task_fn;
+}
+
+/**
 * Constructs an ActiveTaskDescriptor by taking a deep copy of a
 * PendingTaskDescriptor. ATDs are created immediately before a task is handed
 * off to the threadpool.
 */
 ActiveTaskDescriptor::ActiveTaskDescriptor(PendingTaskDescriptor& ptd) {
-    std::map<DependencyKey,int*>::const_iterator oDiter;
-    std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
-    std::queue<SpecificEvent*> event_queue;
-    SpecificEvent * spec_evt;
-    unsigned int queue_size, i;
-
-    for (oDiter = ptd.outstandingDependencies.begin(); oDiter != ptd.outstandingDependencies.end(); ++oDiter) {
-      outstandingDependencies[oDiter->first] = new int(*(oDiter->second));
-    }
-    for (aEiter = ptd.arrivedEvents.begin(); aEiter != ptd.arrivedEvents.end(); ++aEiter) {
-      queue_size = aEiter->second.size();
-        if (queue_size > 1) {
-          // queues aren't really meant to be iterated through, so this is a bit
-          // messy...
-          SpecificEvent* temp_queue[queue_size];
-          i = 0;
-          while (!aEiter->second.empty()) {
-            // create copies of each specific event and push them to the new queue
-            // also take note of the original
-            spec_evt = new SpecificEvent(*(aEiter->second.front()));
-            event_queue.push(spec_evt);
-            temp_queue[i] = aEiter->second.front();
-            aEiter->second.pop();
-            i++;
-          }
-          for (i=0; i<queue_size; i++) {
-            // now restore the original queue
-            aEiter->second.push(temp_queue[i]);
-          }
-          arrivedEvents.emplace(aEiter->first,event_queue);
-        } else {
-          spec_evt = new SpecificEvent(*(aEiter->second.front()));
-          arrivedEvents[aEiter->first].push(spec_evt);
-        }
-        while (!event_queue.empty()) event_queue.pop();
-    }
-
-    taskDependencyOrder = ptd.taskDependencyOrder;
-    numArrivedEvents = ptd.numArrivedEvents;
-    task_id = ptd.task_id;
-
-    for (oDiter = ptd.originalDependencies.begin(); oDiter != ptd.originalDependencies.end(); ++oDiter) {
-      originalDependencies[oDiter->first] = new int(*(oDiter->second));
-    }
-
-    freeData = ptd.freeData;
-    persistent = ptd.persistent;
-    task_name = ptd.task_name;
-    task_fn = ptd.task_fn;
+  deepCopy(ptd);
 }
+
 /**
 * Destructor for ActiveTaskDescriptor. For every new a delete.
 */
@@ -109,14 +117,50 @@ ActiveTaskDescriptor::~ActiveTaskDescriptor() {
   }
 }
 
+/**
+* Generates a PendingTaskDescriptor from the ATD for resubmission to the
+* scheduler
+*/
 PendingTaskDescriptor* ActiveTaskDescriptor::generatePendingTask() {
+  std::map<DependencyKey,int*>::const_iterator oDiter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
+  std::queue<SpecificEvent*> event_queue;
+  SpecificEvent * spec_evt;
+  unsigned int queue_size, i;
   PendingTaskDescriptor * ptd = new PendingTaskDescriptor();
 
-  ptd->outstandingDependencies = outstandingDependencies;
-  ptd->arrivedEvents = arrivedEvents;
+  for (aEiter = arrivedEvents.begin(); aEiter != arrivedEvents.end(); ++aEiter) {
+    queue_size = aEiter->second.size();
+      if (queue_size > 1) {
+        // queues aren't really meant to be iterated through, so this is a bit
+        // messy...
+        SpecificEvent* temp_queue[queue_size];
+        i = 0;
+        while (!aEiter->second.empty()) {
+          // create copies of each specific event and push them to the new queue
+          // also take note of the original
+          spec_evt = new SpecificEvent(*(aEiter->second.front()));
+          event_queue.push(spec_evt);
+          temp_queue[i] = aEiter->second.front();
+          aEiter->second.pop();
+          i++;
+        }
+        for (i=0; i<queue_size; i++) {
+          // now restore the original queue
+          aEiter->second.push(temp_queue[i]);
+        }
+        ptd->arrivedEvents.emplace(aEiter->first,event_queue);
+      } else {
+        spec_evt = new SpecificEvent(*(aEiter->second.front()));
+        ptd->arrivedEvents[aEiter->first].push(spec_evt);
+      }
+      while (!event_queue.empty()) event_queue.pop();
+  }
   ptd->taskDependencyOrder = taskDependencyOrder;
   ptd->numArrivedEvents = numArrivedEvents;
-  ptd->originalDependencies = originalDependencies;
+  for (oDiter = originalDependencies.begin(); oDiter != originalDependencies.end(); ++oDiter) {
+    ptd->originalDependencies[oDiter->first] = new int(*(oDiter->second));
+  }
   ptd->freeData = freeData;
   ptd->persistent = persistent;
   ptd->resilient = resilient;
@@ -495,6 +539,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
+//  std::cout << "[" << std::this_thread::get_id() << "] Scheduler::readyToRunTask task_id=" << taskDescriptor->task_id << std::endl;
   if (configuration.get("EDAT_RESILIENCE", false)) taskDescriptor->resilient = true;
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
