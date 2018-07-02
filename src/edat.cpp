@@ -38,7 +38,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilience::process_ledger = new EDAT_Ledger(*scheduler, messaging, std::this_thread::get_id());
+    resilienceInit(*scheduler, *messaging, std::this_thread::get_id());
   }
   edatActive=true;
   #if DO_METRICS
@@ -62,7 +62,7 @@ int edatFinalise(void) {
   }
   messaging->finalise();
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilience::process_ledger->finalise();
+    resilienceFinalise();
   }
   #if DO_METRICS
     metrics::METRICS->finalise();
@@ -174,12 +174,7 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    const std::thread::id thread_id = std::this_thread::get_id();
-    if (thread_id == resilience::process_ledger->getMainThreadID()) {
-      messaging->fireEvent(data, data_count, data_type, target, false, event_id);
-    } else {
-      resilience::process_ledger->holdFiredEvent(thread_id, data, data_count, data_type, target, false, event_id);
-    }
+    resilienceEventFired(data, data_count, data_type, target, false, event_id);
   } else {
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
   }
@@ -247,7 +242,7 @@ EDAT_Event* edatWait(int num_dependencies, ...) {
 void edatSyntheticFailure(void) {
   if (configuration->get("EDAT_RESILIENCE", false)) {
     const std::thread::id thread_id = std::this_thread::get_id();
-    resilience::process_ledger->threadFailure(thread_id);
+    resilienceThreadFailed(thread_id);
     std::cout << "Oh no! This task has failed! How terrible, and completely unexpected." << std::endl;
   } else {
     std::cout << "edatSyntheticFailure is unavailable when EDAT_RESILIENCE is not true." << std::endl;

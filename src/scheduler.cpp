@@ -548,7 +548,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
 
   if (taskContainer->resilient) {
     if (taskContainer->persistent) taskContainer->generateTaskID();
-    resilience::process_ledger->taskActiveOnThread(thread_id, *taskContainer);
+    resilienceTaskRunning(thread_id, *taskContainer);
   }
 
   EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
@@ -559,7 +559,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   }
 
   if (taskContainer->resilient) {
-    resilience::process_ledger->taskComplete(thread_id, taskContainer->task_id);
+    resilienceTaskCompleted(thread_id, taskContainer->task_id);
   }
 
   delete events_payload;
