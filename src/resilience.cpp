@@ -1,5 +1,4 @@
 #include "resilience.h"
-#include "configuration.h"
 #include "messaging.h"
 #include "scheduler.h"
 #include <iostream>
@@ -14,7 +13,7 @@ namespace resilience {
   EDAT_Ledger * process_ledger;
 }
 
-EDAT_Ledger::EDAT_Ledger(Configuration & aconfig, Scheduler & ascheduler, Messaging * amessaging, const std::thread::id thread_id) : configuration(aconfig), scheduler(ascheduler), messaging(amessaging), main_thread_id(thread_id)  {
+EDAT_Ledger::EDAT_Ledger(Scheduler & ascheduler, Messaging * amessaging, const std::thread::id thread_id) : scheduler(ascheduler), messaging(amessaging), main_thread_id(thread_id)  {
   if (!messaging->getRank()) {
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
@@ -125,6 +124,8 @@ void EDAT_Ledger::taskActiveOnThread(const std::thread::id thread_id, PendingTas
     id_mutex.unlock();
   }
 
+  // [PROCESS-FAIL] move pending task to active task in DB *here*
+
   return;
 }
 
@@ -149,6 +150,8 @@ void EDAT_Ledger::taskComplete(const std::thread::id thread_id, const taskID_t t
   } else {
     std::cout << "Task " << task_id << " attempted to complete, but has already been reported as failed, and resubmitted to the task scheduler." << std::endl;
   }
+
+  // [PROCESS-FAIL] move task from active to completed here
 
   return;
 }

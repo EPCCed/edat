@@ -38,7 +38,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilience::process_ledger = new EDAT_Ledger(*configuration, *scheduler, messaging, std::this_thread::get_id());
+    resilience::process_ledger = new EDAT_Ledger(*scheduler, messaging, std::this_thread::get_id());
   }
   edatActive=true;
   #if DO_METRICS

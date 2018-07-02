@@ -195,9 +195,11 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
       exec_Task=pendingTask;
     }
     outstandTaskEvt_lock.unlock();
+    // [PROCESS-FAIL] write pending task to DB *here*
     readyToRunTask(exec_Task);
     consumeEventsByPersistentTasks();
   } else {
+    // [PROCESS-FAIL] write pending task to DB *here*
     registeredTasks.push_back(pendingTask);
   }
 }
@@ -485,6 +487,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
+  // [PROCESS-FAIL] update pending task in DB *here*
 }
 
 /**

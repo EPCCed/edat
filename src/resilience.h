@@ -1,7 +1,6 @@
 #ifndef SRC_RESILIENCE_H
 #define SRC_RESILIENCE_H
 
-#include "configuration.h"
 #include "messaging.h"
 #include "scheduler.h"
 #include <thread>
@@ -12,7 +11,6 @@
 
 class EDAT_Ledger {
 private:
-  Configuration & configuration;
   Scheduler & scheduler;
   Messaging * messaging;
   const std::thread::id main_thread_id;
@@ -25,7 +23,7 @@ private:
   void releaseHeldEvents(const taskID_t);
   void purgeHeldEvents(const taskID_t);
 public:
-  EDAT_Ledger(Configuration&, Scheduler&, Messaging*, const std::thread::id);
+  EDAT_Ledger(Scheduler&, Messaging*, const std::thread::id);
   const std::thread::id getMainThreadID(void) const { return main_thread_id; };
   void holdFiredEvent(const std::thread::id, void*, int, int, int, bool, const char *);
   void taskActiveOnThread(const std::thread::id, PendingTaskDescriptor&);
