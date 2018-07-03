@@ -102,6 +102,7 @@ struct TaskDescriptor {
   TaskDescriptor(void) { generateTaskID(); }
   void generateTaskID(void);
   virtual TaskDescriptorType getDescriptorType() = 0;
+  virtual ~TaskDescriptor() = default;
 };
 
 struct PendingTaskDescriptor : TaskDescriptor {
@@ -111,6 +112,7 @@ struct PendingTaskDescriptor : TaskDescriptor {
   void (*task_fn)(EDAT_Event*, int);
   void deepCopy(PendingTaskDescriptor&);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
+  virtual ~PendingTaskDescriptor() = default;
 };
 
 struct ActiveTaskDescriptor : PendingTaskDescriptor {

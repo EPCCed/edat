@@ -225,6 +225,8 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     }
   }
 
+  if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
+
   if (pendingTask->outstandingDependencies.empty()) {
     PendingTaskDescriptor* exec_Task;
     if (persistent) {
@@ -234,16 +236,16 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
       }
       pendingTask->arrivedEvents.clear();
       pendingTask->numArrivedEvents=0;
+      pendingTask->generateTaskID();
       registeredTasks.push_back(pendingTask);
+      if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
     } else {
       exec_Task=pendingTask;
     }
     outstandTaskEvt_lock.unlock();
-    // [PROCESS-FAIL] write pending task to DB *here*
     readyToRunTask(exec_Task);
     consumeEventsByPersistentTasks();
   } else {
-    // [PROCESS-FAIL] write pending task to DB *here*
     registeredTasks.push_back(pendingTask);
   }
 }
@@ -400,6 +402,8 @@ bool Scheduler::checkProgressPersistentTasks() {
         }
         pendingTask->arrivedEvents.clear();
         pendingTask->numArrivedEvents=0;
+        pendingTask->generateTaskID();
+        if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
         readyToRunTask(exec_Task);
         progress=true;
       }
@@ -432,6 +436,8 @@ void Scheduler::registerEvent(SpecificEvent * event) {
           }
           pendingTask->arrivedEvents.clear();
           pendingTask->numArrivedEvents=0;
+          pendingTask->generateTaskID();
+          if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
         }
         outstandTaskEvt_lock.unlock();
         readyToRunTask(exec_Task);
@@ -531,7 +537,9 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
-  // [PROCESS-FAIL] update pending task in DB *here*
+  if (configuration.get("EDAT_RESILIENCE",false)) {
+    resilienceEventArrivedAtTask(taskDescriptor->task_id, eventDep, *specificEVTToAdd);
+  }
 }
 
 /**
@@ -539,7 +547,6 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-//  std::cout << "[" << std::this_thread::get_id() << "] Scheduler::readyToRunTask task_id=" << taskDescriptor->task_id << std::endl;
   if (configuration.get("EDAT_RESILIENCE", false)) taskDescriptor->resilient = true;
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
@@ -592,7 +599,6 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   const std::thread::id thread_id = std::this_thread::get_id();
 
   if (taskContainer->resilient) {
-    if (taskContainer->persistent) taskContainer->generateTaskID();
     resilienceTaskRunning(thread_id, *taskContainer);
   }
 
