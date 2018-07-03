@@ -10,13 +10,23 @@
 #include <queue>
 
 void resilienceInit(Scheduler& ascheduler, Messaging& amessaging, const std::thread::id thread_id);
-void resilienceTaskScheduled();
-void resilienceEventArrived();
+void resilienceTaskScheduled(PendingTaskDescriptor&);
+void resilienceEventArrivedAtTask(const taskID_t, const DependencyKey, const SpecificEvent&);
 void resilienceEventFired(void*, int, int, int, bool, const char *);
 void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
 void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
+
+enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
+
+struct LoggedTask {
+  TaskState state = SCHEDULED;
+  PendingTaskDescriptor * ptd;
+  LoggedTask() = default;
+  LoggedTask(PendingTaskDescriptor&);
+  ~LoggedTask();
+};
 
 class EDAT_Thread_Ledger {
 private:
@@ -44,15 +54,18 @@ class EDAT_Process_Ledger {
 private:
   Scheduler& scheduler;
   const int RANK;
+  std::mutex log_mutex;
+  std::map<taskID_t,LoggedTask*> task_log;
   int commit();
 public:
   EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank)
     : scheduler(ascheduler), RANK(my_rank) {};
-  void addTask(taskID_t, PendingTaskDescriptor&);
-  void addArrivedEvent(taskID_t, SpecificEvent&);
-  void markTaskActive(taskID_t);
-  void markTaskComplete(taskID_t);
-  void markTaskFailed(taskID_t);
+  ~EDAT_Process_Ledger();
+  void addTask(const taskID_t, PendingTaskDescriptor&);
+  void addArrivedEventToTask(const taskID_t, const DependencyKey, const SpecificEvent&);
+  void markTaskRunning(const taskID_t);
+  void markTaskComplete(const taskID_t);
+  void markTaskFailed(const taskID_t);
 };
 
 #endif

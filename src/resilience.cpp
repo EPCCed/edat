@@ -33,6 +33,24 @@ void resilienceInit(Scheduler& ascheduler, Messaging& amessaging, const std::thr
 }
 
 /**
+* Essentially repeats the steps of Scheduler::updateMatchingEventInTaskDescriptor
+* but for the external_ledger copy of the task.
+*/
+void resilienceEventArrivedAtTask(const taskID_t task_id, const DependencyKey depkey, const SpecificEvent& event) {
+  external_ledger->addArrivedEventToTask(task_id, depkey, event);
+  return;
+}
+
+/**
+* Creates a record of a task in the external_ledger task_log. It will be updated
+* when events arrive and at state changes.
+*/
+void resilienceTaskScheduled(PendingTaskDescriptor& ptd) {
+  external_ledger->addTask(ptd.task_id, ptd);
+  return;
+}
+
+/**
 * Grabs the calling thread ID, and hands off to
 * EDAT_Thread_Ledger::holdFiredEvent. That member function now checks the
 * thread ID against that of the main thread.
@@ -52,7 +70,7 @@ void resilienceEventFired(void * data, int data_count, int data_type,
 */
 void resilienceTaskRunning(const std::thread::id thread_id, PendingTaskDescriptor& ptd) {
   internal_ledger->taskActiveOnThread(thread_id, ptd);
-
+  external_ledger->markTaskRunning(ptd.task_id);
   return;
 }
 
@@ -61,7 +79,7 @@ void resilienceTaskRunning(const std::thread::id thread_id, PendingTaskDescripto
 */
 void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t task_id) {
   internal_ledger->taskComplete(thread_id, task_id);
-
+  external_ledger->markTaskComplete(task_id);
   return;
 }
 
@@ -72,7 +90,7 @@ void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t tas
 void resilienceThreadFailed(const std::thread::id thread_id) {
   const taskID_t task_id = internal_ledger->getCurrentlyActiveTask(thread_id);
   internal_ledger->threadFailure(task_id);
-  //external_ledger->markTaskFailed(task_id);
+  external_ledger->markTaskFailed(task_id);
 
   return;
 }
@@ -83,6 +101,38 @@ void resilienceThreadFailed(const std::thread::id thread_id) {
 void resilienceFinalise(void) {
   delete internal_ledger;
   delete external_ledger;
+}
+
+/**
+* Allocates memory for a new PendingTaskDescriptor, and deep copies the source
+* to it.
+*/
+LoggedTask::LoggedTask(PendingTaskDescriptor& src) {
+  ptd = new PendingTaskDescriptor();
+  ptd->deepCopy(src);
+}
+
+/**
+* Deep deletes the PendingTaskContainer held in the LoggedTask.
+*/
+LoggedTask::~LoggedTask() {
+  std::map<DependencyKey,int*>::iterator oDiter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator aEiter;
+
+  for (oDiter = ptd->outstandingDependencies.begin(); oDiter != ptd->outstandingDependencies.end(); ++oDiter) {
+    delete oDiter->second;
+  }
+  for (aEiter = ptd->arrivedEvents.begin(); aEiter != ptd->arrivedEvents.end(); ++aEiter) {
+    while (!aEiter->second.empty()) {
+      delete aEiter->second.front();
+      aEiter->second.pop();
+    }
+  }
+  for (oDiter = ptd->originalDependencies.begin(); oDiter != ptd->originalDependencies.end(); ++oDiter) {
+    delete oDiter->second;
+  }
+
+  delete ptd;
 }
 
 /**
@@ -194,8 +244,6 @@ void EDAT_Thread_Ledger::taskActiveOnThread(const std::thread::id thread_id, Pen
     id_mutex.unlock();
   }
 
-  // [PROCESS-FAIL] move pending task to active task in DB *here*
-
   return;
 }
 
@@ -243,6 +291,7 @@ void EDAT_Thread_Ledger::threadFailure(const taskID_t task_id) {
     active_tasks.erase(task_id);
     at_mutex.unlock();
 
+    external_ledger->addTask(ptd->task_id, *ptd);
     scheduler.readyToRunTask(ptd);
 
     std::cout << "Task " << task_id << " rescheduled with new task ID: "
@@ -251,5 +300,70 @@ void EDAT_Thread_Ledger::threadFailure(const taskID_t task_id) {
     std::cout << "Task " << task_id << " reported as failed, but has already successfully completed." << std::endl;
   }
 
+  return;
+}
+
+/**
+* Includes deep delete of the task_log.
+*/
+EDAT_Process_Ledger::~EDAT_Process_Ledger() {
+  std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+  while (!task_log.empty()) {
+    tl_iter = task_log.begin();
+    delete tl_iter->second;
+    task_log.erase(tl_iter);
+  }
+}
+
+/**
+* Emplaces the supplied PendingTaskDescriptor in the task_log. Keyed by task_id.
+*/
+void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor& ptd) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  task_log.emplace(task_id, new LoggedTask(ptd));
+  return;
+}
+
+/**
+* Updates a task embedded in the log with an arrived event.
+*/
+void EDAT_Process_Ledger::addArrivedEventToTask(const taskID_t task_id, const DependencyKey depkey, const SpecificEvent& event) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+
+  PendingTaskDescriptor * ptd = task_log.at(task_id)->ptd;
+  std::map<DependencyKey, int*>::iterator oDiter = ptd->outstandingDependencies.find(depkey);
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator aEiter = ptd->arrivedEvents.find(depkey);
+  SpecificEvent * event_copy = new SpecificEvent(event);
+
+  (*(oDiter->second))--;
+  if (*(oDiter->second) <= 0) ptd->outstandingDependencies.erase(oDiter);
+
+  ptd->numArrivedEvents++;
+  if (aEiter == ptd->arrivedEvents.end()) {
+    std::queue<SpecificEvent*> eventQueue;
+    eventQueue.push(event_copy);
+    ptd->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depkey, eventQueue));
+  } else {
+    aEiter->second.push(event_copy);
+  }
+
+  return;
+}
+
+void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  task_log.at(task_id)->state = RUNNING;
+  return;
+}
+
+void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  task_log.at(task_id)->state = COMPLETE;
+  return;
+}
+
+void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  task_log.at(task_id)->state = FAILED;
   return;
 }
