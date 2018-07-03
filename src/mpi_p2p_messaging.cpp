@@ -1,6 +1,7 @@
 #include "mpi_p2p_messaging.h"
 #include "misc.h"
 #include "scheduler.h"
+#include "resilience.h"
 #include "metrics.h"
 #include <string.h>
 #include <stdlib.h>
@@ -150,6 +151,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
     taskDescriptor->taskDependencyOrder.push_back(DependencyKey(event->getEventId(), event->getSourcePid()));
 
     outstandingRefluxTasks.insert(std::pair<MPI_Request, PendingTaskDescriptor*>(request, taskDescriptor));
+    if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*taskDescriptor);
   }
 }
 
