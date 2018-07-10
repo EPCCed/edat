@@ -479,3 +479,10 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
   }
 
 }
+
+void ThreadPool::syntheticFailureOfThread(const std::thread::id thread_id) {
+  int worker_idx = findIndexFromThreadId(thread_id);
+  workers[worker_idx].activeThread->abort();
+
+  return;
+}
