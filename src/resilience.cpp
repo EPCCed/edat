@@ -18,10 +18,10 @@ static EDAT_Process_Ledger * external_ledger;
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, Messaging& amessaging, const std::thread::id thread_id) {
+void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id) {
   int my_rank = amessaging.getRank();
 
-  internal_ledger = new EDAT_Thread_Ledger(ascheduler, amessaging, thread_id);
+  internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
   external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank);
 
   if (!my_rank) {
@@ -89,7 +89,7 @@ void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t tas
 */
 void resilienceThreadFailed(const std::thread::id thread_id) {
   const taskID_t task_id = internal_ledger->getCurrentlyActiveTask(thread_id);
-  internal_ledger->threadFailure(task_id);
+  internal_ledger->threadFailure(thread_id, task_id);
   external_ledger->markTaskFailed(task_id);
 
   return;
@@ -277,12 +277,14 @@ void EDAT_Thread_Ledger::taskComplete(const std::thread::id thread_id, const tas
 * from being fired. Then reschedules the task by submitting a fresh
 * PendingTaskContainer to Scheduler::readyToRunTask. New task ID is reported.
 */
-void EDAT_Thread_Ledger::threadFailure(const taskID_t task_id) {
+void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(failure_mutex);
 
   if (completed_tasks.find(task_id) == completed_tasks.end()) {
     failed_tasks.insert(task_id);
     std::cout << "Task " << task_id  << " has been reported as failed. Any held events will be purged." << std::endl;
+
+    threadpool.replaceFailedThread(thread_id);
 
     purgeHeldEvents(task_id);
     at_mutex.lock();

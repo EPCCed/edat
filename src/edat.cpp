@@ -38,7 +38,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceInit(*scheduler, *messaging, std::this_thread::get_id());
+    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id());
   }
   edatActive=true;
   #if DO_METRICS
@@ -242,8 +242,9 @@ EDAT_Event* edatWait(int num_dependencies, ...) {
 void edatSyntheticFailure(void) {
   if (configuration->get("EDAT_RESILIENCE", false)) {
     const std::thread::id thread_id = std::this_thread::get_id();
-    resilienceThreadFailed(thread_id);
     std::cout << "Oh no! This task has failed! How terrible, and completely unexpected." << std::endl;
+    threadPool->syntheticFailureOfThread(thread_id);
+    resilienceThreadFailed(thread_id);
   } else {
     std::cout << "edatSyntheticFailure is unavailable when EDAT_RESILIENCE is not true." << std::endl;
   }

@@ -480,6 +480,16 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
 
 }
 
+void ThreadPool::replaceFailedThread(const std::thread::id thread_id) {
+  int worker_idx = findIndexFromThreadId(thread_id);
+  
+  // assume the old core is no longer functional so unset the workers affinity, and give it a brand new threadpackage
+  workers[worker_idx].core_id = -1;
+  workers[worker_idx].activeThread = new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, worker_idx), workers[worker_idx].core_id);
+
+  return;
+}
+
 void ThreadPool::syntheticFailureOfThread(const std::thread::id thread_id) {
   int worker_idx = findIndexFromThreadId(thread_id);
   workers[worker_idx].activeThread->abort();

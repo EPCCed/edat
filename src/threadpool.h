@@ -72,6 +72,7 @@ class ThreadPool {
   void resetPolling();
   int getNumberOfThreads() { return number_of_threads; }
   int getCurrentThreadId();
+  void replaceFailedThread(const std::thread::id); 
   void syntheticFailureOfThread(const std::thread::id);
 };
 

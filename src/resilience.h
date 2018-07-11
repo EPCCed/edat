@@ -3,13 +3,14 @@
 
 #include "messaging.h"
 #include "scheduler.h"
+#include "threadpool.h"
 #include <thread>
 #include <mutex>
 #include <map>
 #include <set>
 #include <queue>
 
-void resilienceInit(Scheduler& ascheduler, Messaging& amessaging, const std::thread::id thread_id);
+void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 void resilienceEventArrivedAtTask(const taskID_t, const DependencyKey, const SpecificEvent&);
 void resilienceEventFired(void*, int, int, int, bool, const char *);
@@ -31,6 +32,7 @@ struct LoggedTask {
 class EDAT_Thread_Ledger {
 private:
   Scheduler& scheduler;
+  ThreadPool& threadpool;
   Messaging& messaging;
   const std::thread::id main_thread_id;
   std::mutex at_mutex, id_mutex, failure_mutex;
@@ -41,13 +43,13 @@ private:
   void releaseHeldEvents(const taskID_t);
   void purgeHeldEvents(const taskID_t);
 public:
-  EDAT_Thread_Ledger(Scheduler& ascheduler, Messaging& amessaging, const std::thread::id thread_id)
-    : scheduler(ascheduler), messaging(amessaging), main_thread_id(thread_id) {};
+  EDAT_Thread_Ledger(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id)
+    : scheduler(ascheduler), threadpool(athreadpool), messaging(amessaging), main_thread_id(thread_id) {};
   taskID_t getCurrentlyActiveTask(const std::thread::id);
   void holdFiredEvent(const std::thread::id, void*, int, int, int, bool, const char*);
   void taskActiveOnThread(const std::thread::id, PendingTaskDescriptor&);
   void taskComplete(const std::thread::id, const taskID_t);
-  void threadFailure(const taskID_t);
+  void threadFailure(const std::thread::id, const taskID_t);
 };
 
 class EDAT_Process_Ledger {
