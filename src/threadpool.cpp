@@ -212,7 +212,9 @@ void ThreadPool::markThreadResume(PausedTaskDescriptor * pausedTaskDescriptor) {
 */
 int ThreadPool::findIndexFromThreadId(std::thread::id threadIDToFind) {
   for (int i = 0; i < number_of_threads; i++) {
-    if (workers[i].activeThread->doesMatch(threadIDToFind)) return i;
+    if (workers[i].activeThread != NULL) {
+      if (workers[i].activeThread->doesMatch(threadIDToFind)) return i;
+    }
   }
   return -1;
 }
@@ -224,7 +226,9 @@ bool ThreadPool::isThreadPoolFinished() {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int i;
   for (i = 0; i < number_of_threads; i++) {
-    if (threadBusy[i]) return false;
+    if (threadBusy[i]) {
+      if (workers[i].activeThread != NULL) return false;
+    }
     std::unique_lock<std::mutex> pausedLock(workers[i].pausedAndWaitingMutex);
     if (!workers[i].pausedThreads.empty() || !workers[i].waitingThreads.empty()) return false;
   }
@@ -337,14 +341,14 @@ int ThreadPool::get_index_of_idle_thread() {
       } else {
         next_suggested_idle_thread = i + 1;
         if (next_suggested_idle_thread >= number_of_threads) next_suggested_idle_thread = 0;
-        return i;
+        if (workers[i].activeThread != NULL) return i;
       }
     }
   }
   if (pendingProgressThread) {
     next_suggested_idle_thread = progressThread + 1;
     if (next_suggested_idle_thread >= number_of_threads) next_suggested_idle_thread = 0;
-    return progressThread;
+     if (workers[progressThread].activeThread != NULL) return progressThread;
   }
   next_suggested_idle_thread = 0;
   return -1;
@@ -380,8 +384,8 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
     #if DO_METRICS
       thread_activated = std::chrono::steady_clock::now();
     #endif
-    if (myThreadPackage->shouldAbort()) {
-      delete myThreadPackage;
+    if (myThreadPackage->shouldAbort()) {   
+      if (!workers[myThreadId].synthFail) delete myThreadPackage;
       return;
     }
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
@@ -480,19 +484,41 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
 
 }
 
-void ThreadPool::replaceFailedThread(const std::thread::id thread_id) {
+void ThreadPool::killWorker(const std::thread::id thread_id) {
+  // a zombie worker is signified by being marked busy but having a NULL active thread
   int worker_idx = findIndexFromThreadId(thread_id);
-  
-  // assume the old core is no longer functional so unset the workers affinity, and give it a brand new threadpackage
-  workers[worker_idx].core_id = -1;
-  workers[worker_idx].activeThread = new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, worker_idx), workers[worker_idx].core_id);
+  WorkerThread& wt = workers[worker_idx];
+  std::map<PausedTaskDescriptor*,ThreadPackage*>::iterator ptIter; 
 
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  threadBusy[worker_idx] = true;
+  
+  delete wt.activeThread;
+  wt.activeThread = NULL;
+
+  while (!wt.idleThreads.empty()) {
+    delete wt.idleThreads.front();
+    wt.idleThreads.pop();
+  }
+
+  std::unique_lock<std::mutex> pausedAndWaitingLock(wt.pausedAndWaitingMutex);
+  while (!wt.waitingThreads.empty()) {
+    delete wt.waitingThreads.front();
+    wt.waitingThreads.pop();
+  }
+  
+  for (ptIter = wt.pausedThreads.begin(); ptIter != wt.pausedThreads.end(); ++ptIter) {
+    delete ptIter->first, ptIter->second;
+  }
+  
   return;
 }
 
 void ThreadPool::syntheticFailureOfThread(const std::thread::id thread_id) {
   int worker_idx = findIndexFromThreadId(thread_id);
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  workers[worker_idx].synthFail = true;
   workers[worker_idx].activeThread->abort();
-
+  
   return;
 }

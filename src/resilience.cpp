@@ -266,7 +266,7 @@ void EDAT_Thread_Ledger::taskComplete(const std::thread::id thread_id, const tas
     delete active_tasks.at(task_id);
     active_tasks.erase(task_id);
   } else {
-    std::cout << "Task " << task_id << " attempted to complete, but has already been reported as failed, and resubmitted to the task scheduler." << std::endl;
+    std::cout << "[" << messaging.getRank() << "] Task " << task_id << " attempted to complete, but has already been reported as failed, and resubmitted to the task scheduler." << std::endl;
   }
 
   return;
@@ -278,13 +278,14 @@ void EDAT_Thread_Ledger::taskComplete(const std::thread::id thread_id, const tas
 * PendingTaskContainer to Scheduler::readyToRunTask. New task ID is reported.
 */
 void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const taskID_t task_id) {
+  const int my_rank = messaging.getRank();
   std::lock_guard<std::mutex> lock(failure_mutex);
 
   if (completed_tasks.find(task_id) == completed_tasks.end()) {
     failed_tasks.insert(task_id);
-    std::cout << "Task " << task_id  << " has been reported as failed. Any held events will be purged." << std::endl;
+    std::cout << "[" << my_rank << "] Task " << task_id  << " has been reported as failed. Any held events will be purged." << std::endl;
 
-    threadpool.replaceFailedThread(thread_id);
+    threadpool.killWorker(thread_id);
 
     purgeHeldEvents(task_id);
     at_mutex.lock();
@@ -296,10 +297,10 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
     external_ledger->addTask(ptd->task_id, *ptd);
     scheduler.readyToRunTask(ptd);
 
-    std::cout << "Task " << task_id << " rescheduled with new task ID: "
+    std::cout << "[" << my_rank << "] Task " << task_id << " rescheduled with new task ID: "
     << ptd->task_id << std::endl;
   } else {
-    std::cout << "Task " << task_id << " reported as failed, but has already successfully completed." << std::endl;
+    std::cout << "[" << my_rank << "] Task " << task_id << " reported as failed, but has already successfully completed." << std::endl;
   }
 
   return;
