@@ -143,8 +143,6 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
     PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
     taskDescriptor->task_fn=reflux_task_fn;
     taskDescriptor->freeData=false;
-    taskDescriptor->numArrivedEvents++;
-    taskDescriptor->taskDependencyOrder.push_back(DependencyKey(event->getEventId(), event->getSourcePid()));
 
     std::queue<SpecificEvent*> eventQueue;
     eventQueue.push(event);
