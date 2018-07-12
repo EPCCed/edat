@@ -18,7 +18,9 @@ all: edat
 	
 debug: CFLAGS += -g
 debug: edat
-	
+
+noopt: CFLAGS += -Wall
+noopt: edat	
 
 edat: build_buildDir $(OBJECTS)
 	$(CC) -shared -Wl,-soname,libedat.so -o libedat.so $(OBJECTS) $(LFLAGS)
