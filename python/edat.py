@@ -1,5 +1,4 @@
 from ctypes import *
-edatlib = cdll.LoadLibrary('../libedat.so')
 
 EDAT_NOTYPE=0
 EDAT_INT=1
@@ -12,6 +11,9 @@ EDAT_LONG=6
 EDAT_ALL=-1
 EDAT_ANY=-2
 EDAT_SELF=-3
+
+class EDAT_Configuration(Structure):
+  _fields_ = [("key", POINTER(c_char_p)), ("value", POINTER(c_char_p)), ("num_entries", c_int)]
 
 class EDAT_Metadata(Structure):
   _fields_ = [("data_type", c_int), ("number_elements", c_int), ("source", c_int), ("event_id", c_char_p)]
@@ -45,7 +47,7 @@ class EDAT_Event(Structure):
     return data
 
 TASKFUNCTION = CFUNCTYPE(None, POINTER(EDAT_Event), c_int)
-edatlib.edatFireEvent.argtypes = [c_void_p, c_int, c_int, c_int, c_char_p]
+_edatlib_ = None
 
 def _packageEventData(data, data_type, data_count):
   if (data_type == EDAT_ADDRESS):
@@ -68,54 +70,75 @@ def _packageEventData(data, data_type, data_count):
   else:
     return None
 
-def edatInit():
-  return edatlib.edatInit(None, None, None)
+def edatInit(configuration=None, libraryPath=None):
+  global _edatlib_
+
+  packaged_data=None
+  if (configuration != None):
+    packaged_data=EDAT_Configuration()
+    packaged_data.num_entries=len(configuration)
+    packaged_data.key = (c_char_p * len(configuration))()
+    packaged_data.value = (c_char_p * len(configuration))()
+
+    i=0
+    for k in configuration:
+      packaged_data.key[i]=k
+      packaged_data.value[i]=configuration[k]
+      i+=1
+
+  if libraryPath==None:
+    _edatlib_=cdll.LoadLibrary('libedat.so')
+  else:
+    _edatlib_=cdll.LoadLibrary(libraryPath)
+
+  _edatlib_.edatFireEvent.argtypes = [c_void_p, c_int, c_int, c_int, c_char_p]
+  return _edatlib_.edatInit(None, None, packaged_data)
 
 def edatFinalise():
-  return edatlib.edatFinalise()
+  return _edatlib_.edatFinalise()
 
 def edatRestart():
-  return edatlib.edatRestart()
+  return _edatlib_.edatRestart()
 
 def edatPauseMainThread():
-  return edatlib.edatPauseMainThread()
+  return _edatlib_.edatPauseMainThread()
 
 def edatGetRank():
-  return edatlib.edatGetRank()
+  return _edatlib_.edatGetRank()
 
 def edatGetNumRanks():
-  return edatlib.edatGetNumRanks()
+  return _edatlib_.edatGetNumRanks()
 
 def edatGetNumThreads():
-  return edatlib.edatGetNumThreads()
+  return _edatlib_.edatGetNumThreads()
 
 def edatGetThread():
-  return edatlib.edatGetThread()
+  return _edatlib_.edatGetThread()
 
 def edatScheduleTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return edatlib.edatScheduleTask(task_fn, num_events, *args)
+  return _edatlib_.edatScheduleTask(task_fn, num_events, *args)
 
 def edatScheduleNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return edatlib.edatScheduleNamedTask(task_fn, task_name, num_events, *args)
+  return _edatlib_.edatScheduleNamedTask(task_fn, task_name, num_events, *args)
 
 def edatSchedulePersistentTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return edatlib.edatSchedulePersistentTask(task_fn, num_events, *args)
+  return _edatlib_.edatSchedulePersistentTask(task_fn, num_events, *args)
 
 def edatSchedulePersistentNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return edatlib.edatSchedulePersistentTask(task_fn, task_name, num_events, *args)
+  return _edatlib_.edatSchedulePersistentTask(task_fn, task_name, num_events, *args)
 
 def edatIsTaskScheduled(task_name):
-  return edatlib.edatIsTaskScheduled(task_name)
+  return _edatlib_.edatIsTaskScheduled(task_name)
 
 def edatDescheduleTask(task_name):
-  return edatlib.edatDescheduleTask(task_name)
+  return _edatlib_.edatDescheduleTask(task_name)
 
 def edatFireEvent(data, data_type, data_count, target, event_id):
-  return edatlib.edatFireEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
+  return _edatlib_.edatFireEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
 
 def edatFirePersistentEvent(data, data_type, data_count, target, event_id):
-  return edatlib.edatFirePersistentEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
+  return _edatlib_.edatFirePersistentEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
