@@ -418,6 +418,7 @@ bool Scheduler::checkProgressPersistentTasks() {
 */
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  if (configuration.get("EDAT_RESILIENCE",false)) resilienceAddEvent(*event);
   std::pair<TaskDescriptor*, int> pendingEntry=findTaskMatchingEventAndUpdate(event);
   bool firstIt=true;
 
@@ -537,9 +538,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
-  if (configuration.get("EDAT_RESILIENCE",false)) {
-    resilienceEventArrivedAtTask(taskDescriptor->task_id, eventDep, *specificEVTToAdd);
-  }
+  if (configuration.get("EDAT_RESILIENCE",false)) resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
 }
 
 /**

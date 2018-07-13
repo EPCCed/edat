@@ -33,20 +33,29 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
 }
 
 /**
-* Essentially repeats the steps of Scheduler::updateMatchingEventInTaskDescriptor
-* but for the external_ledger copy of the task.
-*/
-void resilienceEventArrivedAtTask(const taskID_t task_id, const DependencyKey depkey, const SpecificEvent& event) {
-  external_ledger->addArrivedEventToTask(task_id, depkey, event);
-  return;
-}
-
-/**
 * Creates a record of a task in the external_ledger task_log. It will be updated
 * when events arrive and at state changes.
 */
 void resilienceTaskScheduled(PendingTaskDescriptor& ptd) {
   external_ledger->addTask(ptd.task_id, ptd);
+  return;
+}
+
+/**
+* Adds an event which has arrived on-process to the external_ledger
+*/
+void resilienceAddEvent(SpecificEvent& event) {
+  DependencyKey depkey = DependencyKey(event.getEventId(), event.getSourcePid());
+  external_ledger->addEvent(depkey, event);
+  return;
+}
+
+/**
+* Moves an event which has already arrived and been stored in the external_ledger
+* to its associated task in the task_log
+*/
+void resilienceMoveEventToTask(const DependencyKey depkey, const taskID_t task_id) {
+  external_ledger->moveEventToTask(depkey, task_id);
   return;
 }
 
@@ -310,7 +319,18 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 * Includes deep delete of the task_log.
 */
 EDAT_Process_Ledger::~EDAT_Process_Ledger() {
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+  
+  while(!outstanding_events.empty()) {
+    oe_iter = outstanding_events.begin();
+    while(!oe_iter->second.empty()) {
+      delete oe_iter->second.front();
+      oe_iter->second.pop();
+    }
+    outstanding_events.erase(oe_iter);
+  }
+
   while (!task_log.empty()) {
     tl_iter = task_log.begin();
     delete tl_iter->second;
@@ -327,27 +347,48 @@ void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor&
   return;
 }
 
+void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEvent& event) {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
+  SpecificEvent * event_copy = new SpecificEvent(event);  
+
+  if (oe_iter == outstanding_events.end()) {
+    std::queue<SpecificEvent*> eventQueue;
+    eventQueue.push(event_copy);
+    outstanding_events.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depkey, eventQueue));
+  } else {
+    oe_iter->second.push(event_copy);
+  }
+  
+  return;
+}
+
 /**
 * Updates a task embedded in the log with an arrived event.
 */
-void EDAT_Process_Ledger::addArrivedEventToTask(const taskID_t task_id, const DependencyKey depkey, const SpecificEvent& event) {
+void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
 
   PendingTaskDescriptor * ptd = task_log.at(task_id)->ptd;
-  std::map<DependencyKey, int*>::iterator oDiter = ptd->outstandingDependencies.find(depkey);
-  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator aEiter = ptd->arrivedEvents.find(depkey);
-  SpecificEvent * event_copy = new SpecificEvent(event);
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
+  std::map<DependencyKey, int*>::iterator od_iter = ptd->outstandingDependencies.find(depkey);
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator ae_iter = ptd->arrivedEvents.find(depkey);
 
-  (*(oDiter->second))--;
-  if (*(oDiter->second) <= 0) ptd->outstandingDependencies.erase(oDiter);
+  SpecificEvent* event = oe_iter->second.front();
+  oe_iter->second.pop();
+  if (oe_iter->second.empty()) outstanding_events.erase(oe_iter);
+
+  (*(od_iter->second))--;
+  if (*(od_iter->second) <= 0) ptd->outstandingDependencies.erase(od_iter);
 
   ptd->numArrivedEvents++;
-  if (aEiter == ptd->arrivedEvents.end()) {
+  if (ae_iter == ptd->arrivedEvents.end()) {
     std::queue<SpecificEvent*> eventQueue;
-    eventQueue.push(event_copy);
+    eventQueue.push(event);
     ptd->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depkey, eventQueue));
   } else {
-    aEiter->second.push(event_copy);
+    ae_iter->second.push(event);
   }
 
   return;

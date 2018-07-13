@@ -12,7 +12,8 @@
 
 void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
-void resilienceEventArrivedAtTask(const taskID_t, const DependencyKey, const SpecificEvent&);
+void resilienceAddEvent(SpecificEvent&);
+void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
 void resilienceEventFired(void*, int, int, int, bool, const char *);
 void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
@@ -57,14 +58,16 @@ private:
   Scheduler& scheduler;
   const int RANK;
   std::mutex log_mutex;
+  std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   int commit();
 public:
   EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank)
     : scheduler(ascheduler), RANK(my_rank) {};
   ~EDAT_Process_Ledger();
+  void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
-  void addArrivedEventToTask(const taskID_t, const DependencyKey, const SpecificEvent&);
+  void moveEventToTask(const DependencyKey, const taskID_t);
   void markTaskRunning(const taskID_t);
   void markTaskComplete(const taskID_t);
   void markTaskFailed(const taskID_t);
