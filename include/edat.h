@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define EDAT_NOTYPE 0
+#define EDAT_NONE 0
 #define EDAT_INT 1
 #define EDAT_FLOAT 2
 #define EDAT_DOUBLE 3
