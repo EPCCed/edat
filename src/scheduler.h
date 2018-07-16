@@ -10,6 +10,7 @@
 #include <queue>
 #include <utility>
 #include <set>
+#include <fstream>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,6 +51,8 @@ class SpecificEvent {
     this->persistent= source.persistent;
   }
 
+  SpecificEvent(std::istream&);
+
   char* getData() const { return data; }
   void setData(char* data) { this->data = data; }
   int getSourcePid() const { return source_pid; }
@@ -60,6 +63,7 @@ class SpecificEvent {
   int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
   bool isAContext() { return this->aContext; }
+  void serialize(std::ostream&) const;
 };
 
 struct HeldEvent {

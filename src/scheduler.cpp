@@ -12,10 +12,80 @@
 #include <queue>
 #include <utility>
 #include <set>
+#include <fstream>
 
 #ifndef DO_METRICS
 #define DO_METRICS false
 #endif
+
+SpecificEvent::SpecificEvent(std::istream& file) {
+  const char eod[4] = {'E', 'O', 'D', '\0'};
+  const char eoo[4] = {'E', 'O', 'O', '\0'};
+  char marker_buf[4], byte;
+  char * memblock;
+  int int_data[6];
+  size_t id_length;
+  std::streampos bookmark;
+  bool end_of_string = false;
+  
+  memblock = new char[sizeof(int_data)];
+  file.read(memblock, sizeof(int_data));
+  memcpy(int_data, memblock, sizeof(int_data));
+  delete[] memblock;
+
+  this->source_pid = int_data[0];
+  this->message_length = int_data[1];
+  this->raw_data_length = int_data[2];
+  this->message_type = int_data[3];
+  this->persistent = int_data[4] ? true : false;
+  this->aContext = int_data[5] ? true : false;
+
+  this->data = (char *) malloc(raw_data_length);
+  file.read(data, raw_data_length);
+
+  file.read(marker_buf, 4);
+  if (!strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
+  
+  id_length = 0;
+  bookmark = file.tellg();
+  while (!end_of_string) {
+    file.get(byte);
+    if (byte == '\0') {
+      id_length++;
+      end_of_string = true;
+    } else {
+      id_length++;
+    }
+  }
+  file.seekg(bookmark);
+  memblock = new char[id_length];
+  file.read(memblock, id_length);
+  
+  this->event_id = std::string(memblock);
+  delete[] memblock;
+
+  file.read(marker_buf, 4);
+  if (!strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
+}
+
+void SpecificEvent::serialize(std::ostream& file) const {
+  const char eod[4] = {'E', 'O', 'D', '\0'};
+  const char eoo[4] = {'E', 'O', 'O', '\0'};
+  int int_data[6] = {source_pid, message_length, raw_data_length, message_type, 0, 0};
+  
+  if (persistent) int_data[4] = 1;
+  if (aContext) int_data[5] = 1;
+
+  file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
+  file.write(data, sizeof(data));
+  file.write(eod, sizeof(eod));
+  file.write(event_id.c_str(), event_id.size()+1);
+  file.write(eoo, sizeof(eoo));
+
+  if (file.bad()) raiseError("SpecificEvent write error");
+
+  return;
+}
 
 /**
 * Generates a unique identifier for each task, used by resilience to track
