@@ -18,6 +18,10 @@
 #define DO_METRICS false
 #endif
 
+/**
+* Deserialize constructor. Instantiates a SpecificEvent from an istream (an open binary file)
+* and a streamposition (a valid file pointer to the start of the object).
+*/
 SpecificEvent::SpecificEvent(std::istream& file, std::streampos object_begin) {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
@@ -71,6 +75,12 @@ SpecificEvent::SpecificEvent(std::istream& file, std::streampos object_begin) {
   if (strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
 }
 
+/**
+* Serializes a SpecificEvent to the supplied ostream at the supplied stream position.
+* All the member ints and bools are serialized first as an int[], then the data as 
+* a char[], the end of the data is marked by EOD\0, then the event_id is serialised, and 
+* the end of the SpecificEvent marked by EOO\0
+*/
 void SpecificEvent::serialize(std::ostream& file, std::streampos object_begin) const {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
