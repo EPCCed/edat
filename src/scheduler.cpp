@@ -18,7 +18,7 @@
 #define DO_METRICS false
 #endif
 
-SpecificEvent::SpecificEvent(std::istream& file) {
+SpecificEvent::SpecificEvent(std::istream& file, std::streampos object_begin) {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4], byte;
@@ -27,6 +27,8 @@ SpecificEvent::SpecificEvent(std::istream& file) {
   size_t id_length;
   std::streampos bookmark;
   bool end_of_string = false;
+
+  file.seekg(object_begin);
   
   memblock = new char[sizeof(int_data)];
   file.read(memblock, sizeof(int_data));
@@ -44,7 +46,7 @@ SpecificEvent::SpecificEvent(std::istream& file) {
   file.read(data, raw_data_length);
 
   file.read(marker_buf, 4);
-  if (!strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
+  if (strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
   
   id_length = 0;
   bookmark = file.tellg();
@@ -57,27 +59,30 @@ SpecificEvent::SpecificEvent(std::istream& file) {
       id_length++;
     }
   }
+  
   file.seekg(bookmark);
   memblock = new char[id_length];
   file.read(memblock, id_length);
   
   this->event_id = std::string(memblock);
   delete[] memblock;
-
+  
   file.read(marker_buf, 4);
-  if (!strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
+  if (strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
 }
 
-void SpecificEvent::serialize(std::ostream& file) const {
+void SpecificEvent::serialize(std::ostream& file, std::streampos object_begin) const {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
   int int_data[6] = {source_pid, message_length, raw_data_length, message_type, 0, 0};
-  
+
   if (persistent) int_data[4] = 1;
   if (aContext) int_data[5] = 1;
 
+  file.seekp(object_begin);
+
   file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
-  file.write(data, sizeof(data));
+  file.write(data, raw_data_length);
   file.write(eod, sizeof(eod));
   file.write(event_id.c_str(), event_id.size()+1);
   file.write(eoo, sizeof(eoo));

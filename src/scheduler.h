@@ -51,7 +51,7 @@ class SpecificEvent {
     this->persistent= source.persistent;
   }
 
-  SpecificEvent(std::istream&);
+  SpecificEvent(std::istream&, std::streampos);
 
   char* getData() const { return data; }
   void setData(char* data) { this->data = data; }
@@ -63,7 +63,7 @@ class SpecificEvent {
   int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
   bool isAContext() { return this->aContext; }
-  void serialize(std::ostream&) const;
+  void serialize(std::ostream&, std::streampos) const;
 };
 
 struct HeldEvent {
