@@ -22,7 +22,7 @@
 * Deserialize constructor. Instantiates a SpecificEvent from an istream (an open binary file)
 * and a streamposition (a valid file pointer to the start of the object).
 */
-SpecificEvent::SpecificEvent(std::istream& file, std::streampos object_begin) {
+SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_begin) {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4], byte;
@@ -81,7 +81,7 @@ SpecificEvent::SpecificEvent(std::istream& file, std::streampos object_begin) {
 * a char[], the end of the data is marked by EOD\0, then the event_id is serialised, and 
 * the end of the SpecificEvent marked by EOO\0
 */
-void SpecificEvent::serialize(std::ostream& file, std::streampos object_begin) const {
+void SpecificEvent::serialize(std::ostream& file, const std::streampos object_begin) const {
   const char eod[4] = {'E', 'O', 'D', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
   int int_data[6] = {source_pid, message_length, raw_data_length, message_type, 0, 0};

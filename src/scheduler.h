@@ -4,6 +4,7 @@
 #include "edat.h"
 #include "threadpool.h"
 #include "configuration.h"
+#include "misc.h"
 #include <map>
 #include <string>
 #include <mutex>
@@ -51,7 +52,7 @@ class SpecificEvent {
     this->persistent= source.persistent;
   }
 
-  SpecificEvent(std::istream&, std::streampos);
+  SpecificEvent(std::istream&, const std::streampos);
 
   char* getData() const { return data; }
   void setData(char* data) { this->data = data; }
@@ -63,7 +64,7 @@ class SpecificEvent {
   int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
   bool isAContext() { return this->aContext; }
-  void serialize(std::ostream&, std::streampos) const;
+  void serialize(std::ostream&, const std::streampos) const;
 };
 
 struct HeldEvent {
@@ -81,6 +82,44 @@ public:
     this->i = i;
   }
 
+  DependencyKey(std::istream& file, const std::streampos object_begin) {
+    const char eoo[4] = {'E', 'O', 'O', '\0'};
+    char * memblock;
+    int str_len;
+    char marker_buf[4], byte;
+    bool end_of_string;
+    std::streampos bookmark;
+
+    file.seekg(object_begin);
+    
+    memblock = new char[sizeof(int)];
+    file.read(memblock, sizeof(int));
+    this->i = *memblock;
+    delete[] memblock;
+
+    bookmark = file.tellg();
+    str_len = 0;
+    end_of_string = false;
+    while(!end_of_string) {
+      file.get(byte);
+      if (byte == '\0') {
+        str_len++;
+        end_of_string = true;
+      } else {
+        str_len++;
+      }
+    }
+
+    file.seekg(bookmark);
+    memblock = new char[str_len];
+    file.read(memblock, str_len);
+    this->s = std::string(memblock);
+    delete[] memblock;
+
+    file.read(marker_buf, 4);
+    if (strcmp(marker_buf, eoo)) raiseError("DependencyKey deserialization error, EOO not found");
+  }
+
   bool operator<(const DependencyKey& k) const {
     int s_cmp = this->s.compare(k.s);
     if(s_cmp == 0) {
@@ -93,6 +132,20 @@ public:
   void display() {
     printf("Key: %s from %d\n", s.c_str(), i);
   }
+
+  void serialize(std::ostream& file, const std::streampos object_begin) const {
+    // serialization schema:
+    // int i, string s (as a char[]), EOO\0
+    const char eoo[4] = {'E', 'O', 'O', '\0'};
+    
+    file.seekp(object_begin);
+    file.write(reinterpret_cast<const char *>(&i), sizeof(i));
+    file.write(s.c_str(), s.size()+1);
+    file.write(eoo, sizeof(eoo));
+
+    return;
+  }
+    
 };
 
 enum TaskDescriptorType { PENDING, PAUSED, ACTIVE };
