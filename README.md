@@ -4,6 +4,8 @@ This library provides support for Event Driven Asychronous Tasks, task based pro
 
 Please note that this is code is of a research nature and primarily of use to explore the notion of task based programming over distributed memory architectures.
 
+The <a href="https://github.com/EPCCed/edat/tree/master/docs">docs folder</a> contains documentation and the <a href="https://github.com/EPCCed/edat/tree/master/examples">examples folder</a> a number of examples. We suggest starting with the <a href="https://github.com/EPCCed/edat/blob/master/docs/getting_started.md">getting started</a> document which links to all other documentation.
+
 ## Installation
 
 EDAT requires a C++11 compiler (such as GCC) and MPI installation (such as MPICH or OpenMPI.) Once you have downloaded the code, ensure you are in the top level directory and issue *make*. This will build the code and results in both statically and dynamically linkable libraries in this same directory (*libedat.so* and *libedat.a*.) Due to the research nature of the code we don't currently have an install option, but you can copy these to your */usr/lib* directory and *include/edat.h* to */usr/include* (or whereever is appropriate on your system.)
