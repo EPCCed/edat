@@ -16,8 +16,9 @@ class ThreadPackage {
 public:
   ThreadPackage(std::thread * tp) : thread(tp), m(new std::mutex()), cv(new std::condition_variable()), completed(false), abort_thread(false) { }
   ThreadPackage(std::thread::id aId) : thread(NULL), threadId(aId), m(new std::mutex()), cv(new std::condition_variable()), completed(false), abort_thread(false) { }
-  ThreadPackage(std::thread*, int);
+  ThreadPackage() : thread(NULL), m(new std::mutex()), cv(new std::condition_variable()), completed(false), abort_thread(false) { }
 
+  void attachThread(std::thread*, int);
   bool doesMatch(std::thread::id);
   void pause();
   void resume();

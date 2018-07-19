@@ -51,7 +51,8 @@ ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
       // If the main thread is a worker then link the active thread to this
       workers[i].activeThread=new ThreadPackage(std::this_thread::get_id());
     } else {
-      workers[i].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, i), workers[i].core_id);
+      workers[i].activeThread=new ThreadPackage();
+      workers[i].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, i), workers[i].core_id);
     }
   }
 
@@ -126,7 +127,8 @@ void ThreadPool::pauseThread(PausedTaskDescriptor * pausedTaskDescriptor, std::u
 
     if (workers[threadIndex].idleThreads.empty()) {
       // If there are no idle threads then create a new one to be the new active thread
-      workers[threadIndex].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, threadIndex), workers[threadIndex].core_id);
+      workers[threadIndex].activeThread=new ThreadPackage();
+      workers[threadIndex].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, threadIndex), workers[threadIndex].core_id);
     } else {
       // If there is an idle thread then we are going to reactivate it
       ThreadPackage * reactivated=workers[threadIndex].idleThreads.front();
@@ -254,7 +256,8 @@ void ThreadPool::notifyMainThreadIsSleeping() {
     std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
     threadBusy[0] = false;
     // Creates a new active thread so that we can now use the worker to run tasks
-    workers[0].activeThread=new ThreadPackage(new std::thread(&ThreadPool::threadEntryProcedure, this, 0), workers[0].core_id);
+    workers[0].activeThread=new ThreadPackage();
+    workers[0].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, 0), workers[0].core_id);
   }
   if (number_of_threads == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
 }
