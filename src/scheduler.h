@@ -91,7 +91,7 @@ public:
     std::streampos bookmark;
 
     file.seekg(object_begin);
-    
+
     memblock = new char[sizeof(int)];
     file.read(memblock, sizeof(int));
     this->i = *memblock;
@@ -137,7 +137,7 @@ public:
     // serialization schema:
     // int i, string s (as a char[]), EOO\0
     const char eoo[4] = {'E', 'O', 'O', '\0'};
-    
+
     file.seekp(object_begin);
     file.write(reinterpret_cast<const char *>(&i), sizeof(i));
     file.write(s.c_str(), s.size()+1);
@@ -145,7 +145,7 @@ public:
 
     return;
   }
-    
+
 };
 
 enum TaskDescriptorType { PENDING, PAUSED, ACTIVE };
@@ -156,7 +156,7 @@ struct TaskDescriptor {
   std::vector<DependencyKey> taskDependencyOrder;
   int numArrivedEvents;
   taskID_t task_id;
-  TaskDescriptor(void) { generateTaskID(); }
+  TaskDescriptor() { generateTaskID(); }
   void generateTaskID(void);
   virtual TaskDescriptorType getDescriptorType() = 0;
   virtual ~TaskDescriptor() = default;
@@ -165,9 +165,13 @@ struct TaskDescriptor {
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
   bool freeData, persistent, resilient;
+  int func_id = -1;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
+  PendingTaskDescriptor() = default;
+  PendingTaskDescriptor(std::istream&, const std::streampos);
   void deepCopy(PendingTaskDescriptor&);
+  void serialize(std::ostream&, const std::streampos);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
   virtual ~PendingTaskDescriptor() = default;
 };
@@ -178,6 +182,8 @@ struct ActiveTaskDescriptor : PendingTaskDescriptor {
   virtual ~ActiveTaskDescriptor();
   virtual TaskDescriptorType getDescriptorType() {return ACTIVE;}
   PendingTaskDescriptor* generatePendingTask();
+private:
+  void serialize(std::ostream&, const std::streampos) const { return; };
 };
 
 struct PausedTaskDescriptor : TaskDescriptor {

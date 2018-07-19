@@ -33,7 +33,7 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   bool end_of_string = false;
 
   file.seekg(object_begin);
-  
+
   memblock = new char[sizeof(int_data)];
   file.read(memblock, sizeof(int_data));
   memcpy(int_data, memblock, sizeof(int_data));
@@ -51,7 +51,7 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
 
   file.read(marker_buf, 4);
   if (strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
-  
+
   id_length = 0;
   bookmark = file.tellg();
   while (!end_of_string) {
@@ -63,22 +63,22 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
       id_length++;
     }
   }
-  
+
   file.seekg(bookmark);
   memblock = new char[id_length];
   file.read(memblock, id_length);
-  
+
   this->event_id = std::string(memblock);
   delete[] memblock;
-  
+
   file.read(marker_buf, 4);
   if (strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
 }
 
 /**
 * Serializes a SpecificEvent to the supplied ostream at the supplied stream position.
-* All the member ints and bools are serialized first as an int[], then the data as 
-* a char[], the end of the data is marked by EOD\0, then the event_id is serialised, and 
+* All the member ints and bools are serialized first as an int[], then the data as
+* a char[], the end of the data is marked by EOD\0, then the event_id is serialised, and
 * the end of the SpecificEvent marked by EOO\0
 */
 void SpecificEvent::serialize(std::ostream& file, const std::streampos object_begin) const {
@@ -115,6 +115,133 @@ void TaskDescriptor::generateTaskID(void) {
   task_id = new_task_id++;
 
   return;
+}
+
+PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::streampos object_begin) {
+  char eom[4] = {'E', 'O', 'M', '\0'};
+  char eoq[4] = {'E', 'O', 'Q', '\0'};
+  char eov[4] = {'E', 'O', 'V', '\0'};
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+  char marker_buf[4], byte;
+  char * memblock;
+  int int_data[5], od_int;
+  size_t task_name_length;
+  std::streampos bookmark;
+  bool end_of_string, found_eom, found_eoq, found_eov;
+
+  file.seekg(object_begin);
+
+  memblock = new char[sizeof(taskID_t)];
+  file.read(memblock, sizeof(taskID_t));
+  this->task_id = *(reinterpret_cast<taskID_t*>(memblock));
+  delete[] memblock;
+
+  memblock = new char[sizeof(int_data)];
+  file.read(memblock, sizeof(int_data));
+  memcpy(int_data, memblock, sizeof(int_data));
+  delete[] memblock;
+
+  this->func_id = int_data[0];
+  this->numArrivedEvents = int_data[1];
+  if(int_data[2]) this->freeData = true;
+  if(int_data[3]) this->persistent = true;
+  if(int_data[4]) this->resilient = true;
+
+  task_name_length = 0;
+  bookmark = file.tellg();
+  end_of_string = false;
+  while(!end_of_string) {
+    file.get(byte);
+    if(byte == '\0') {
+      task_name_length++;
+      end_of_string = true;
+    } else {
+      task_name_length++;
+    }
+  }
+
+  file.seekg(bookmark);
+  memblock = new char[task_name_length];
+  file.read(memblock, task_name_length);
+  this->task_name = std::string(memblock);
+  delete[] memblock;
+
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(!strcmp(marker_buf, eom)) {
+      found_eom = true;
+    } else {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+
+      memblock = new char[sizeof(int)];
+      file.read(memblock, sizeof(int));
+      od_int = *(reinterpret_cast<int *>(memblock));
+      delete[] memblock;
+
+      this->outstandingDependencies.emplace(depkey, new int(od_int));
+    }
+  }
+
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(!strcmp(marker_buf, eom)) {
+      found_eom = true;
+    } else {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+
+      std::queue<SpecificEvent*> event_queue;
+      found_eoq = false;
+      while(!found_eoq) {
+        bookmark = file.tellg();
+        file.read(marker_buf, sizeof(marker_buf));
+        if(!strcmp(marker_buf, eoq)) {
+          found_eoq = true;
+        } else {
+          SpecificEvent * spec_evt = new SpecificEvent(file, bookmark);
+          event_queue.push(spec_evt);
+        }
+      }
+
+      this->arrivedEvents.emplace(depkey, event_queue);
+    }
+  }
+
+  found_eov = false;
+  while(!found_eov) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(!strcmp(marker_buf, eov)) {
+      found_eov = true;
+    } else {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+      this->taskDependencyOrder.push_back(depkey);
+    }
+  }
+
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(!strcmp(marker_buf, eom)) {
+      found_eom = true;
+    } else {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+
+      memblock = new char[sizeof(int)];
+      file.read(memblock, sizeof(int));
+      od_int = *(reinterpret_cast<int *>(memblock));
+      delete[] memblock;
+
+      this->originalDependencies.emplace(depkey, new int(od_int));
+    }
+  }
+
+  file.read(marker_buf, sizeof(marker_buf));
+  if(strcmp(marker_buf, eoo)) raiseError("PendingTaskDescriptor deserialization error, EOO not found");
 }
 
 /**
@@ -170,6 +297,79 @@ void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
   persistent = src.persistent;
   task_name = src.task_name;
   task_fn = src.task_fn;
+}
+
+void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos object_begin) {
+  // serialization schema:
+  // taskID_t task_id, int[5] {func_id, numArrivedEvents, freeData, persistent,
+  // resilient}, char[] task_name : \0,
+  // map<DependencyKey, int> outstandingDependencies : EOM,
+  // map<DependencyKey, queue<SpecificEvent> : EOQ> arrivedEvents : EOM,
+  // vector<DependencyKey> taskDependencyOrder : EOV,
+  // map<DependencyKey, int> originalDependencies : EOM, EOO
+  char eom[4] = {'E', 'O', 'M', '\0'};
+  char eoq[4] = {'E', 'O', 'Q', '\0'};
+  char eov[4] = {'E', 'O', 'V', '\0'};
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+
+  std::map<DependencyKey, int*>::const_iterator od_iter;
+  std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator ae_iter;
+  std::vector<DependencyKey>::const_iterator tdo_iter;
+  std::streampos bookmark;
+  std::queue<SpecificEvent*> temp_queue;
+  SpecificEvent * spec_evt;
+
+  int int_data[5] = {func_id, numArrivedEvents, 0, 0, 0};
+  if(freeData) int_data[2] = 1;
+  if(persistent) int_data[3] = 1;
+  if(resilient) int_data[4] = 1;
+
+  file.seekp(object_begin);
+  file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
+  file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
+  file.write(task_name.c_str(), task_name.size()+1);
+
+  for (od_iter = outstandingDependencies.begin(); od_iter != outstandingDependencies.end(); ++od_iter) {
+    bookmark = file.tellp();
+    od_iter->first.serialize(file, bookmark);
+    file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
+  }
+  file.write(eom, sizeof(eom));
+
+  for (ae_iter = arrivedEvents.begin(); ae_iter != arrivedEvents.end(); ++ae_iter) {
+    bookmark = file.tellp();
+    ae_iter->first.serialize(file, bookmark);
+    while (!ae_iter->second.empty()) {
+      bookmark = file.tellp();
+      spec_evt = ae_iter->second.front();
+      ae_iter->second.pop();
+      temp_queue.push(spec_evt);
+      spec_evt->serialize(file, bookmark);
+    }
+    file.write(eoq, sizeof(eoq));
+    while (!temp_queue.empty()) {
+      ae_iter->second.push(temp_queue.front());
+      temp_queue.pop();
+    }
+  }
+  file.write(eom, sizeof(eom));
+
+  for(tdo_iter = taskDependencyOrder.begin(); tdo_iter != taskDependencyOrder.end(); ++tdo_iter) {
+    bookmark = file.tellp();
+    tdo_iter->serialize(file, bookmark);
+  }
+  file.write(eov, sizeof(eov));
+
+  for(od_iter = originalDependencies.begin(); od_iter != originalDependencies.end(); ++od_iter) {
+    bookmark = file.tellp();
+    od_iter->first.serialize(file, bookmark);
+    file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
+  }
+  file.write(eom, sizeof(eom));
+
+  file.write(eoo, sizeof(eoo));
+
+  return;
 }
 
 /**
