@@ -20,9 +20,3 @@ A process can call _edatGetRank_ to retrieve its rank, the API call is `int edat
 
 # Getting the total number of processes
 A process can call _edatGetNumRanks_ to retrieve the total number of processes executing, the API call is `int edatGetNumRanks(void)`.
-
-# Getting the local id of a worker thread
-A task executing on a worker thread can obtain the local id of that worker thread via the _edatGetThread_ function, the API call is `int edatGetThread(void)`
-
-# Getting the total number of local worker threads
-A process can obtain the total number of available (idle or busy) local worker threads via the _edatGetNumThreads_ function, the API call is `int edatGetNumThreads(void)`.

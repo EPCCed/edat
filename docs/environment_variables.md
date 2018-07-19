@@ -6,17 +6,17 @@ A number of environment variables can be set which will provide specific configu
 export VARIABLE_NAME=VALUE
 ```
 
-### EDAT_NUM_THREADS
+### EDAT_NUM_WORKERS
 
 **Value type:** An integer
 
-**Description:** This sets the number of worker threads that EDAT will map tasks onto. By default the main program process is not counted in this number and hence an extra thread. The process "thread" will sleep when the *finalise* function is called. So effectively whilst the main program process is active you will have *EDAT_NUM_THREADS + 1* active threads which will then drop down to *EDAT_NUM_THREADS* once this has called *finalise*. 
+**Description:** This sets the number of workers that EDAT will map tasks onto. By default the main program process is not counted in this number and hence an extra thread. The process "thread" will sleep when the *finalise* function is called. So effectively whilst the main program process is active you will have *EDAT_NUM_WORKERS + 1* active workers which will then drop down to *EDAT_NUM_WORKERS* once this has called *finalise*. 
 
 ```
-export EDAT_NUM_THREADS=12
+export EDAT_NUM_WORKERS=12
 ```
 
-Will create 12 worker threads which can execute tasks. Any tasks over and above this are then queued up until an idle thread becomes available.
+Will create 12 workers which can execute tasks. Any tasks over and above this are then queued up until an idle worker becomes available.
 
 **Default:** Number of cores reported by C++ hardware_concurrency call
 
@@ -32,26 +32,26 @@ export EDAT_PROGRESS_THREAD=false
 
 **Default:** true
 
-### EDAT_REPORT_THREAD_MAPPING
+### EDAT_REPORT_WORKER_MAPPING
 
 **Value type:** A boolean
 
-**Description:** Determines whether each worker thread will display its corresponding (local) core id at start up once thread to core mapping has been performed. This is local as it is reported within the context of a single node rather than across the system as a whole.
+**Description:** Determines whether each worker will display its corresponding (local) core id at start up once worker to core mapping has been performed. This is local as it is reported within the context of a single node rather than across the system as a whole.
 
 ```
-export EDAT_REPORT_THREAD_MAPPING=true
+export EDAT_REPORT_WORKER_MAPPING=true
 ```
 
 **Default:** false
 
-### EDAT_THREAD_MAPPING
+### EDAT_WORKER_MAPPING
 
 **Value type:** A string
 
-**Description:** Sets the mapping (affinity) of worker threads to cores in the node. There are a number of possible configuration options, *auto* will allow the OS to do what it thinks is best, *linear* will go cyclically 0 to the number of cores and then wrap around if there are more worker threads than cores, *linearfromcore* is similar to *linear* but will start from the core ID +1 of the main process. This last option is designed when the processes are placed explicitly on the first core of a region (for instance one per NUMA region) and the rest of the cores in that region are to be workers. Note though that it does not respect this region if there are more threads than cores in the region and it will progress through into other regions and maybe even cycle through if this is the case.
+**Description:** Sets the mapping (affinity) of workers to cores in the node. There are a number of possible configuration options, *auto* will allow the OS to do what it thinks is best, *linear* will go cyclically 0 to the number of cores and then wrap around if there are more workers than cores, *linearfromcore* is similar to *linear* but will start from the core ID +1 of the main process. This last option is designed when the processes are placed explicitly on the first core of a region (for instance one per NUMA region) and the rest of the cores in that region are to be workers. Note though that it does not respect this region if there are more workers than cores in the region and it will progress through into other regions and maybe even cycle through if this is the case.
 
 ```
-export EDAT_THREAD_MAPPING=linear
+export EDAT_WORKER_MAPPING=linear
 ```
 
 **Default:** auto
