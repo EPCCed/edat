@@ -100,12 +100,16 @@ int edatGetNumRanks(void) {
   return messaging->getNumRanks();
 }
 
-int edatGetNumThreads(void) {
-  return threadPool->getNumberOfThreads();
+int edatGetNumWorkers(void) {
+  return threadPool->getNumberOfWorkers();
 }
 
-int edatGetThread(void) {
-  return threadPool->getCurrentThreadId();
+int edatGetWorker(void) {
+  return threadPool->getCurrentWorkerId();
+}
+
+int edatGetNumActiveWorkers(void) {
+  return threadPool->getNumberActiveWorkers();
 }
 
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {

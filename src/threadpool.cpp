@@ -16,14 +16,14 @@
 #define DO_METRICS false
 #endif
 
-#define THREAD_MAPPING_AUTO 0
-#define THREAD_MAPPING_LINEAR 1
-#define THREAD_MAPPING_LINEARFROMCORE 1
+#define WORKER_MAPPING_AUTO 0
+#define WORKER_MAPPING_LINEAR 1
+#define WORKER_MAPPING_LINEARFROMCORE 1
 
 #define NUMBER_POLL_THREAD_ITERATIONS_IGNORE_THREADBUSY 10
 
-static std::map<const char*, int> thread_mapping_lookup={{"auto", THREAD_MAPPING_AUTO},
-  {"linear", THREAD_MAPPING_LINEAR}, {"linearfromcore", THREAD_MAPPING_LINEARFROMCORE}} ;
+static std::map<const char*, int> thread_mapping_lookup={{"auto", WORKER_MAPPING_AUTO},
+  {"linear", WORKER_MAPPING_LINEAR}, {"linearfromcore", WORKER_MAPPING_LINEARFROMCORE}} ;
 
 /**
 * Initialises the thread pool and sets the number of threads to be a value found by configuration or an environment variable.
@@ -32,20 +32,20 @@ ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
   progressPollIdleThread=false;
   restartAnotherPoller=false;
   pollingProgressThread=-1;
-  number_of_threads=configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
+  number_of_workers=configuration.get("EDAT_NUM_WORKERS", std::thread::hardware_concurrency());
   main_thread_is_worker=configuration.get("EDAT_MAIN_THREAD_WORKER", false);
 
-  threadBusy = new bool[number_of_threads];
+  threadBusy = new bool[number_of_workers];
   next_suggested_idle_thread = 0;
   int i;
-  for (i = 0; i < number_of_threads; i++) {
+  for (i = 0; i < number_of_workers; i++) {
     threadBusy[i] = (i==0 && main_thread_is_worker);
   }
 
-  workers=new WorkerThread[number_of_threads];
+  workers=new WorkerThread[number_of_workers];
   mapThreadsToCores(main_thread_is_worker);
 
-  for (int i=0;i<number_of_threads;i++) {
+  for (int i=0;i<number_of_workers;i++) {
     new (&workers[i]) WorkerThread();
     if (i==0 && main_thread_is_worker) {
       // If the main thread is a worker then link the active thread to this
@@ -59,10 +59,10 @@ ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
   // If the main thread is not a worker then still track it (needed for pausing and resuming the main thread)
   if (!main_thread_is_worker) mainThreadPackage=new ThreadPackage(std::this_thread::get_id());
 
-  if (configuration.get("EDAT_REPORT_THREAD_MAPPING", false)) {
+  if (configuration.get("EDAT_REPORT_WORKER_MAPPING", false)) {
     std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
     // If we want to report the mapping of threads to cores then instruct all workers (apart from main worker if main maps to worker 0) to report this
-    for (int i=0;i<number_of_threads; i++) {
+    for (int i=0;i<number_of_workers; i++) {
       if (!threadBusy[i]) {
         threadBusy[i]=true;
         workers[i].threadCommand.setCallFunction(threadReportCoreIdFunction);
@@ -79,17 +79,17 @@ ThreadPool::ThreadPool(Configuration & aconfig) : configuration(aconfig) {
 * (or zero) if the main thread is a worker. Doesn't do the physical mapping (that is done in the thread package), but instead sets the core_id of the worker
 */
 void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
-  int thread_to_core_mapping=configuration.get("EDAT_THREAD_MAPPING", thread_mapping_lookup, THREAD_MAPPING_AUTO);
+  int thread_to_core_mapping=configuration.get("EDAT_WORKER_MAPPING", thread_mapping_lookup, WORKER_MAPPING_AUTO);
 
-  if (thread_to_core_mapping != THREAD_MAPPING_AUTO) {
+  if (thread_to_core_mapping != WORKER_MAPPING_AUTO) {
     int total_num_cores=std::thread::hardware_concurrency();
     int my_core=sched_getcpu();
-    for (int i=0;i<number_of_threads; i++) {
-      if (thread_to_core_mapping==THREAD_MAPPING_LINEAR || thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
+    for (int i=0;i<number_of_workers; i++) {
+      if (thread_to_core_mapping==WORKER_MAPPING_LINEAR || thread_to_core_mapping==WORKER_MAPPING_LINEARFROMCORE) {
         int core_id;
-        if (thread_to_core_mapping==THREAD_MAPPING_LINEAR) {
+        if (thread_to_core_mapping==WORKER_MAPPING_LINEAR) {
           core_id=(i+(main_thread_is_worker ? 0 : 1)) % total_num_cores;
-        } else if (thread_to_core_mapping==THREAD_MAPPING_LINEARFROMCORE) {
+        } else if (thread_to_core_mapping==WORKER_MAPPING_LINEARFROMCORE) {
           core_id=(i+my_core+(main_thread_is_worker ? 0 : 1)) % total_num_cores;
         }
         workers[i].core_id=core_id;
@@ -99,11 +99,23 @@ void ThreadPool::mapThreadsToCores(bool main_thread_is_worker) {
 }
 
 /**
-* Retrieves the ID of the thread which has called this or -1 if it is the master thread
+* Retrieves the ID of the worker which has called this or -1 if it is the master worker
 */
-int ThreadPool::getCurrentThreadId() {
+int ThreadPool::getCurrentWorkerId() {
   std::thread::id this_id = std::this_thread::get_id();
   return findIndexFromThreadId(this_id);
+}
+
+/**
+* Retrieves the number of active workers who are currently processing
+*/
+int ThreadPool::getNumberActiveWorkers() {
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  int numActive=0;
+  for (int i = 0; i < number_of_workers; i++) {
+    if (threadBusy[i]) numActive++;
+  }
+  return numActive;
 }
 
 /**
@@ -213,7 +225,7 @@ void ThreadPool::markThreadResume(PausedTaskDescriptor * pausedTaskDescriptor) {
 * Locates the worker index that is running an active thread with the provided thread Id. Returns -1 if none is found
 */
 int ThreadPool::findIndexFromThreadId(std::thread::id threadIDToFind) {
-  for (int i = 0; i < number_of_threads; i++) {
+  for (int i = 0; i < number_of_workers; i++) {
     if (workers[i].activeThread->doesMatch(threadIDToFind)) return i;
   }
   return -1;
@@ -225,7 +237,7 @@ int ThreadPool::findIndexFromThreadId(std::thread::id threadIDToFind) {
 bool ThreadPool::isThreadPoolFinished() {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int i;
-  for (i = 0; i < number_of_threads; i++) {
+  for (i = 0; i < number_of_workers; i++) {
     if (threadBusy[i]) return false;
     std::unique_lock<std::mutex> pausedLock(workers[i].pausedAndWaitingMutex);
     if (!workers[i].pausedThreads.empty() || !workers[i].waitingThreads.empty()) return false;
@@ -259,7 +271,7 @@ void ThreadPool::notifyMainThreadIsSleeping() {
     workers[0].activeThread=new ThreadPackage();
     workers[0].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, 0), workers[0].core_id);
   }
-  if (number_of_threads == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
+  if (number_of_workers == 1 && progressPollIdleThread) launchThreadToPollForProgressIfPossible();
 }
 
 /**
@@ -330,21 +342,21 @@ int ThreadPool::get_index_of_idle_thread() {
     std::lock_guard<std::mutex> guard(pollingProgressThreadMutex);
     progressThread=pollingProgressThread;
   }
-  for (int i = next_suggested_idle_thread; i < number_of_threads; i++) {
+  for (int i = next_suggested_idle_thread; i < number_of_workers; i++) {
     if (!threadBusy[i]) {
       if (progressPollIdleThread && progressThread==i) {
         // This seems a bit strange but we do it this way to initially ignore the thread that is polling for updates and only use it if no others are free
         pendingProgressThread=true;
       } else {
         next_suggested_idle_thread = i + 1;
-        if (next_suggested_idle_thread >= number_of_threads) next_suggested_idle_thread = 0;
+        if (next_suggested_idle_thread >= number_of_workers) next_suggested_idle_thread = 0;
         return i;
       }
     }
   }
   if (pendingProgressThread) {
     next_suggested_idle_thread = progressThread + 1;
-    if (next_suggested_idle_thread >= number_of_threads) next_suggested_idle_thread = 0;
+    if (next_suggested_idle_thread >= number_of_workers) next_suggested_idle_thread = 0;
     return progressThread;
   }
   next_suggested_idle_thread = 0;
@@ -369,7 +381,7 @@ void ThreadPool::threadReportCoreIdFunction(void * pthreadRawData) {
 * the polling. It might be interupted from this polling at any point, which is fine.
 */
 void ThreadPool::threadEntryProcedure(int myThreadId) {
-  bool should_report_mapping=configuration.get("EDAT_REPORT_THREAD_MAPPING", false);
+  bool should_report_mapping=configuration.get("EDAT_REPORT_WORKER_MAPPING", false);
   #if DO_METRICS
     std::chrono::steady_clock::time_point thread_activated;
   #endif
