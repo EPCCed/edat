@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <queue>
+#include <fstream>
 
 void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
@@ -27,7 +28,9 @@ struct LoggedTask {
   PendingTaskDescriptor * ptd;
   LoggedTask() = default;
   LoggedTask(PendingTaskDescriptor&);
+  LoggedTask(std::istream&, const std::streampos);
   ~LoggedTask();
+  void serialize(std::ostream&, const std::streampos);
 };
 
 class EDAT_Thread_Ledger {

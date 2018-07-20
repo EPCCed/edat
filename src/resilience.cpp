@@ -2,6 +2,7 @@
 #include "messaging.h"
 #include "scheduler.h"
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <mutex>
 #include <map>
@@ -122,6 +123,28 @@ LoggedTask::LoggedTask(PendingTaskDescriptor& src) {
 }
 
 /**
+* Deserialization routine, instatiates a LoggedTask from an open istream and
+* a streampos marking the start of the object
+*/
+LoggedTask::LoggedTask(std::istream& file, const std::streampos object_begin) {
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+  char marker_buf[4];
+  char * memblock;
+
+  file.seekg(object_begin);
+
+  memblock = new char[sizeof(TaskState)];
+  file.read(memblock, sizeof(TaskState));
+  this->state = *(reinterpret_cast<TaskState*>(memblock));
+  delete[] memblock;
+
+  this->ptd = new PendingTaskDescriptor(file, file.tellg());
+
+  file.read(marker_buf, sizeof(marker_buf));
+  if(strcmp(marker_buf, eoo)) raiseError("LoggedTask deserialization error, EOO not found");
+}
+
+/**
 * Deep deletes the PendingTaskContainer held in the LoggedTask.
 */
 LoggedTask::~LoggedTask() {
@@ -142,6 +165,24 @@ LoggedTask::~LoggedTask() {
   }
 
   delete ptd;
+}
+
+/**
+* Serialization routine, leaves put pointer at end of object
+*/
+void LoggedTask::serialize(std::ostream& file, const std::streampos object_begin) {
+  // serialization schema:
+  // TaskState state, PendingTaskDescriptor ptd, EOO
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+
+  file.seekp(object_begin);
+
+  file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
+  ptd->serialize(file, file.tellp());
+
+  file.write(eoo, sizeof(eoo));
+
+  return;
 }
 
 /**
@@ -321,7 +362,7 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 EDAT_Process_Ledger::~EDAT_Process_Ledger() {
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  
+
   while(!outstanding_events.empty()) {
     oe_iter = outstanding_events.begin();
     while(!oe_iter->second.empty()) {
@@ -347,11 +388,15 @@ void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor&
   return;
 }
 
+/**
+* Adds an event which has arrived on-process but not yet been matched with a
+* task to outstanding_events
+*/
 void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEvent& event) {
   std::lock_guard<std::mutex> lock(log_mutex);
-  
+
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
-  SpecificEvent * event_copy = new SpecificEvent(event);  
+  SpecificEvent * event_copy = new SpecificEvent(event);
 
   if (oe_iter == outstanding_events.end()) {
     std::queue<SpecificEvent*> eventQueue;
@@ -360,7 +405,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
   } else {
     oe_iter->second.push(event_copy);
   }
-  
+
   return;
 }
 
