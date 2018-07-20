@@ -3,6 +3,7 @@
 #include <string>
 #include <string.h>
 #include "edat.h"
+#include "edat_debug.h"
 #include "threadpool.h"
 #include "scheduler.h"
 #include "messaging.h"
