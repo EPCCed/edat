@@ -129,7 +129,7 @@ public:
     return s_cmp < 0;
   }
 
-  void display() {
+  void display() const {
     printf("Key: %s from %d\n", s.c_str(), i);
   }
 
