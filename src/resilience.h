@@ -60,13 +60,14 @@ class EDAT_Process_Ledger {
 private:
   Scheduler& scheduler;
   const int RANK;
-  std::mutex log_mutex;
+  std::string fname;
+  std::mutex log_mutex, file_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
-  int commit();
+  void commit();
+  void serialize();
 public:
-  EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank)
-    : scheduler(ascheduler), RANK(my_rank) {};
+  EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
