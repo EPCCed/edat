@@ -207,6 +207,7 @@ bool Scheduler::checkProgressPersistentTasks() {
   bool progress=false;
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (pendingTask->persistent) {
+      std::vector<DependencyKey> dependenciesToRemove;
       for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
         std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(dependency.first);
         if (it != outstandingEvents.end() && !it->second.empty()) {
@@ -233,9 +234,12 @@ bool Scheduler::checkProgressPersistentTasks() {
           }
           (*(dependency.second))--;
           if (*(dependency.second) <= 0) {
-            pendingTask->outstandingDependencies.erase(dependency.first);
+            dependenciesToRemove.push_back(dependency.first);
           }
         }
+      }
+      if (!dependenciesToRemove.empty()) {
+        for (DependencyKey k : dependenciesToRemove) pendingTask->outstandingDependencies.erase(k);
       }
       if (pendingTask->outstandingDependencies.empty()) {
         PendingTaskDescriptor* exec_Task=new PendingTaskDescriptor(*pendingTask);
