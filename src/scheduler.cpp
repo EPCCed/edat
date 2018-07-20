@@ -117,6 +117,11 @@ void TaskDescriptor::generateTaskID(void) {
   return;
 }
 
+/**
+* Deserialize constructor. Instantiates a PendingTaskDescriptor from an istream
+* (an open binary file) and a streamposition (a valid file pointer to the start
+* of the object).
+*/
 PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::streampos object_begin) {
   char eom[4] = {'E', 'O', 'M', '\0'};
   char eoq[4] = {'E', 'O', 'Q', '\0'};
@@ -299,6 +304,10 @@ void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
   task_fn = src.task_fn;
 }
 
+/*
+* Serialization function. Writes PTD to file at given streampos, and leaves put
+* pointer at end of object.
+*/
 void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos object_begin) {
   // serialization schema:
   // taskID_t task_id, int[5] {func_id, numArrivedEvents, freeData, persistent,
@@ -325,10 +334,13 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   if(resilient) int_data[4] = 1;
 
   file.seekp(object_begin);
+
+  // int func_id, numArrivedEvents, freeData, persistent, resilient
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
   file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
   file.write(task_name.c_str(), task_name.size()+1);
 
+  // map<DependencyKey, int> outstandingDependencies
   for (od_iter = outstandingDependencies.begin(); od_iter != outstandingDependencies.end(); ++od_iter) {
     bookmark = file.tellp();
     od_iter->first.serialize(file, bookmark);
@@ -336,6 +348,7 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   }
   file.write(eom, sizeof(eom));
 
+  // map<DependencyKey, queue<SpecificEvent>> arrivedEvents
   for (ae_iter = arrivedEvents.begin(); ae_iter != arrivedEvents.end(); ++ae_iter) {
     bookmark = file.tellp();
     ae_iter->first.serialize(file, bookmark);
@@ -354,12 +367,14 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   }
   file.write(eom, sizeof(eom));
 
+  // vector<DependencyKey> taskDependencyOrder
   for(tdo_iter = taskDependencyOrder.begin(); tdo_iter != taskDependencyOrder.end(); ++tdo_iter) {
     bookmark = file.tellp();
     tdo_iter->serialize(file, bookmark);
   }
   file.write(eov, sizeof(eov));
 
+  // map<DependencyKey, int> originalDependencies
   for(od_iter = originalDependencies.begin(); od_iter != originalDependencies.end(); ++od_iter) {
     bookmark = file.tellp();
     od_iter->first.serialize(file, bookmark);
