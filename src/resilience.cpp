@@ -3,6 +3,8 @@
 #include "scheduler.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <cstdio>
 #include <thread>
 #include <mutex>
 #include <map>
@@ -357,6 +359,16 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 }
 
 /**
+* Constructor, generates file name for serialization.
+*/
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank)
+  : scheduler(ascheduler), RANK(my_rank) {
+    std::stringstream filename;
+    filename << "edat_ledger_" << my_rank;
+    this->fname = filename.str();
+}
+
+/**
 * Includes deep delete of the task_log.
 */
 EDAT_Process_Ledger::~EDAT_Process_Ledger() {
@@ -377,6 +389,58 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
     delete tl_iter->second;
     task_log.erase(tl_iter);
   }
+
+  std::remove(fname.c_str());
+}
+
+void EDAT_Process_Ledger::commit() {
+  serialize();
+  return;
+}
+
+void EDAT_Process_Ledger::serialize() {
+  // serialization schema:
+  // map<DependencyKey,queue<SpecificEvent> : EOQ> : EOM
+  // map<taskID_t, LoggedTask> : EOM
+  // EOO
+  std::lock_guard<std::mutex> lock(file_mutex);
+  char eom[4] = {'E', 'O', 'M', '\0'};
+  char eoq[4] = {'E', 'O', 'M', '\0'};
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+  std::fstream file;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
+  std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+  std::queue<SpecificEvent*> temp_queue;
+  SpecificEvent * spec_event;
+
+  file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
+
+  for (oe_iter = outstanding_events.begin(); oe_iter != outstanding_events.end(); ++oe_iter) {
+    oe_iter->first.serialize(file, file.tellp());
+    while(!oe_iter->second.empty()) {
+      spec_event = oe_iter->second.front();
+      oe_iter->second.pop();
+      spec_event->serialize(file, file.tellp());
+      temp_queue.push(spec_event);
+    }
+    file.write(eoq, sizeof(eoq));
+    while(!temp_queue.empty()) {
+      spec_event = temp_queue.front();
+      temp_queue.pop();
+      oe_iter->second.push(spec_event);
+    }
+  }
+  file.write(eom, sizeof(eom));
+
+  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
+    file.write(reinterpret_cast<const char *>(&(tl_iter->first)), sizeof(taskID_t));
+    tl_iter->second->serialize(file, file.tellp());
+  }
+  file.write(eom, sizeof(eom));
+
+  file.write(eoo, sizeof(eoo));
+
+  file.close();
 }
 
 /**
@@ -385,6 +449,7 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
 void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor& ptd) {
   std::lock_guard<std::mutex> lock(log_mutex);
   task_log.emplace(task_id, new LoggedTask(ptd));
+  commit();
   return;
 }
 
@@ -406,6 +471,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
     oe_iter->second.push(event_copy);
   }
 
+  commit();
   return;
 }
 
@@ -436,23 +502,27 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
     ae_iter->second.push(event);
   }
 
+  commit();
   return;
 }
 
 void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
   task_log.at(task_id)->state = RUNNING;
+  commit();
   return;
 }
 
 void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
   task_log.at(task_id)->state = COMPLETE;
+  commit();
   return;
 }
 
 void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
   task_log.at(task_id)->state = FAILED;
+  commit();
   return;
 }
