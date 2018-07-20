@@ -1,9 +1,15 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* This example illustrates the EDAT_ALL rank modifier, rank 0 will schedule a task (my_task) that depends on an event with id "a" from all ranks. Once the ranks have fired their
+* corresponding events, another task "barrier" is scheduled by all ranks and then all ranks fire an associated event to every rank with the identifier "barrier". This second
+* pattern is an example of a (non-blocking) barrier as the task is eligable for execution on each rank at the same local point in the main function (i.e. after the barrier
+* events have been fired.) Remember the scheduling of tasks and firing of events is non-blocking.
+*/
 
-void my_task(EDAT_Event*, int);
-void barrier_task(EDAT_Event* , int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
+static void barrier_task(EDAT_Event* , int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -20,7 +26,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   printf("[%d] Number of events %d\n", edatGetRank(), num_events);
   int i=0;
   for (i=0;i<num_events;i++) {
@@ -28,6 +34,6 @@ void my_task(EDAT_Event * events, int num_events) {
   }
 }
 
-void barrier_task(EDAT_Event * events, int num_events) {
+static void barrier_task(EDAT_Event * events, int num_events) {
   printf("[%d] Barrier with %d events\n", edatGetRank(), num_events);
 }

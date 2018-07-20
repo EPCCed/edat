@@ -1,9 +1,15 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* This provides a very simple example of scheduling tasks and firing events between them. Initially a task is scheduled on rank 0 with a single dependency from any process with the
+* event identifier "my_task". On rank 1 another task is scheduled, similarly but this time with EID "my_task2". Rank 1 fires an event with a single integer payload data to rank 0
+* which will cause the execution of the scheduled task on rank 0. This task will display a message and fires an event to rank 1 which will make eligable for execution the
+* task scheduled on rank 1. Remember the scheduling of tasks and firing of events is non-blocking.
+*/
 
-void my_task(EDAT_Event*, int);
-void my_task2(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
+static void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -18,7 +24,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
     printf("Hello world from %d with data %d!\n", edatGetRank(), *((int *) events[0].data));
   } else {
@@ -27,6 +33,6 @@ void my_task(EDAT_Event * events, int num_events) {
   edatFireEvent(NULL, EDAT_NOTYPE, 0, 1, "my_task2");
 }
 
-void my_task2(EDAT_Event * events, int num_events) {
+static void my_task2(EDAT_Event * events, int num_events) {
   printf("Task two running on %d\n", edatGetRank());
 }

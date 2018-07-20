@@ -1,8 +1,13 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* A simple example where all ranks schedule a task that will be eligable for execution when they receive an event from any rank with the identifier "my_task". Then rank 0
+* fires an event with a single integer payload data to all ranks which will cause the scheduled task on each rank to be eligable for running and mapped to
+* a worker for execution.
+*/
 
-void my_task(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -15,7 +20,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
     printf("[%d] Hello world %d from %d!\n", edatGetRank(), *((int *) events[0].data), events[0].metadata.source);
   } else {

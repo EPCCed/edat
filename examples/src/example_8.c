@@ -1,8 +1,13 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* A simple example where rank 0 depends on multiple identical tasks (the same source and event identifier.) These are fired, whilst each has the same signature
+* (source and identifier), as the task effectively consumes events then this will work fine and each is considered a separate event (i.e. there are 3 events
+* provided to the task when it runs.)
+*/
 
-void my_task(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -16,6 +21,6 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
 	printf("Task fired!\n");
 }

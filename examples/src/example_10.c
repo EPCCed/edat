@@ -1,8 +1,13 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* This example illustrates persistent events, where task "my_task" on rank 0 depends on two events before it can be executed by a worker. Then "persistent-evt" event
+* is fired from rank 0 to itself, but crucially this is a persistent event and will fire time and time again (so that dependency for "my_task" is always met.)
+* Rank 1 will fire two events, both of identifier "my_task" to rank 0 and this effectively causes "my_task" to run twice (as "persistent-evt" is a persistent event.)
+*/
 
-void my_task(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -19,7 +24,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   if (num_events != 2) {
     printf("[%d] Should have 2 events but has %d", edatGetRank(), num_events);
   }
