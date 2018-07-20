@@ -314,8 +314,8 @@ void ThreadPool::launchThreadToPollForProgressIfPossible() {
 */
 void ThreadPool::startThread(void (*callFunction)(void *), void *args) {
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
-  int idleThreadId = get_index_of_idle_thread();
-  if (idleThreadId != -1) {
+  int idleThreadId = threadQueue.empty() ? get_index_of_idle_thread() : -2; // Only do look up if the queue is empty (i.e. we care if there is a free thread)
+  if (threadQueue.empty() && idleThreadId != -1) {
     threadBusy[idleThreadId] = true;
     thread_start_lock.unlock();
     workers[idleThreadId].threadCommand.setCallFunction(callFunction);
