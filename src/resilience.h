@@ -67,6 +67,7 @@ private:
   std::map<taskID_t,LoggedTask*> task_log;
   void commit();
   void commit(const TaskState&, const std::streampos);
+  void commit(const DependencyKey&, const SpecificEvent&);
   void serialize();
 public:
   EDAT_Process_Ledger(Scheduler&, const int);

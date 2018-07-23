@@ -371,18 +371,17 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_ran
 }
 
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank) : scheduler(ascheduler), RANK(my_rank) {
-  char eom[4] = {'E', 'O', 'M', '\0'};
-  char eoq[4] = {'E', 'O', 'Q', '\0'};
-  char eoo[4] = {'E', 'O', 'O', '\0'};
+  const char eom[4] = {'E', 'O', 'M', '\0'};
+  const char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4];
   char * memblock;
-  bool found_eom, found_eoq;
+  bool found_eom;
   std::stringstream filename, loadname;
   std::string dead_ledger, old_fname;
   std::fstream file;
   std::streampos bookmark;
-  std::queue<SpecificEvent*> event_queue;
   taskID_t task_id;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
 
   // set fname using recovery rank ID
   filename << "edat_ledger_" << my_rank;
@@ -400,32 +399,6 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_ran
   file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
   file.seekg(std::ios::beg);
 
-  // check for outstanding_events
-  found_eom = false;
-  while(!found_eom) {
-    bookmark = file.tellg();
-    file.read(marker_buf, sizeof(marker_buf));
-    if(strcmp(marker_buf, eom)) {
-      DependencyKey depkey = DependencyKey(file, bookmark);
-      outstanding_events.emplace(depkey, event_queue);
-
-      found_eoq = false;
-      while(!found_eoq) {
-        bookmark = file.tellg();
-        file.read(marker_buf, sizeof(marker_buf));
-        if (strcmp(marker_buf, eoq)) {
-          SpecificEvent * spec_evt = new SpecificEvent(file, bookmark);
-          outstanding_events.at(depkey).push(spec_evt);
-        } else {
-          found_eoq = true;
-        }
-      }
-
-    } else {
-      found_eom = true;
-    }
-  }
-
   // check for task_log
   found_eom = false;
   while(!found_eom) {
@@ -441,6 +414,29 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_ran
       LoggedTask * lgt = new LoggedTask(file, file.tellg());
 
       task_log.emplace(task_id, lgt);
+    } else {
+      found_eom = true;
+    }
+  }
+
+  // check for outstanding_events
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if (strcmp(marker_buf, eom)) {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+      SpecificEvent * spec_evt = new SpecificEvent(file, file.tellg());
+
+      oe_iter = outstanding_events.find(depkey);
+      if (oe_iter == outstanding_events.end()) {
+        std::queue<SpecificEvent*> event_queue;
+        event_queue.push(spec_evt);
+        outstanding_events.emplace(depkey, event_queue);
+      } else {
+        oe_iter->second.push(spec_evt);
+      }
+
     } else {
       found_eom = true;
     }
@@ -490,15 +486,43 @@ void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos fi
   return;
 }
 
+void EDAT_Process_Ledger::commit(const DependencyKey& depkey, const SpecificEvent& spec_evt) {
+  std::fstream file;
+  const char eom[4] = {'E', 'O', 'M', '\0'};
+  const char eoo[4] = {'E', 'O', 'O', '\0'};
+  char marker_buf[4];
+  std::streampos bookmark;
+
+  std::lock_guard<std::mutex> lock(file_mutex);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.seekp(-(2*sizeof(marker_buf)), std::ios::end);
+  bookmark = file.tellp();
+
+  // just double check everything at the end of the file is as it should be...
+  file.read(marker_buf, sizeof(marker_buf));
+  if (strcmp(marker_buf, eom)) raiseError("Error in addEvent commit, EOM not found");
+  file.read(marker_buf, sizeof(marker_buf));
+  if (strcmp(marker_buf, eoo)) raiseError("Error in addEvent commit, EOO not found");
+
+  // write dependency key, then event
+  depkey.serialize(file, bookmark);
+  spec_evt.serialize(file, file.tellp());
+
+  // write markers
+  file.write(eom, sizeof(eom));
+  file.write(eoo, sizeof(eoo));
+
+  return;
+}
+
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
-  // map<DependencyKey,queue<SpecificEvent> : EOQ> : EOM
   // map<taskID_t, LoggedTask> : EOM
+  // map<DependencyKey,SpecificEvent> : EOM
   // EOO
   std::lock_guard<std::mutex> lock(file_mutex);
-  char eom[4] = {'E', 'O', 'M', '\0'};
-  char eoq[4] = {'E', 'O', 'Q', '\0'};
-  char eoo[4] = {'E', 'O', 'O', '\0'};
+  const char eom[4] = {'E', 'O', 'M', '\0'};
+  const char eoo[4] = {'E', 'O', 'O', '\0'};
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
@@ -507,26 +531,26 @@ void EDAT_Process_Ledger::serialize() {
 
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
 
+  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
+    file.write(reinterpret_cast<const char *>(&(tl_iter->first)), sizeof(taskID_t));
+    tl_iter->second->serialize(file, file.tellp());
+  }
+  file.write(eom, sizeof(eom));
+
   for (oe_iter = outstanding_events.begin(); oe_iter != outstanding_events.end(); ++oe_iter) {
-    oe_iter->first.serialize(file, file.tellp());
     while(!oe_iter->second.empty()) {
+      oe_iter->first.serialize(file, file.tellp());
       spec_event = oe_iter->second.front();
       oe_iter->second.pop();
       spec_event->serialize(file, file.tellp());
       temp_queue.push(spec_event);
     }
-    file.write(eoq, sizeof(eoq));
+
     while(!temp_queue.empty()) {
       spec_event = temp_queue.front();
       temp_queue.pop();
       oe_iter->second.push(spec_event);
     }
-  }
-  file.write(eom, sizeof(eom));
-
-  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
-    file.write(reinterpret_cast<const char *>(&(tl_iter->first)), sizeof(taskID_t));
-    tl_iter->second->serialize(file, file.tellp());
   }
   file.write(eom, sizeof(eom));
 
@@ -563,7 +587,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
     oe_iter->second.push(event_copy);
   }
 
-  commit();
+  commit(depkey, event);
   return;
 }
 
