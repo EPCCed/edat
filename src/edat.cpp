@@ -229,6 +229,16 @@ EDAT_Event* edatWait(int num_dependencies, ...) {
   return scheduler->pauseTask(dependencies);
 }
 
+EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
+  va_list valist;
+  va_start(valist, num_dependencies);
+  std::vector<std::pair<int, std::string>> dependencies = generateDependencyVector(num_dependencies, valist);
+  va_end(valist);
+  std::pair<int, EDAT_Event*> foundEvents = scheduler->retrieveAnyMatchingEvents(dependencies);
+  *retrievedNumber=foundEvents.first;
+  return foundEvents.second;
+}
+
 /**
 * Will schedule a specific task, this is common functionality for all the different call permutations in the API. It will extract out the dependencies
 * and package these up before calling into the scheduler
