@@ -368,6 +368,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_ran
     std::stringstream filename;
     filename << "edat_ledger_" << my_rank;
     this->fname = filename.str();
+    serialize();
 }
 
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank) : scheduler(ascheduler), RANK(my_rank) {
