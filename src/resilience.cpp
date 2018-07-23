@@ -133,6 +133,7 @@ LoggedTask::LoggedTask(std::istream& file, const std::streampos object_begin) {
   char marker_buf[4];
   char * memblock;
 
+  this->file_pos = object_begin;
   file.seekg(object_begin);
 
   memblock = new char[sizeof(TaskState)];
@@ -178,6 +179,7 @@ void LoggedTask::serialize(std::ostream& file, const std::streampos object_begin
   char eoo[4] = {'E', 'O', 'O', '\0'};
 
   file.seekp(object_begin);
+  file_pos = object_begin;
 
   file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
   ptd->serialize(file, file.tellp());
@@ -478,6 +480,16 @@ void EDAT_Process_Ledger::commit() {
   return;
 }
 
+void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos file_pos) {
+  std::fstream file;
+  std::lock_guard<std::mutex> lock(file_mutex);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.seekp(file_pos);
+  file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
+  file.close();
+  return;
+}
+
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
   // map<DependencyKey,queue<SpecificEvent> : EOQ> : EOM
@@ -588,22 +600,25 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
 
 void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
-  task_log.at(task_id)->state = RUNNING;
-  commit();
+  LoggedTask * lgt = task_log.at(task_id);
+  lgt->state = RUNNING;
+  commit(lgt->state, lgt->file_pos);
   return;
 }
 
 void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
-  task_log.at(task_id)->state = COMPLETE;
-  commit();
+  LoggedTask * lgt = task_log.at(task_id);
+  lgt->state = COMPLETE;
+  commit(lgt->state, lgt->file_pos);
   return;
 }
 
 void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
-  task_log.at(task_id)->state = FAILED;
-  commit();
+  LoggedTask * lgt = task_log.at(task_id);
+  lgt->state = FAILED;
+  commit(lgt->state, lgt->file_pos);
   return;
 }
 
@@ -631,6 +646,7 @@ void EDAT_Process_Ledger::display() const {
   std::cout << "\t\tsize = " << task_log.size() << std::endl;
   for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
     std::cout << "\t\ttask_id: " << tl_iter->first << std::endl;
+    std::cout << "\t\tfile_pos = " << tl_iter->second->file_pos << std::endl;
     std::cout << "\t\tstate = " << tl_iter->second->state << std::endl;
     std::cout << "\t\ttask_name = " << tl_iter->second->ptd->task_name << std::endl;
     std::cout << "\t\tnumArrivedEvents = " << tl_iter->second->ptd->numArrivedEvents << std::endl;

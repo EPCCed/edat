@@ -24,6 +24,7 @@ void resilienceFinalise(void);
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
 struct LoggedTask {
+  std::streampos file_pos;
   TaskState state = SCHEDULED;
   PendingTaskDescriptor * ptd;
   LoggedTask() = default;
@@ -65,6 +66,7 @@ private:
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   void commit();
+  void commit(const TaskState&, const std::streampos);
   void serialize();
 public:
   EDAT_Process_Ledger(Scheduler&, const int);
