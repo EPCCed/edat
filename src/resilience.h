@@ -67,7 +67,8 @@ private:
   void commit();
   void serialize();
 public:
-  EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank);
+  EDAT_Process_Ledger(Scheduler&, const int);
+  EDAT_Process_Ledger(Scheduler&, const int, const int);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
@@ -75,6 +76,7 @@ public:
   void markTaskRunning(const taskID_t);
   void markTaskComplete(const taskID_t);
   void markTaskFailed(const taskID_t);
+  void display() const;
 };
 
 #endif

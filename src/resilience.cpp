@@ -368,6 +368,86 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_ran
     this->fname = filename.str();
 }
 
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank) : scheduler(ascheduler), RANK(my_rank) {
+  char eom[4] = {'E', 'O', 'M', '\0'};
+  char eoq[4] = {'E', 'O', 'Q', '\0'};
+  char eoo[4] = {'E', 'O', 'O', '\0'};
+  char marker_buf[4];
+  char * memblock;
+  bool found_eom, found_eoq;
+  std::stringstream filename, loadname;
+  std::string dead_ledger, old_fname;
+  std::fstream file;
+  std::streampos bookmark;
+  std::queue<SpecificEvent*> event_queue;
+  taskID_t task_id;
+
+  // set fname using recovery rank ID
+  filename << "edat_ledger_" << my_rank;
+  this->fname = filename.str();
+
+  // rename ledger file of dead rank
+  loadname << "edat_ledger_" << dead_rank;
+  old_fname = loadname.str();
+
+  loadname << "_DEAD";
+  dead_ledger = loadname.str();
+  rename(old_fname.c_str(), dead_ledger.c_str());
+
+  // open old ledger file for reading
+  file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
+  file.seekg(std::ios::beg);
+
+  // check for outstanding_events
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(strcmp(marker_buf, eom)) {
+      DependencyKey depkey = DependencyKey(file, bookmark);
+      outstanding_events.emplace(depkey, event_queue);
+
+      found_eoq = false;
+      while(!found_eoq) {
+        bookmark = file.tellg();
+        file.read(marker_buf, sizeof(marker_buf));
+        if (strcmp(marker_buf, eoq)) {
+          SpecificEvent * spec_evt = new SpecificEvent(file, bookmark);
+          outstanding_events.at(depkey).push(spec_evt);
+        } else {
+          found_eoq = true;
+        }
+      }
+
+    } else {
+      found_eom = true;
+    }
+  }
+
+  // check for task_log
+  found_eom = false;
+  while(!found_eom) {
+    bookmark = file.tellg();
+    file.read(marker_buf, sizeof(marker_buf));
+    if(strcmp(marker_buf, eom)) {
+      file.seekg(bookmark);
+      memblock = new char[sizeof(taskID_t)];
+      file.read(memblock, sizeof(taskID_t));
+      task_id = *(reinterpret_cast<taskID_t*>(memblock));
+      delete[] memblock;
+
+      LoggedTask * lgt = new LoggedTask(file, file.tellg());
+
+      task_log.emplace(task_id, lgt);
+    } else {
+      found_eom = true;
+    }
+  }
+
+  file.read(marker_buf, sizeof(marker_buf));
+  if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger deserialization error, EOO not found");
+}
+
 /**
 * Includes deep delete of the task_log.
 */
@@ -405,7 +485,7 @@ void EDAT_Process_Ledger::serialize() {
   // EOO
   std::lock_guard<std::mutex> lock(file_mutex);
   char eom[4] = {'E', 'O', 'M', '\0'};
-  char eoq[4] = {'E', 'O', 'M', '\0'};
+  char eoq[4] = {'E', 'O', 'Q', '\0'};
   char eoo[4] = {'E', 'O', 'O', '\0'};
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
@@ -524,5 +604,37 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(log_mutex);
   task_log.at(task_id)->state = FAILED;
   commit();
+  return;
+}
+
+/**
+* debug display function
+*/
+void EDAT_Process_Ledger::display() const {
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::const_iterator oe_iter;
+  std::map<taskID_t,LoggedTask*>::const_iterator tl_iter;
+
+  std::cout << fname << ":" << std::endl;
+  std::cout << "\tRANK = " << RANK << std::endl;
+  std::cout << "\toutstanding_events:" << std::endl;
+  std::cout << "\t\tsize = " << outstanding_events.size() << std::endl;
+  for (oe_iter = outstanding_events.begin(); oe_iter != outstanding_events.end(); ++oe_iter) {
+    std::cout << "\t\tDependency ";
+    oe_iter->first.display();
+    std::cout << "\t\tQueue size = " << oe_iter->second.size() << std::endl;
+    if (!oe_iter->second.empty()) {
+      std::cout << "\t\tFirst event in queue event_id = " <<
+      oe_iter->second.front()->getEventId() << std::endl;
+    }
+  }
+  std::cout << "\ttask_log:" << std::endl;
+  std::cout << "\t\tsize = " << task_log.size() << std::endl;
+  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
+    std::cout << "\t\ttask_id: " << tl_iter->first << std::endl;
+    std::cout << "\t\tstate = " << tl_iter->second->state << std::endl;
+    std::cout << "\t\ttask_name = " << tl_iter->second->ptd->task_name << std::endl;
+    std::cout << "\t\tnumArrivedEvents = " << tl_iter->second->ptd->numArrivedEvents << std::endl;
+  }
+
   return;
 }
