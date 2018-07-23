@@ -512,6 +512,8 @@ void EDAT_Process_Ledger::commit(const DependencyKey& depkey, const SpecificEven
   file.write(eom, sizeof(eom));
   file.write(eoo, sizeof(eoo));
 
+  file.close();
+
   return;
 }
 
