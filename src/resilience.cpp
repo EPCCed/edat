@@ -12,6 +12,7 @@
 
 static EDAT_Thread_Ledger * internal_ledger;
 static EDAT_Process_Ledger * external_ledger;
+static std::mutex ledger_mutex;
 
 /**
 * Allocates the two ledgers and notifies the user that resilience is active.
@@ -22,10 +23,12 @@ static EDAT_Process_Ledger * external_ledger;
 * not run.
 */
 void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id) {
+  ledger_mutex.lock();
   int my_rank = amessaging.getRank();
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
   external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank);
+  ledger_mutex.unlock();
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
@@ -49,6 +52,7 @@ void resilienceTaskScheduled(PendingTaskDescriptor& ptd) {
 */
 void resilienceAddEvent(SpecificEvent& event) {
   DependencyKey depkey = DependencyKey(event.getEventId(), event.getSourcePid());
+  std::lock_guard<std::mutex> lock(ledger_mutex);
   external_ledger->addEvent(depkey, event);
   return;
 }
