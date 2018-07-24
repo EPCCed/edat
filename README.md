@@ -1,6 +1,6 @@
 # Event Driven Asynchronous Tasks (EDAT)
 
-This library provides support for Event Driven Asychronous Tasks, task based programming over large scale distributed memory machines. The programmer is explicitly aware of the distributed nature of their code, so they can optimise for important aspects such as locality, but still abstracted from the underlying mechanisms of parallelism. Tasks are scheduled by the programmer and depend on a number of events arriving before they can execute on worker threads. Events are sent, either locally or remotely with some optional payload data.
+This library provides support for Event Driven Asychronous Tasks, task based programming over large scale distributed memory machines. The programmer is explicitly aware of the distributed nature of their code, so they can optimise for important aspects such as locality, but still abstracted from the underlying mechanisms of parallelism. Tasks are scheduled by the programmer and depend on a number of events arriving before they can execute on workers. Events are sent, either locally or remotely with some optional payload data.
 
 Please note that this is code is of a research nature and primarily of use to explore the notion of task based programming over distributed memory architectures.
 
@@ -61,11 +61,11 @@ In the main function we first initialise EDAT (even though EDAT uses MPI behind 
 
 Process 0 will schedule a task that relies on an event with the Event IDenfitier (EID) *my_task* sent from any other process to activate. Process 1 also schedules a task that relies in an event with EID *my_task2* from any process to run. Process 1 then sends an event to process 0 with a single integer as payload data.
 
-Once this event has been sent from process 1 to 0, process 0 will run its scheduled task on a thread which effectively means the execution of the *my_task* function. As an input to this function are passed the number of events and each specific event (with both data and metadata) so that the task can then use these if needed. 
+Once this event has been sent from process 1 to 0, process 0 will run its scheduled task on a worker which effectively means the execution of the *my_task* function. As an input to this function are passed the number of events and each specific event (with both data and metadata) so that the task can then use these if needed. 
 
-In this example process 0 will then fire an event with EID *my_task2* but no payload data to process 1 which causes the execution of that task on a thread of process 1 and the code in the *my_task2* function.
+In this example process 0 will then fire an event with EID *my_task2* but no payload data to process 1 which causes the execution of that task on a worker of process 1 and the code in the *my_task2* function.
 
-**But how many worker threads does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as thread to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/environment_variables.md">this documentation</a>.
+**But how many workers does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as worker to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/environment_variables.md">this documentation</a>.
 
 ## Finding out more
 

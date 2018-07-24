@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define EDAT_NOTYPE 0
+#define EDAT_NONE 0
 #define EDAT_INT 1
 #define EDAT_FLOAT 2
 #define EDAT_DOUBLE 3
@@ -40,12 +41,8 @@ typedef struct edat_struct_event EDAT_Event;
 
 int edatInit(int *, char ***, struct edat_struct_configuration*);
 int edatFinalise(void);
-int edatRestart(void);
-int edatPauseMainThread(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
-int edatGetNumThreads(void);
-int edatGetThread(void);
 int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
 int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
 int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
@@ -60,6 +57,7 @@ int edatDefineContext(size_t);
 void* edatCreateContext(int);
 EDAT_Event* edatWait(int, ...);
 void edatSyntheticFailure(void);
+EDAT_Event* edatRetrieveAny(int*, int, ...);
 
 #ifdef __cplusplus
 }

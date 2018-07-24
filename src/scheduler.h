@@ -204,6 +204,7 @@ class Scheduler {
     bool checkProgressPersistentTasks();
     std::vector<PendingTaskDescriptor*>::iterator locatePendingTaskFromName(std::string);
     static EDAT_Event * generateEventsPayload(TaskDescriptor*, std::set<int>*);
+    static void generateEventPayload(SpecificEvent*, EDAT_Event*);
     void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
     Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
@@ -214,6 +215,7 @@ public:
     void readyToRunTask(PendingTaskDescriptor*);
     bool isTaskScheduled(std::string);
     bool descheduleTask(std::string);
+    std::pair<int, EDAT_Event*> retrieveAnyMatchingEvents(std::vector<std::pair<int, std::string>>);
 };
 
 #endif

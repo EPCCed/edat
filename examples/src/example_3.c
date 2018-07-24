@@ -1,10 +1,14 @@
-#include "edat.h"
-#include <stddef.h>
+/*
+* This example demonstrates firing events with a reflux task. A reflux task is a task that is executed locally (i.e. on the rank that fired the event) when that event
+* has been delivered to the target rank. The corresponding reflux task is then eligable for execution once the event has arrived at the target rank.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
+#include "edat.h"
 
-void my_task(EDAT_Event*, int);
-void reflux_task(EDAT_Event*, int);
+static void my_task(EDAT_Event*, int);
+static void reflux_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -23,7 +27,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
     int i;
     for (i=0;i<events[0].metadata.number_elements;i++) {
@@ -32,7 +36,7 @@ void my_task(EDAT_Event * events, int num_events) {
   }
 }
 
-void reflux_task(EDAT_Event * events, int num_events) {
-  printf("[%d] Reflux task, ptr = %p\n", edatGetRank(), (int *) events[0].data);
+static void reflux_task(EDAT_Event * events, int num_events) {
+  printf("Done\n");
   free(events[0].data);
 }

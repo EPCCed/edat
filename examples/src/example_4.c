@@ -1,8 +1,13 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* This example illustrates multiple event dependencies, where the task on rank 0 depends on two events for running - the first is an event from rank 0 (i.e. itself)
+* with event ID "a" and the second is an event from rank 1 with event id "b". Rank 0 then fires an event to itself and in parallel rank 1 fires an event to rank 0 too.
+* The task will display the number of events and iterates through them, displaying some meta data and the associated payload data.
+*/
 
-void my_task(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+
+static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -17,7 +22,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   printf("Number of events %d\n", num_events);
   int i=0;
   for (i=0;i<num_events;i++) {

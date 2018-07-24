@@ -5,12 +5,12 @@
 #include "misc.h"
 
 /**
-* Constructor for the ThreadPackage, this is one of a number of constructors (the others are trivial and handled in the header file.) Here if the
-* core id is not -1 then map the thread to the specific core. This is useful as we might create multiple threads (for instance when others are paused
+* Attaches a thread if the core id is not -1 then map the thread to the specific core.
+* This is useful as we might create multiple threads (for instance when others are paused
 * and want the core mapping to be unchanged.)
 */
-ThreadPackage::ThreadPackage(std::thread * tp, int core_id) : thread(tp), m(new std::mutex()), cv(new std::condition_variable()),
-    completed(false), abort_thread(false) {
+void ThreadPackage::attachThread(std::thread* tp, int core_id) {
+  this->thread=tp;
   if (core_id != -1) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);

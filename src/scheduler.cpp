@@ -605,6 +605,45 @@ EDAT_Event* Scheduler::pauseTask(std::vector<std::pair<int, std::string>> depend
 }
 
 /**
+* Retrieves any events that match the provided dependencies, this allows picking off specific dependencies by a task without it having
+* to endure the overhead of task restarting
+*/
+std::pair<int, EDAT_Event*> Scheduler::retrieveAnyMatchingEvents(std::vector<std::pair<int, std::string>> dependencies) {
+  std::queue<SpecificEvent*> foundEvents;
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  for (std::pair<int, std::string> dependency : dependencies) {
+    DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
+    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
+    if (it != outstandingEvents.end() && !it->second.empty()) {
+      if (it->second.front()->isPersistent()) {
+        // If its persistent event then copy the event
+        foundEvents.push(new SpecificEvent(*(it->second.front())));
+      } else {
+        foundEvents.push(it->second.front());
+        // If not persistent then remove from outstanding events
+        outstandingEventsToHandle--;
+        it->second.pop();
+        if (it->second.empty()) outstandingEvents.erase(it);
+      }
+    }
+  }
+  if (!foundEvents.empty()) {
+    int num_found_events=foundEvents.size();
+    EDAT_Event * events_payload = new EDAT_Event[num_found_events];
+    for (int i=0;i<num_found_events;i++) {
+      SpecificEvent * specEvent=foundEvents.front();
+      foundEvents.pop();
+      // Using a queue and iterating from the start guarantees event ordering
+      generateEventPayload(specEvent, &events_payload[i]);
+      delete specEvent;
+    }
+    return std::pair<int, EDAT_Event*>(num_found_events, events_payload);
+  } else {
+    return std::pair<int, EDAT_Event*>(0, NULL);
+  }
+}
+
+/**
 * Consumes events by persistent tasks, this is needed as lots of events can be stored and then when we register a persistent task we then want
 * to consume all of these. But as we don't want to duplicate tasks internally (especially with lots of dependencies) then handle as tasks are queued for execution
 * only. Hence we need to call this when a task is registered (might consume multiple outstanding events) or an event arrives (might fire a task which then
@@ -665,6 +704,7 @@ bool Scheduler::checkProgressPersistentTasks() {
   bool progress=false;
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (pendingTask->persistent) {
+      std::vector<DependencyKey> dependenciesToRemove;
       for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
         std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(dependency.first);
         if (it != outstandingEvents.end() && !it->second.empty()) {
@@ -691,9 +731,12 @@ bool Scheduler::checkProgressPersistentTasks() {
           }
           (*(dependency.second))--;
           if (*(dependency.second) <= 0) {
-            pendingTask->outstandingDependencies.erase(dependency.first);
+            dependenciesToRemove.push_back(dependency.first);
           }
         }
+      }
+      if (!dependenciesToRemove.empty()) {
+        for (DependencyKey k : dependenciesToRemove) pendingTask->outstandingDependencies.erase(k);
       }
       if (pendingTask->outstandingDependencies.empty()) {
         PendingTaskDescriptor* exec_Task=new PendingTaskDescriptor(*pendingTask);
@@ -864,27 +907,31 @@ EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, st
     }
     SpecificEvent * specEvent=arrivedEventsIT->second.front();
     arrivedEventsIT->second.pop();
-    if (specEvent->isAContext()) {
-      // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
-      events_payload[i].data=*((char**) specEvent->getData());
-      if (eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
-    } else {
-      events_payload[i].data=specEvent->getData();
-    }
-    events_payload[i].metadata.data_type=specEvent->getMessageType();
-    if (events_payload[i].metadata.data_type == EDAT_NOTYPE) {
-      events_payload[i].metadata.number_elements=0;
-    } else {
-      events_payload[i].metadata.number_elements=specEvent->getMessageLength();
-    }
-    events_payload[i].metadata.source=specEvent->getSourcePid();
-    int event_id_len=specEvent->getEventId().size();
-    char * event_id=(char*) malloc(event_id_len + 1);
-    memcpy(event_id, specEvent->getEventId().c_str(), event_id_len+1);
-    events_payload[i].metadata.event_id=event_id;
+    generateEventPayload(specEvent, &events_payload[i]);
+    if (specEvent->isAContext() && eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
     i++;
   }
   return events_payload;
+}
+
+void Scheduler::generateEventPayload(SpecificEvent * specEvent, EDAT_Event * event) {
+  if (specEvent->isAContext()) {
+    // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
+    event->data=*((char**) specEvent->getData());
+  } else {
+    event->data=specEvent->getData();
+  }
+  event->metadata.data_type=specEvent->getMessageType();
+  if (event->metadata.data_type == EDAT_NOTYPE) {
+    event->metadata.number_elements=0;
+  } else {
+    event->metadata.number_elements=specEvent->getMessageLength();
+  }
+  event->metadata.source=specEvent->getSourcePid();
+  int event_id_len=specEvent->getEventId().size();
+  char * event_id=(char*) malloc(event_id_len + 1);
+  memcpy(event_id, specEvent->getEventId().c_str(), event_id_len+1);
+  event->metadata.event_id=event_id;
 }
 
 /**

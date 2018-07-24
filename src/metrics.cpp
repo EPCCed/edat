@@ -14,7 +14,7 @@ namespace metrics {
 }
 
 EDAT_Metrics::EDAT_Metrics(Configuration & aconfig) : configuration(aconfig) {
-  num_threads = configuration.get("EDAT_NUM_THREADS", std::thread::hardware_concurrency());
+  num_threads = configuration.get("EDAT_NUM_WORKERS", std::thread::hardware_concurrency());
   thread_active.resize(num_threads, ns::zero());
   thread_active_pc.resize(num_threads, 0.0);
 }

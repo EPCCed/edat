@@ -5,6 +5,7 @@
 #include <thread>
 #include <iostream>
 #include "edat.h"
+#include "edat_debug.h"
 #include "threadpool.h"
 #include "scheduler.h"
 #include "messaging.h"
@@ -109,12 +110,16 @@ int edatGetNumRanks(void) {
   return messaging->getNumRanks();
 }
 
-int edatGetNumThreads(void) {
-  return threadPool->getNumberOfThreads();
+int edatGetNumWorkers(void) {
+  return threadPool->getNumberOfWorkers();
 }
 
-int edatGetThread(void) {
-  return threadPool->getCurrentThreadId();
+int edatGetWorker(void) {
+  return threadPool->getCurrentWorkerId();
+}
+
+int edatGetNumActiveWorkers(void) {
+  return threadPool->getNumberActiveWorkers();
 }
 
 int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
@@ -235,6 +240,16 @@ EDAT_Event* edatWait(int num_dependencies, ...) {
   std::vector<std::pair<int, std::string>> dependencies = generateDependencyVector(num_dependencies, valist);
   va_end(valist);
   return scheduler->pauseTask(dependencies);
+}
+
+EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
+  va_list valist;
+  va_start(valist, num_dependencies);
+  std::vector<std::pair<int, std::string>> dependencies = generateDependencyVector(num_dependencies, valist);
+  va_end(valist);
+  std::pair<int, EDAT_Event*> foundEvents = scheduler->retrieveAnyMatchingEvents(dependencies);
+  *retrievedNumber=foundEvents.first;
+  return foundEvents.second;
 }
 
 /**

@@ -1,8 +1,14 @@
-#include "edat.h"
-#include <stddef.h>
-#include <stdio.h>
+/*
+* This example illustrates the edatPauseMainThread call, this is in the debug part of EDAT and specifically designed for debugging or benchmarking work and not for
+* end user interaction. Effectively this call puts to sleep (i.e. the underlying worker can be reused) the main thread and it is only reactivated when all EDAT activity
+* ceases (i.e. no tasks, no outstanding events etc) and execution can continue.
+*/
 
-void my_task(EDAT_Event*, int);
+#include <stdio.h>
+#include "edat.h"
+#include "edat_debug.h"
+
+static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
@@ -25,7 +31,7 @@ int main(int argc, char * argv[]) {
   return 0;
 }
 
-void my_task(EDAT_Event * events, int num_events) {
+static void my_task(EDAT_Event * events, int num_events) {
   printf("Hello world!\n");
 }
 

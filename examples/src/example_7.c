@@ -5,10 +5,9 @@
 * event which we don't want.) The second approach names this persistent event and then explicitly deschedules it to avoid any further event consumption.
 */
 
-#include "edat.h"
 #include <stdlib.h>
-#include <stddef.h>
 #include <stdio.h>
+#include "edat.h"
 
 #define APPROACH 2
 
