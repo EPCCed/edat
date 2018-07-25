@@ -618,7 +618,6 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& sp
     raiseError("Error in moveEventToTask commit, EVT not found");
   }
 
-  file.flush();
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
   spec_evt.serialize(file, file.tellp());
 
@@ -760,26 +759,32 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
 }
 
 void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
-  std::lock_guard<std::mutex> lock(log_mutex);
-  LoggedTask * lgt = task_log.at(task_id);
+  log_mutex.lock();
+  LoggedTask * const lgt = task_log.at(task_id);
+  const std::streampos bookmark = lgt->file_pos;
   lgt->state = RUNNING;
-  commit(lgt->state, lgt->file_pos);
+  log_mutex.unlock();
+  commit(RUNNING, bookmark);
   return;
 }
 
 void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
-  std::lock_guard<std::mutex> lock(log_mutex);
-  LoggedTask * lgt = task_log.at(task_id);
+  log_mutex.lock();
+  LoggedTask * const lgt = task_log.at(task_id);
+  const std::streampos bookmark = lgt->file_pos;
   lgt->state = COMPLETE;
-  commit(lgt->state, lgt->file_pos);
+  log_mutex.unlock();
+  commit(COMPLETE, bookmark);
   return;
 }
 
 void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
-  std::lock_guard<std::mutex> lock(log_mutex);
-  LoggedTask * lgt = task_log.at(task_id);
+  log_mutex.lock();
+  LoggedTask * const lgt = task_log.at(task_id);
+  const std::streampos bookmark = lgt->file_pos;
   lgt->state = FAILED;
-  commit(lgt->state, lgt->file_pos);
+  log_mutex.unlock();
+  commit(FAILED, bookmark);
   return;
 }
 
