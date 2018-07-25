@@ -22,6 +22,7 @@ class SpecificEvent {
   char* data;
   std::string event_id;
   bool persistent, aContext;
+  std::streampos file_pos;
 
  public:
   SpecificEvent(int sourcePid, int message_length, int raw_data_length, int message_type, bool persistent, bool aContext, std::string event_id, char* data) {
@@ -49,7 +50,8 @@ class SpecificEvent {
     } else {
       this->data = source.data;
     }
-    this->persistent= source.persistent;
+    this->persistent = source.persistent;
+    this->file_pos = source.file_pos;
   }
 
   SpecificEvent(std::istream&, const std::streampos);
@@ -64,6 +66,8 @@ class SpecificEvent {
   int getRawDataLength() { return this->raw_data_length; }
   bool isPersistent() { return this->persistent; }
   bool isAContext() { return this->aContext; }
+  std::streampos getFilePos() const { return this->file_pos; }
+  void setFilePos(std::streampos bookmark) { this->file_pos = bookmark; }
   void serialize(std::ostream&, const std::streampos) const;
 };
 

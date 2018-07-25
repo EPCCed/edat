@@ -65,9 +65,10 @@ private:
   std::mutex log_mutex, file_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
-  void commit();
+  void commit(const taskID_t, LoggedTask&);
+  void commit(SpecificEvent&);
+  void commit(const taskID_t, const SpecificEvent&);
   void commit(const TaskState&, const std::streampos);
-  void commit(const DependencyKey&, const SpecificEvent&);
   void serialize();
 public:
   EDAT_Process_Ledger(Scheduler&, const int);
