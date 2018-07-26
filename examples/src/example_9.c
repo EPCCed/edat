@@ -13,8 +13,11 @@ static void task2(EDAT_Event*, int);
 int id;
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  const task_ptr_t task_array[2] = {my_task, task2};
+  int print_id = 0;
+  edatInit(&argc, &argv, NULL, task_array);
   if (edatGetRank() == 0) {
+    print_id = 1;
 	  id =0;
     edatSchedulePersistentTask(my_task, 8, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
 	  edatSchedulePersistentTask(task2, 1, EDAT_SELF, "fire");
@@ -24,6 +27,9 @@ int main(int argc, char * argv[]) {
 	  }
   }
   edatFinalise();
+
+  if (print_id) printf("id = %d\n", id);
+
   return 0;
 }
 
@@ -43,4 +49,3 @@ static void my_task(EDAT_Event * events, int num_events) {
 	  }
 	}
 }
-

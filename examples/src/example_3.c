@@ -11,7 +11,8 @@ static void my_task(EDAT_Event*, int);
 static void reflux_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  const task_ptr_t task_array[2] = {my_task, reflux_task};
+  edatInit(&argc, &argv, NULL, task_array);
   if (edatGetRank() == 0) {
     int * d = (int*) malloc(sizeof(int) * 10);
     printf("[%d] main, ptr = %p\n", edatGetRank(), d);

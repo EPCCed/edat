@@ -12,7 +12,8 @@
 static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  const task_ptr_t task_array[1] = {my_task};
+  edatInit(&argc, &argv, NULL, task_array);
   if (edatGetRank() == 0) {
     usleep(1000); // Waiting here to queue up multiple events to ensure it handles that correctly
     edatSchedulePersistentTask(my_task, 1, 1, "a");

@@ -36,6 +36,7 @@ double timeDiff(struct timespec, struct timespec);
 
 int main(int argc, char * argv[])
 {
+	const task_ptr_t task_array[6] = {iterScheduleTask, initialNormTask, globalNormTask, normUpdateTask, localNormTask, boundaryUpdateTask};
 	int num_ranks, my_rank, nx, ny, domain_dims[]={0,0}, local_dims[]={0,0};
 	int domain_coords[]={-1,-1}, neighbours[]={INT_MIN, INT_MIN, INT_MIN, INT_MIN};
 	int mem_dims[]={0,0}, iter=0;
@@ -45,7 +46,7 @@ int main(int argc, char * argv[])
 	double *ptr_to_initial=&initial_norm, *ptr_to_global=&global_norm;
 	struct timespec start, stop;
 
-	edatInit(&argc, &argv, NULL);
+	edatInit(&argc, &argv, NULL, task_array);
 
 	if (argc != 4) {
 		fprintf(stderr, "You must provide three command line arguments, the global size in X, the global size in Y and convergence accuracy\n");

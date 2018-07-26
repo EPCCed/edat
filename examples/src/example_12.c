@@ -11,7 +11,8 @@
 static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  const task_ptr_t task_array[1] = {my_task};
+  edatInit(&argc, &argv, NULL, task_array);
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
@@ -34,4 +35,3 @@ int main(int argc, char * argv[]) {
 static void my_task(EDAT_Event * events, int num_events) {
   printf("Hello world!\n");
 }
-
