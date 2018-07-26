@@ -22,12 +22,12 @@ static std::mutex ledger_mutex;
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id) {
+void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array) {
   ledger_mutex.lock();
   int my_rank = amessaging.getRank();
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank);
+  external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank, task_array);
   ledger_mutex.unlock();
 
   if (!my_rank) {
@@ -365,15 +365,15 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank)
-  : scheduler(ascheduler), RANK(my_rank) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const task_ptr_t * const thetaskarray)
+  : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray) {
     std::stringstream filename;
     filename << "edat_ledger_" << my_rank;
     this->fname = filename.str();
     serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank) : scheduler(ascheduler), RANK(my_rank) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank, const task_ptr_t * const thetaskarray) : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray) {
   const char tsk[4] = {'T', 'S', 'K', '\0'};
   const char evt[4] = {'E', 'V', 'T', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};

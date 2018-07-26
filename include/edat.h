@@ -39,7 +39,9 @@ struct edat_struct_configuration {
 
 typedef struct edat_struct_event EDAT_Event;
 
-int edatInit(int *, char ***, struct edat_struct_configuration*);
+typedef void (*task_ptr_t) (EDAT_Event*, int);
+
+int edatInit(int *, char ***, struct edat_struct_configuration*, const task_ptr_t * const);
 int edatFinalise(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);

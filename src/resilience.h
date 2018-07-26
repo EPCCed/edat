@@ -11,7 +11,9 @@
 #include <queue>
 #include <fstream>
 
-void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id);
+typedef void (*task_ptr_t) (EDAT_Event*, int);
+
+void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 void resilienceAddEvent(SpecificEvent&);
 void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
@@ -61,6 +63,7 @@ class EDAT_Process_Ledger {
 private:
   Scheduler& scheduler;
   const int RANK;
+  const task_ptr_t * const task_array;
   std::string fname;
   std::mutex log_mutex, file_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
@@ -71,8 +74,8 @@ private:
   void commit(const TaskState&, const std::streampos);
   void serialize();
 public:
-  EDAT_Process_Ledger(Scheduler&, const int);
-  EDAT_Process_Ledger(Scheduler&, const int, const int);
+  EDAT_Process_Ledger(Scheduler&, const int, const task_ptr_t * const);
+  EDAT_Process_Ledger(Scheduler&, const int, const int, const task_ptr_t * const);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
