@@ -29,7 +29,7 @@ static bool edatActive;
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
 
-int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, const task_ptr_t * const task_array) {
+int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, const task_ptr_t * const task_array, const int number_of_tasks) {
   configuration=new Configuration(edat_config);
   threadPool=new ThreadPool(*configuration);
   contextManager=new ContextManager(*configuration);
@@ -40,7 +40,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array);
+    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks);
   }
   messaging->resetPolling();
   edatActive=true;
