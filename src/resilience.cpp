@@ -21,11 +21,11 @@ static EDAT_Process_Ledger * external_ledger;
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array) {
+void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks) {
   int my_rank = amessaging.getRank();
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank, task_array);
+  external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank, task_array, num_tasks);
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
@@ -361,15 +361,15 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const task_ptr_t * const thetaskarray)
-  : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const task_ptr_t * const thetaskarray, const int num_tasks)
+  : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray), number_of_tasks(num_tasks) {
     std::stringstream filename;
     filename << "edat_ledger_" << my_rank;
     this->fname = filename.str();
     serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank, const task_ptr_t * const thetaskarray) : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank, const task_ptr_t * const thetaskarray, const int num_tasks) : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray), number_of_tasks(num_tasks) {
   const char tsk[4] = {'T', 'S', 'K', '\0'};
   const char evt[4] = {'E', 'V', 'T', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
@@ -635,7 +635,12 @@ void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos fi
   return;
 }
 
-
+int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
+  for (int func_id = 0; func_id<number_of_tasks; ++func_id) {
+    if (task_array[func_id] == task_fn) return func_id;
+  }
+  return -1;
+}
 
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
@@ -696,9 +701,16 @@ void EDAT_Process_Ledger::serialize() {
 */
 void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor& ptd) {
   std::lock_guard<std::mutex> lock(log_mutex);
+
+  if (ptd.func_id == -1) {
+    ptd.func_id = getFuncID(ptd.task_fn);
+  }
+
   LoggedTask * lgt = new LoggedTask(ptd);
   task_log.emplace(task_id, lgt);
+
   commit(task_id, *lgt);
+
   return;
 }
 
