@@ -53,7 +53,6 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   }
   terminated=false;
   eligable_for_termination=false;
-  if (doesProgressThreadExist()) startProgressThread();
 }
 
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent,

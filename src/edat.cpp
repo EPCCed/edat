@@ -42,6 +42,7 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   if (configuration->get("EDAT_RESILIENCE", false)) {
     resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array);
   }
+  messaging->resetPolling();
   edatActive=true;
   #if DO_METRICS
     metrics::METRICS->edatTimerStart();
