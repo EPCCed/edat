@@ -15,7 +15,7 @@ int id;
 int main(int argc, char * argv[]) {
   const task_ptr_t task_array[2] = {my_task, task2};
   int print_id = 0;
-  edatInit(&argc, &argv, NULL, task_array);
+  edatInit(&argc, &argv, NULL, task_array, 2);
   if (edatGetRank() == 0) {
     print_id = 1;
 	  id =0;

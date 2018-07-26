@@ -13,7 +13,7 @@ static void barrier_task(EDAT_Event* , int);
 
 int main(int argc, char * argv[]) {
   const task_ptr_t task_array[2] = {my_task, barrier_task};
-  edatInit(&argc, &argv, NULL, task_array);
+  edatInit(&argc, &argv, NULL, task_array, 2);
   int myval=(edatGetRank() + 100)* 10;
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 1, EDAT_ALL, "a");

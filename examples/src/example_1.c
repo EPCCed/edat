@@ -13,7 +13,7 @@ static void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
   const task_ptr_t task_array[2] = {my_task, my_task2};
-  edatInit(&argc, &argv, NULL, task_array);
+  edatInit(&argc, &argv, NULL, task_array, 2);
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
