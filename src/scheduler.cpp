@@ -830,7 +830,10 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
-  if (configuration.get("EDAT_RESILIENCE",false)) resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
+  if (configuration.get("EDAT_RESILIENCE",false)) {
+    resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
+    if (event->isPersistent()) resilienceAddEvent(*event);
+  }
 }
 
 /**
