@@ -53,7 +53,3 @@ This example implements a reduction on process 0, where values from each process
 Like tasks, there is also a distinction between transitory and persistent events but this is more subtle. The tasks we have discussed up until this point are transitory, i.e. they are consumed as a dependency to a task. It is also possible for events to be persistent, where they are not consumed but instead will effectively fire time and time again. Note that the firing is done locally, i.e. even if a persistent event is sent from a remote process then the fact it is persistent it handled by the target.
 
 The API call for persistent events is `int edatFirePersistentEvent(void* data, int data_type, int number_elements, int target_rank, const char * event_identifier)`. Note that there is no need for persistent events to have been consumed for termination to occur.
-
-# Reflux events
-
-It might be useful for a task to execute on the source when an event is physically delivered to the target process, this is known as a reflux event and the API is ``int edatFireEventWithReflux(void* data, int data_type, int number_elements, int target_rank, const char * event_identifier, void(*)(EDAT_Event* events, int number_of_events))`. Basically it is similar to firing an event, but with a task function as an addition argument which is called like any other task function. 

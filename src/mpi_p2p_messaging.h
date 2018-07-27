@@ -15,12 +15,10 @@ class MPI_P2P_Messaging : public Messaging {
   MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL,
     terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;
   std::map<MPI_Request, char*> outstandingSendRequests;
-  std::map<MPI_Request, PendingTaskDescriptor*> outstandingRefluxTasks;
-  std::mutex outstandingSendRequests_mutex, outstandingRefluxTasks_mutex, mpi_mutex;
+  std::mutex outstandingSendRequests_mutex, mpi_mutex;
   void initMPI();
   void checkSendRequestsForProgress();
-  void sendSingleEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
-  void handleFiringOfEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
+  void sendSingleEvent(void *, int, int, int, bool, const char *);
   void trackTentativeTerminationCodes();
   bool confirmTerminationCodes();
   bool checkForCodeInList(int*, int);
@@ -36,7 +34,6 @@ public:
   virtual void setEligableForTermination() { eligable_for_termination=true; };
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, bool, const char *);
-  virtual void fireEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int));
   virtual int getRank();
   virtual int getNumRanks();
   virtual bool isFinished();

@@ -55,13 +55,35 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   if (doesProgressThreadExist()) startProgressThread();
 }
 
-void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent,
-                                  const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
-  handleFiringOfEvent(data, data_count, data_type, target, persistent, event_id, reflux_task_fn);
-}
-
+/**
+* Fires an event, either remote or local event. Also handles when we are sending to all targets rather than just
+* one specific process
+*/
 void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, int target, bool persistent, const char * event_id) {
-  handleFiringOfEvent(data, data_count, data_type, target, persistent, event_id, NULL);
+  if (target == my_rank || target == EDAT_ALL) {
+    int data_size=getTypeSize(data_type) * data_count;
+    char * buffer_data=(char*) malloc(data_size);
+    if (contextManager.isTypeAContext(data_type)) {
+      // If its a context then pass the pointer to the context data rather than the data itself
+      memcpy(buffer_data, &data, data_size);
+    } else {
+      memcpy(buffer_data, data, data_size);
+    }
+    SpecificEvent* event=new SpecificEvent(my_rank, data_count, data_count * getTypeSize(data_type), data_type, persistent,
+                                           contextManager.isTypeAContext(data_type), std::string(event_id), (char*) buffer_data);
+    scheduler.registerEvent(event);
+  }
+  if (target != my_rank) {
+    if (target != EDAT_ALL) {
+      sendSingleEvent(data, data_count, data_type, target, persistent, event_id);
+    } else {
+      for (int i=0;i<total_ranks;i++) {
+        if (i != my_rank) {
+          sendSingleEvent(data, data_count, data_type, i, persistent, event_id);
+        }
+      }
+    }
+  }
 }
 
 void MPI_P2P_Messaging::resetPolling() {
@@ -78,44 +100,14 @@ void MPI_P2P_Messaging::resetPolling() {
   Messaging::resetPolling();
 }
 
-/**
-* Handles the firing of an event, either remote or local event. Also handles when we are sending to all targets rather than just
-* one specific process
-*/
-void MPI_P2P_Messaging::handleFiringOfEvent(void * data, int data_count, int data_type, int target, bool persistent,
-                                            const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
-  if (target == my_rank || target == EDAT_ALL) {
-    int data_size=getTypeSize(data_type) * data_count;
-    char * buffer_data=(char*) malloc(data_size);
-    if (contextManager.isTypeAContext(data_type)) {
-      // If its a context then pass the pointer to the context data rather than the data itself
-      memcpy(buffer_data, &data, data_size);
-    } else {
-      memcpy(buffer_data, data, data_size);
-    }
-    SpecificEvent* event=new SpecificEvent(my_rank, data_count, data_count * getTypeSize(data_type), data_type, persistent,
-                                           contextManager.isTypeAContext(data_type), std::string(event_id), (char*) buffer_data);
-    scheduler.registerEvent(event);
-  }
-  if (target != my_rank) {
-    if (target != EDAT_ALL) {
-      sendSingleEvent(data, data_count, data_type, target, persistent, event_id, reflux_task_fn);
-    } else {
-      for (int i=0;i<total_ranks;i++) {
-        if (i != my_rank) {
-          sendSingleEvent(data, data_count, data_type, i, persistent, event_id, reflux_task_fn);
-        }
-      }
-    }
-  }
-}
+
 
 /**
 * Sends a single event to a specific target by packaging the data into a buffer and sending it over. We use a non-blocking synchronous send as we want acknowledgement
 * from the target that the message has started to be received (for termination correctness.)
 */
 void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_type, int target, bool persistent,
-                                        const char * event_id, void (*reflux_task_fn)(EDAT_Event*, int)) {
+                                        const char * event_id) {
   int event_id_len=strlen(event_id);
   int type_element_size=getTypeSize(data_type);
   int packet_size=(type_element_size * data_count) + (sizeof(int) * 3) + event_id_len + 1 + sizeof(char);
@@ -135,22 +127,6 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
     std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
     outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
   }
-  if (reflux_task_fn != NULL) {
-    std::lock_guard<std::mutex> out_reflux_lock(outstandingRefluxTasks_mutex);
-    SpecificEvent * event=new SpecificEvent(target, data_count, type_element_size * data_count, data_type, persistent,
-                                            contextManager.isTypeAContext(data_type), event_id, (char*) data);
-    PendingTaskDescriptor * taskDescriptor=new PendingTaskDescriptor();
-    taskDescriptor->task_fn=reflux_task_fn;
-    taskDescriptor->freeData=false;
-    taskDescriptor->numArrivedEvents++;
-    taskDescriptor->taskDependencyOrder.push_back(DependencyKey(event->getEventId(), event->getSourcePid()));
-
-    std::queue<SpecificEvent*> eventQueue;
-    eventQueue.push(event);
-    taskDescriptor->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(DependencyKey(event->getEventId(), event->getSourcePid()), eventQueue));
-
-    outstandingRefluxTasks.insert(std::pair<MPI_Request, PendingTaskDescriptor*>(request, taskDescriptor));
-  }
 }
 
 /**
@@ -158,8 +134,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
 */
 bool MPI_P2P_Messaging::isFinished() {
   std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
-  std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
-  return outstandingSendRequests.empty() && outstandingRefluxTasks.empty();
+  return outstandingSendRequests.empty();
 }
 
 /**
@@ -206,17 +181,11 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
     MPI_Testsome(allreqHandles.size(), req_handles, &out_count, returnIndicies, MPI_STATUSES_IGNORE);
     if (protectMPI) mpi_mutex.unlock();
     if (out_count > 0) {
-      std::lock_guard<std::mutex> reflex_tasks_lock(outstandingRefluxTasks_mutex);
       for (int i=0;i<out_count;i++) {
         auto it = outstandingSendRequests.find(storedReqHandles[returnIndicies[i]]);
         if (it != outstandingSendRequests.end()) {
           free(it->second);
           outstandingSendRequests.erase(it);
-        }
-        auto it2 = outstandingRefluxTasks.find(storedReqHandles[returnIndicies[i]]);
-        if (it2 != outstandingRefluxTasks.end()) {
-          scheduler.readyToRunTask(it2->second);
-          outstandingRefluxTasks.erase(it2);
         }
       }
     }

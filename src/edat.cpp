@@ -189,13 +189,6 @@ int edatFirePersistentEvent(void* data, int data_type, int data_count, int targe
   return 0;
 }
 
-int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * event_id,
-                            void (*reflux_task_fn)(EDAT_Event*, int)) {
-  if (target == EDAT_SELF) target=messaging->getRank();
-  messaging->fireEvent(data, data_count, data_type, target, false, event_id, reflux_task_fn);
-  return 0;
-}
-
 /**
 * Given an array of events, the number of events, the source rank and a specifc event identifier will return the appropriate index in the event array where that
 * can be found or -1 if none is present
