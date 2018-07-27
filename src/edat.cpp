@@ -23,7 +23,7 @@ static Configuration * configuration;
 
 static bool edatActive;
 
-static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
+static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, bool, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
 
 int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
@@ -119,7 +119,21 @@ int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_depend
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, "", true, num_dependencies, valist);
+  scheduleProvidedTask(task_fn, "", true, num_dependencies, false, valist);
+  va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
+  #endif
+  return 0;
+}
+
+int edatSchedulePersistentGreedyTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
+  #endif
+  va_list valist;
+  va_start(valist, num_dependencies);
+  scheduleProvidedTask(task_fn, "", true, num_dependencies, true, valist);
   va_end(valist);
   #if DO_METRICS
     metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
@@ -128,10 +142,30 @@ int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_depend
 }
 
 int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
+  #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, std::string(task_name), true, num_dependencies, valist);
+  scheduleProvidedTask(task_fn, std::string(task_name), true, num_dependencies, false, valist);
   va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
+  #endif
+  return 0;
+}
+
+int edatSchedulePersistentNamedGreedyTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
+  #endif
+  va_list valist;
+  va_start(valist, num_dependencies);
+  scheduleProvidedTask(task_fn, std::string(task_name), true, num_dependencies, true, valist);
+  va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
+  #endif
   return 0;
 }
 
@@ -141,7 +175,7 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, "", false, num_dependencies, valist);
+  scheduleProvidedTask(task_fn, "", false, num_dependencies, false, valist);
   va_end(valist);
   #if DO_METRICS
     metrics::METRICS->timerStop("ScheduleTask", timer_key);
@@ -152,7 +186,7 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
 int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, std::string(task_name), false, num_dependencies, valist);
+  scheduleProvidedTask(task_fn, std::string(task_name), false, num_dependencies, false, valist);
   va_end(valist);
   return 0;
 }
@@ -236,8 +270,8 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
 * Will schedule a specific task, this is common functionality for all the different call permutations in the API. It will extract out the dependencies
 * and package these up before calling into the scheduler
 */
-static void scheduleProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, bool persistent, int num_dependencies, va_list valist) {
-  scheduler->registerTask(task_fn, task_name, generateDependencyVector(num_dependencies, valist), persistent);
+static void scheduleProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, bool persistent, int num_dependencies, bool greedyConsumer, va_list valist) {
+  scheduler->registerTask(task_fn, task_name, generateDependencyVector(num_dependencies, valist), persistent, greedyConsumer);
 }
 
 /**

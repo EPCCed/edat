@@ -2,20 +2,23 @@
 #define SRC_MPI_P2P_MESSAGING_H_
 
 #include <map>
+#include <vector>
 #include <mutex>
 #include "mpi.h"
 #include "messaging.h"
 #include "configuration.h"
 
 class MPI_P2P_Messaging : public Messaging {
-  bool protectMPI, mpiInitHere, terminated, eligable_for_termination;
-  int my_rank, total_ranks, reply_from_master;
+  bool protectMPI, mpiInitHere, terminated, eligable_for_termination, batchEvents;
+  int my_rank, total_ranks, reply_from_master, empty_itertions, max_batched_events;
+  double last_event_arrival, batch_timeout;
   int terminated_id, mode=0;
   int * termination_codes, *pingback_termination_codes;
   MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL,
     terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;
   std::map<MPI_Request, char*> outstandingSendRequests;
   std::mutex outstandingSendRequests_mutex, mpi_mutex;
+  std::vector<SpecificEvent*> eventShortTermStore;
   void initMPI();
   void checkSendRequestsForProgress();
   void sendSingleEvent(void *, int, int, int, bool, const char *);

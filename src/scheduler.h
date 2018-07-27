@@ -78,6 +78,14 @@ public:
     return s_cmp < 0;
   }
 
+  bool operator==(const DependencyKey& k) const {
+    if (this->s.compare(k.s) == 0) {
+      if (this->i == EDAT_ANY || k.i == EDAT_ANY) return true;
+      return this->i == k.i;
+    }
+    return false;
+  }
+
   void display() {
     printf("Key: %s from %d\n", s.c_str(), i);
   }
@@ -95,7 +103,7 @@ struct TaskDescriptor {
 
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
-  bool freeData, persistent;
+  bool freeData, persistent, greedyConsumerOfEvents;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
@@ -123,9 +131,10 @@ class Scheduler {
     void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
     Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
-    void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
+    void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool, bool);
     EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
+    void registerEvents(std::vector<SpecificEvent*>);
     bool isFinished();
     void readyToRunTask(PendingTaskDescriptor*);
     bool isTaskScheduled(std::string);

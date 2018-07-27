@@ -21,7 +21,8 @@
 * it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
 * the stored version which will be updated by other events arriving.
 */
-void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, std::vector<std::pair<int, std::string>> dependencies,
+                             bool persistent, bool greedyConsumerOfEvents) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
@@ -29,6 +30,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   pendingTask->freeData=true;
   pendingTask->persistent=persistent;
   pendingTask->task_name=task_name;
+  pendingTask->greedyConsumerOfEvents=greedyConsumerOfEvents;
   for (std::pair<int, std::string> dependency : dependencies) {
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     pendingTask->taskDependencyOrder.push_back(depKey);
@@ -293,6 +295,83 @@ bool Scheduler::checkProgressPersistentTasks() {
     }
   }
   return progress;
+}
+
+/**
+* This method supports the registering of multiple events and will attempt to match these up to one or more tasks which greedily consume events
+* and then fire off any applicable tasks when the dependencies have been met.
+*/
+void Scheduler::registerEvents(std::vector<SpecificEvent*> events) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  std::vector<DependencyKey> dependencies_to_remove;
+  std::map<DependencyKey, int*>::iterator it;
+  std::vector<PendingTaskDescriptor *> tasksToRun;
+  std::vector<int> events_to_remove, pendingTasksToRemove;
+  int i=0, j=0;
+  for (PendingTaskDescriptor * pendingTask : registeredTasks) {
+    if (pendingTask->greedyConsumerOfEvents) {
+      for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
+        j=0;
+        for (SpecificEvent* event : events) {
+          DependencyKey dK=DependencyKey(event->getEventId(), event->getSourcePid());
+          if (dK == dependency.first) {
+            events_to_remove.push_back(j);
+            (*(dependency.second))--;
+            pendingTask->numArrivedEvents++;
+            std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(dK);
+            if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+              std::queue<SpecificEvent*> eventQueue;
+              eventQueue.push(event);
+              pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(dK, eventQueue));
+            } else {
+              arrivedEventsIT->second.push(event);
+            }
+          }
+          j++;
+        }
+        if (!events_to_remove.empty()) {
+          // Go backwards through list to avoid out of bounds iterator
+          for (std::vector<int>::iterator it = events_to_remove.end()-1;it >= events_to_remove.begin() ; it--) {
+            events.erase(events.begin() + *it);
+          }
+          events_to_remove.clear();
+        }
+        if ((*(dependency.second)) <= 0) dependencies_to_remove.push_back(dependency.first);
+      }
+      if (!dependencies_to_remove.empty()) {
+        for (DependencyKey dk : dependencies_to_remove) pendingTask->outstandingDependencies.erase(dk);
+        dependencies_to_remove.clear();
+      }
+      if (pendingTask->outstandingDependencies.empty()) {
+        PendingTaskDescriptor* exec_Task;
+        if (!pendingTask->persistent) {
+          pendingTasksToRemove.push_back(i);
+          exec_Task=pendingTask;
+        } else {
+          exec_Task=new PendingTaskDescriptor(*pendingTask);
+          for (std::pair<DependencyKey, int*> dependency : pendingTask->originalDependencies) {
+            pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
+          }
+          pendingTask->arrivedEvents.clear();
+          pendingTask->numArrivedEvents=0;
+        }
+        tasksToRun.push_back(exec_Task);
+      }
+    }
+    i++;
+  }
+  for (int taskToRemove : pendingTasksToRemove) {
+    registeredTasks.erase(registeredTasks.begin() + taskToRemove);
+  }
+  if (!tasksToRun.empty() || !events.empty()) {
+    outstandTaskEvt_lock.unlock();
+    for (PendingTaskDescriptor * pt : tasksToRun) {
+      readyToRunTask(pt);
+    }
+    for (SpecificEvent* event : events) {
+      registerEvent(event);
+    }
+  }
 }
 
 /**

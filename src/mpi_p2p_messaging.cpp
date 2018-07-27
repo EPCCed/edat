@@ -52,6 +52,9 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   }
   terminated=false;
   eligable_for_termination=false;
+  batchEvents=configuration.get("EDAT_BATCH_EVENTS", false);
+  max_batched_events=configuration.get("EDAT_MAX_BATCHED_EVENTS", 1000);
+  batch_timeout=configuration.get("EDAT_BATCHING_EVENTS_TIMEOUT", 0.1);
   if (doesProgressThreadExist()) startProgressThread();
 }
 
@@ -134,7 +137,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
 */
 bool MPI_P2P_Messaging::isFinished() {
   std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
-  return outstandingSendRequests.empty();
+  return outstandingSendRequests.empty() && eventShortTermStore.empty();
 }
 
 /**
@@ -240,12 +243,25 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     }
     SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type,
                                            persistent == 1 ? true : false, contextManager.isTypeAContext(data_type), std::string(&buffer[13]), data_buffer);
-    scheduler.registerEvent(event);
+    if (batchEvents) {
+      last_event_arrival=MPI_Wtime();
+      eventShortTermStore.push_back(event);
+      if (eventShortTermStore.size() >= max_batched_events) {
+        scheduler.registerEvents(eventShortTermStore);
+        eventShortTermStore.clear();
+      }
+    } else {
+      scheduler.registerEvent(event);
+    }
     free(buffer);
     #if DO_METRICS
       metrics::METRICS->timerStop("pending_message", timer_key_pm);
     #endif
   } else {
+    if (batchEvents && !eventShortTermStore.empty() && MPI_Wtime() - last_event_arrival > batch_timeout) {
+      scheduler.registerEvents(eventShortTermStore);
+      eventShortTermStore.clear();
+    }
     bool current_terminated=checkForLocalTermination();
     if (current_terminated && !terminated) {
       terminated_id=std::rand();
