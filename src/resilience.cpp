@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <thread>
 #include <mutex>
+#include <chrono>
 #include <map>
 #include <queue>
 
@@ -31,6 +32,7 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
   }
+  external_ledger->beginMonitoring();
 
   return;
 }
@@ -109,6 +111,7 @@ void resilienceThreadFailed(const std::thread::id thread_id) {
 * Clears ledgers from memory.
 */
 void resilienceFinalise(void) {
+  external_ledger->endMonitoring();
   delete internal_ledger;
   delete external_ledger;
 }
@@ -696,6 +699,19 @@ void EDAT_Process_Ledger::serialize() {
   return;
 }
 
+void EDAT_Process_Ledger::monitorProcesses(const int period, bool& do_monitor, std::mutex& m) {
+  m.lock();
+  do_monitor = true;
+  while (do_monitor) {
+    m.unlock();
+    std::cout << "Monitoring the thing" << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(period));
+    m.lock();
+  }
+
+  return;
+}
+
 /**
 * Emplaces the supplied PendingTaskDescriptor in the task_log. Keyed by task_id.
 */
@@ -793,6 +809,25 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   lgt->state = FAILED;
   log_mutex.unlock();
   commit(FAILED, bookmark);
+  return;
+}
+
+void EDAT_Process_Ledger::beginMonitoring() {
+  if (!RANK) {
+    monitor_thread = std::thread(monitorProcesses, beat_period, std::ref(monitor), std::ref(monitor_mutex));
+  }
+
+  return;
+}
+
+void EDAT_Process_Ledger::endMonitoring() {
+  if (!RANK) {
+    monitor_mutex.lock();
+    monitor = false;
+    monitor_mutex.unlock();
+    monitor_thread.join();
+  }
+
   return;
 }
 

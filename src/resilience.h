@@ -65,8 +65,11 @@ private:
   const int RANK;
   const task_ptr_t * const task_array;
   const int number_of_tasks;
+  const int beat_period = 5;
+  bool monitor;
+  std::thread monitor_thread;
   std::string fname;
-  std::mutex log_mutex, file_mutex;
+  std::mutex log_mutex, file_mutex, monitor_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   void commit(const taskID_t, LoggedTask&);
@@ -75,6 +78,7 @@ private:
   void commit(const TaskState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
+  static void monitorProcesses(const int, bool&, std::mutex&);
 public:
   EDAT_Process_Ledger(Scheduler&, const int, const task_ptr_t * const, const int);
   EDAT_Process_Ledger(Scheduler&, const int, const int, const task_ptr_t * const, const int);
@@ -85,6 +89,8 @@ public:
   void markTaskRunning(const taskID_t);
   void markTaskComplete(const taskID_t);
   void markTaskFailed(const taskID_t);
+  void beginMonitoring();
+  void endMonitoring();
   void display() const;
 };
 
