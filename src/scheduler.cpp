@@ -31,6 +31,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   pendingTask->persistent=persistent;
   pendingTask->task_name=task_name;
   pendingTask->greedyConsumerOfEvents=greedyConsumerOfEvents;
+
   for (std::pair<int, std::string> dependency : dependencies) {
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     pendingTask->taskDependencyOrder.push_back(depKey);
@@ -40,35 +41,43 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     } else {
       pendingTask->originalDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
     }
-    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
-    if (it != outstandingEvents.end() && !it->second.empty()) {
-      pendingTask->numArrivedEvents++;
-      SpecificEvent * specificEVTToAdd;
-      if (it->second.front()->isPersistent()) {
-        // If its persistent event then copy the event
-        specificEVTToAdd=new SpecificEvent(*(it->second.front()));
-      } else {
-        specificEVTToAdd=it->second.front();
-        // If not persistent then remove from outstanding events
-        outstandingEventsToHandle--;
-        it->second.pop();
-        if (it->second.empty()) outstandingEvents.erase(it);
-      }
+    bool continueEvtSearch=true, prev_added=false;
+    while (continueEvtSearch) {
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
+      if (it != outstandingEvents.end() && !it->second.empty()) {
+        prev_added=true;
+        pendingTask->numArrivedEvents++;
+        SpecificEvent * specificEVTToAdd;
+        if (it->second.front()->isPersistent()) {
+          // If its persistent event then copy the event
+          specificEVTToAdd=new SpecificEvent(*(it->second.front()));
+        } else {
+          specificEVTToAdd=it->second.front();
+          // If not persistent then remove from outstanding events
+          outstandingEventsToHandle--;
+          it->second.pop();
+          if (it->second.empty()) outstandingEvents.erase(it);
+        }
 
-      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(depKey);
-      if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
-        std::queue<SpecificEvent*> eventQueue;
-        eventQueue.push(specificEVTToAdd);
-        pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depKey, eventQueue));
+        std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(depKey);
+        if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+          std::queue<SpecificEvent*> eventQueue;
+          eventQueue.push(specificEVTToAdd);
+          pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depKey, eventQueue));
+        } else {
+          arrivedEventsIT->second.push(specificEVTToAdd);
+        }
+        continueEvtSearch=greedyConsumerOfEvents;
       } else {
-        arrivedEventsIT->second.push(specificEVTToAdd);
-      }
-    } else {
-      oDit=pendingTask->outstandingDependencies.find(depKey);
-      if (oDit != pendingTask->outstandingDependencies.end()) {
-        (*(oDit->second))++;
-      } else {
-        pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+        continueEvtSearch=false;
+        if (!prev_added) {
+          oDit=pendingTask->outstandingDependencies.find(depKey);
+          if (oDit != pendingTask->outstandingDependencies.end()) {
+            (*(oDit->second))++;
+          } else {
+            pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+          }
+        }
       }
     }
   }
