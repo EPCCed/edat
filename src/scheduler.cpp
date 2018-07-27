@@ -510,20 +510,32 @@ void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
 EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, std::set<int> * eventsThatAreContexts) {
   EDAT_Event * events_payload = new EDAT_Event[taskContainer->numArrivedEvents];
   int i=0;
-  for (DependencyKey dependencyKey : taskContainer->taskDependencyOrder) {
-    // Pick them off this way to ensure ordering of dependencies wrt task definition
-    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = taskContainer->arrivedEvents.find(dependencyKey);
-    if (arrivedEventsIT == taskContainer->arrivedEvents.end()) {
-      raiseError("Can not find the corresponding event dependency key when mapping the task onto a thread\n");
+  if (taskContainer->greedyConsumerOfEvents) {
+    // If this is a greedy consumer then just consume events in any order
+    for (std::pair<DependencyKey, std::queue<SpecificEvent*>> events : taskContainer->arrivedEvents) {
+      while (!events.second.empty()) {
+        SpecificEvent * event = events.second.front();
+        events.second.pop();
+        generateEventPayload(event, &events_payload[i]);
+        i++;
+      }
     }
-    if (arrivedEventsIT->second.size() <=0) {
-      raiseError("Too few events with a corresponding EID for when mapping the task onto a thread\n");
+  } else {
+    for (DependencyKey dependencyKey : taskContainer->taskDependencyOrder) {
+      // Pick them off this way to ensure ordering of dependencies wrt task definition for non-greedy consumers
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = taskContainer->arrivedEvents.find(dependencyKey);
+      if (arrivedEventsIT == taskContainer->arrivedEvents.end()) {
+        raiseError("Can not find the corresponding event dependency key when mapping the task onto a thread\n");
+      }
+      if (arrivedEventsIT->second.size() <=0) {
+        raiseError("Too few events with a corresponding EID for when mapping the task onto a thread\n");
+      }
+      SpecificEvent * specEvent=arrivedEventsIT->second.front();
+      arrivedEventsIT->second.pop();
+      generateEventPayload(specEvent, &events_payload[i]);
+      if (specEvent->isAContext() && eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
+      i++;
     }
-    SpecificEvent * specEvent=arrivedEventsIT->second.front();
-    arrivedEventsIT->second.pop();
-    generateEventPayload(specEvent, &events_payload[i]);
-    if (specEvent->isAContext() && eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
-    i++;
   }
   return events_payload;
 }

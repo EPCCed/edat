@@ -98,12 +98,13 @@ struct TaskDescriptor {
   std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
   std::vector<DependencyKey> taskDependencyOrder;
   int numArrivedEvents;
+  bool greedyConsumerOfEvents=false;
   virtual TaskDescriptorType getDescriptorType() = 0;
 };
 
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
-  bool freeData, persistent, greedyConsumerOfEvents;
+  bool freeData, persistent;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
