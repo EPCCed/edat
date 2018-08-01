@@ -32,27 +32,23 @@ struct edat_struct_event {
   EDAT_Metadata metadata;
 };
 
-struct edat_struct_configuration {
-  char **key, **value;
-  int num_entries;
-};
-
 typedef struct edat_struct_event EDAT_Event;
 
-int edatInit(int *, char ***, struct edat_struct_configuration*);
-int edatFinalise(void);
+void edatInit();
+void edatInitWithConfiguration(int, char **, char **);
+void edatFinalise(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
-int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
-int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
-int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
-int edatSchedulePersistentGreedyTask(void (*)(EDAT_Event*, int), int, ...);
-int edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
-int edatSchedulePersistentNamedGreedyTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+void edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
+void edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+void edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
+void edatSchedulePersistentGreedyTask(void (*)(EDAT_Event*, int), int, ...);
+void edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+void edatSchedulePersistentNamedGreedyTask(void (*)(EDAT_Event*, int), const char*, int, ...);
 int edatIsTaskScheduled(const char*);
 int edatDescheduleTask(const char*);
-int edatFireEvent(void*, int, int, int, const char *);
-int edatFirePersistentEvent(void*, int, int, int, const char *);
+void edatFireEvent(void*, int, int, int, const char *);
+void edatFirePersistentEvent(void*, int, int, int, const char *);
 int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
 void* edatCreateContext(int);

@@ -13,8 +13,8 @@ extern "C" {
 int edatGetNumWorkers(void);
 int edatGetWorker(void);
 int edatGetNumActiveWorkers(void);
-int edatRestart(void);
-int edatPauseMainThread(void);
+void edatRestart(void);
+void edatPauseMainThread(void);
 
 #ifdef __cplusplus
 }

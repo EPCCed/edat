@@ -14,8 +14,8 @@
 static void accumulation_task(EDAT_Event*, int);
 static void report_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+int main() {
+  edatInit();
   double * data = (double*) malloc(sizeof(double) * 200);
   int i;
   for (i=0;i<200;i++) data[i]=0;

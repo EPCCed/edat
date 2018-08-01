@@ -12,13 +12,13 @@ std::string Configuration::envKeys[] = { "EDAT_NUM_WORKERS", "EDAT_MAIN_THREAD_W
 * The constructor which will initialise the configuration settings from the environment variables (if set) and then from the provided
 * configuration (if provided.)
 */
-Configuration::Configuration(edat_struct_configuration* providedConfig) {
+Configuration::Configuration(int number_entries, char ** keys, char ** values) {
   extractEnvironmentConfigSettings();
-  if (providedConfig != NULL) {
-    for (int i=0;i<providedConfig->num_entries;i++) {
-      std::string keyStr = std::string(providedConfig->key[i]);
+  if (keys != NULL && values != NULL) {
+    for (int i=0;i<number_entries;i++) {
+      std::string keyStr = std::string(keys[i]);
       std::transform(keyStr.begin(), keyStr.end(),keyStr.begin(), ::toupper);
-      configSettings.insert(std::pair<std::string, std::string>(keyStr, std::string(providedConfig->value[i])));
+      configSettings.insert(std::pair<std::string, std::string>(keyStr, std::string(values[i])));
     }
   }
 }

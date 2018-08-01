@@ -11,8 +11,8 @@
 static void my_task(EDAT_Event*, int);
 static void barrier_task(EDAT_Event* , int);
 
-int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+int main() {
+  edatInit();
   int myval=(edatGetRank() + 100)* 10;
   if (edatGetRank() == 0) {
     edatScheduleTask(my_task, 1, EDAT_ALL, "a");

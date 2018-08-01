@@ -25,9 +25,19 @@ static bool edatActive;
 
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, bool, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
+static void doInitialisation(Configuration*);
 
-int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
-  configuration=new Configuration(edat_config);
+void edatInit() {
+  configuration=new Configuration();
+  doInitialisation(configuration);
+}
+
+void edatInitWithConfiguration(int numberEntries, char ** keys, char ** values) {
+  configuration=new Configuration(numberEntries, keys, values);
+  doInitialisation(configuration);
+}
+
+static void doInitialisation(Configuration * configuration) {
   threadPool=new ThreadPool(*configuration);
   contextManager=new ContextManager(*configuration);
   scheduler=new Scheduler(*threadPool, *configuration);
@@ -40,10 +50,9 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config) {
   #if DO_METRICS
     metrics::METRICS->edatTimerStart();
   #endif
-  return 0;
 }
 
-int edatFinalise(void) {
+void edatFinalise(void) {
   if (edatActive) {
     // Puts the thread to sleep and will wake it up when there are no more events and tasks.
     std::mutex * m = new std::mutex();
@@ -61,10 +70,9 @@ int edatFinalise(void) {
     metrics::METRICS->finalise();
   #endif
   edatActive=false;
-  return 0;
 }
 
-int edatPauseMainThread(void) {
+void edatPauseMainThread(void) {
 #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("PauseMainThread");
 #endif
@@ -83,14 +91,12 @@ int edatPauseMainThread(void) {
   cv->wait(lk, [completed]{return *completed;});
 
   edatActive=false;
-  return 0;
 }
 
-int edatRestart() {
+void edatRestart() {
   messaging->resetPolling();
   threadPool->resetPolling();
   edatActive=true;
-  return 0;
 }
 
 int edatGetRank(void) {
@@ -113,7 +119,7 @@ int edatGetNumActiveWorkers(void) {
   return threadPool->getNumberActiveWorkers();
 }
 
-int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+void edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
@@ -124,10 +130,9 @@ int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_depend
   #if DO_METRICS
     metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatSchedulePersistentGreedyTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+void edatSchedulePersistentGreedyTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
@@ -138,10 +143,9 @@ int edatSchedulePersistentGreedyTask(void (*task_fn)(EDAT_Event*, int), int num_
   #if DO_METRICS
     metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+void edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
@@ -152,10 +156,9 @@ int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const cha
   #if DO_METRICS
     metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatSchedulePersistentNamedGreedyTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+void edatSchedulePersistentNamedGreedyTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
   #endif
@@ -166,10 +169,9 @@ int edatSchedulePersistentNamedGreedyTask(void (*task_fn)(EDAT_Event*, int), con
   #if DO_METRICS
     metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+void edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("ScheduleTask");
   #endif
@@ -180,15 +182,13 @@ int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ..
   #if DO_METRICS
     metrics::METRICS->timerStop("ScheduleTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+void edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
   va_list valist;
   va_start(valist, num_dependencies);
   scheduleProvidedTask(task_fn, std::string(task_name), false, num_dependencies, false, valist);
   va_end(valist);
-  return 0;
 }
 
 int edatDescheduleTask(const char * task_name) {
@@ -199,7 +199,7 @@ int edatIsTaskScheduled(const char * task_name) {
   return scheduler->isTaskScheduled(std::string(task_name)) ? 1 : 0;
 }
 
-int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+void edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
@@ -208,10 +208,9 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #if DO_METRICS
     metrics::METRICS->timerStop("FireEvent", timer_key);
   #endif
-  return 0;
 }
 
-int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+void edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("FirePersistentEvent");
   #endif
@@ -220,7 +219,6 @@ int edatFirePersistentEvent(void* data, int data_type, int data_count, int targe
   #if DO_METRICS
     metrics::METRICS->timerStop("FirePersistentEvent", timer_key);
   #endif
-  return 0;
 }
 
 /**

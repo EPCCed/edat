@@ -31,8 +31,8 @@ public:
     }
     return defaultValue;
   }
-
-  Configuration(edat_struct_configuration*);
+  Configuration() : Configuration(0, NULL, NULL) { }
+  Configuration(int, char**, char**);
 };
 
 #endif
