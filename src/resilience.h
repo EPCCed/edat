@@ -11,11 +11,12 @@
 #include <queue>
 #include <fstream>
 
+#define RESILIENCE_MASTER 0
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
 void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
-void resilienceAddEvent(SpecificEvent&);
+bool resilienceAddEvent(SpecificEvent&);
 void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
 void resilienceEventFired(void*, int, int, int, bool, const char *);
 void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
@@ -62,11 +63,14 @@ public:
 class EDAT_Process_Ledger {
 private:
   Scheduler& scheduler;
+  Messaging& messaging;
   const int RANK;
+  const int NUM_RANKS;
   const task_ptr_t * const task_array;
   const int number_of_tasks;
   const int beat_period = 5;
   bool monitor;
+  bool * live_ranks;
   std::thread monitor_thread;
   std::string fname;
   std::mutex log_mutex, file_mutex, monitor_mutex;
@@ -78,10 +82,10 @@ private:
   void commit(const TaskState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
-  static void monitorProcesses(const int, bool&, std::mutex&);
+  static void monitorProcesses(const int, bool&, std::mutex&, Messaging&, const char *, bool*, const int);
 public:
-  EDAT_Process_Ledger(Scheduler&, const int, const task_ptr_t * const, const int);
-  EDAT_Process_Ledger(Scheduler&, const int, const int, const task_ptr_t * const, const int);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const int, const task_ptr_t * const, const int);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
@@ -90,6 +94,8 @@ public:
   void markTaskComplete(const taskID_t);
   void markTaskFailed(const taskID_t);
   void beginMonitoring();
+  void respondToMonitor();
+  void registerMonitorResponse(int);
   void endMonitoring();
   void display() const;
 };

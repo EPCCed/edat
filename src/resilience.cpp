@@ -13,6 +13,8 @@
 
 static EDAT_Thread_Ledger * internal_ledger;
 static EDAT_Process_Ledger * external_ledger;
+static const char call[4] = {'u', 'o', 'k', '\0'};
+static const char response[4] = {'g', 'r', '8', '\0'};
 
 /**
 * Allocates the two ledgers and notifies the user that resilience is active.
@@ -24,13 +26,16 @@ static EDAT_Process_Ledger * external_ledger;
 */
 void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks) {
   int my_rank = amessaging.getRank();
+  int num_ranks = amessaging.getNumRanks();
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  external_ledger = new EDAT_Process_Ledger(ascheduler, my_rank, task_array, num_tasks);
+  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks);
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
+    std::cout << "Please do not use either of the following character strings as event IDs: ";
+    std::cout << std::string(call) << " " << std::string(response) << std::endl;
   }
   external_ledger->beginMonitoring();
 
@@ -49,10 +54,23 @@ void resilienceTaskScheduled(PendingTaskDescriptor& ptd) {
 /**
 * Adds an event which has arrived on-process to the external_ledger
 */
-void resilienceAddEvent(SpecificEvent& event) {
-  DependencyKey depkey = DependencyKey(event.getEventId(), event.getSourcePid());
-  external_ledger->addEvent(depkey, event);
-  return;
+bool resilienceAddEvent(SpecificEvent& event) {
+  const int source_id = event.getSourcePid();
+  std::string event_id = event.getEventId();
+  std::string monitor_event_id = std::string(call);
+  std::string response_event_id = std::string(response);
+
+  if (!event_id.compare(monitor_event_id)) {
+    external_ledger->respondToMonitor();
+    return false;
+  } else if (!event_id.compare(response_event_id)) {
+    if (source_id != RESILIENCE_MASTER) external_ledger->registerMonitorResponse(source_id);
+    return false;
+  } else {
+    DependencyKey depkey = DependencyKey(event_id, source_id);
+    external_ledger->addEvent(depkey, event);
+    return true;
+  }
 }
 
 /**
@@ -364,15 +382,15 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const task_ptr_t * const thetaskarray, const int num_tasks)
-  : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray), number_of_tasks(num_tasks) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks)
+  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks) {
     std::stringstream filename;
     filename << "edat_ledger_" << my_rank;
     this->fname = filename.str();
     serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, const int my_rank, const int dead_rank, const task_ptr_t * const thetaskarray, const int num_tasks) : scheduler(ascheduler), RANK(my_rank), task_array(thetaskarray), number_of_tasks(num_tasks) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int dead_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks) {
   const char tsk[4] = {'T', 'S', 'K', '\0'};
   const char evt[4] = {'E', 'V', 'T', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
@@ -699,14 +717,26 @@ void EDAT_Process_Ledger::serialize() {
   return;
 }
 
-void EDAT_Process_Ledger::monitorProcesses(const int period, bool& do_monitor, std::mutex& m) {
+void EDAT_Process_Ledger::monitorProcesses(const int period, bool& do_monitor, std::mutex& m, Messaging& amessaging, const char * event_id, bool * rank_responded, const int NUMBER_OF_RANKS) {
+  int rank;
   m.lock();
   do_monitor = true;
   while (do_monitor) {
+    for (rank = 0; rank < NUMBER_OF_RANKS; rank++) rank_responded[rank] = false;
+    rank_responded[RESILIENCE_MASTER] = true;
     m.unlock();
-    std::cout << "Monitoring the thing" << std::endl;
+    amessaging.fireEvent(NULL, 0, EDAT_NONE, EDAT_ALL, false, event_id);
     std::this_thread::sleep_for(std::chrono::seconds(period));
     m.lock();
+    for (rank = 0; rank < NUMBER_OF_RANKS; rank++) {
+      if (rank_responded[rank]) {
+        // all good
+        printf("Rank %d lives!\n", rank);
+      } else {
+        // rank is dead, attempt recovery
+        printf("RIP rank %d\n", rank);
+      }
+    }
   }
 
   return;
@@ -813,19 +843,35 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
 }
 
 void EDAT_Process_Ledger::beginMonitoring() {
-  if (!RANK) {
-    monitor_thread = std::thread(monitorProcesses, beat_period, std::ref(monitor), std::ref(monitor_mutex));
+  if (RANK == RESILIENCE_MASTER) {
+    live_ranks = new bool[NUM_RANKS];
+    monitor_thread = std::thread(monitorProcesses, beat_period, std::ref(monitor), std::ref(monitor_mutex), std::ref(messaging), call, live_ranks, NUM_RANKS);
   }
 
   return;
 }
 
+void EDAT_Process_Ledger::respondToMonitor() {
+  if (RANK != RESILIENCE_MASTER) {
+    messaging.fireEvent(NULL, 0, EDAT_NOTYPE, RESILIENCE_MASTER, false, response);
+  }
+  return;
+}
+
+void EDAT_Process_Ledger::registerMonitorResponse(int rank) {
+  std::lock_guard<std::mutex> lock(monitor_mutex);
+  live_ranks[rank] = true;
+  return;
+}
+
 void EDAT_Process_Ledger::endMonitoring() {
-  if (!RANK) {
+  if (RANK == RESILIENCE_MASTER) {
     monitor_mutex.lock();
     monitor = false;
+    for (int rank = 0; rank < NUM_RANKS; rank++) live_ranks[rank] = true;
     monitor_mutex.unlock();
     monitor_thread.join();
+    delete[] live_ranks;
   }
 
   return;
