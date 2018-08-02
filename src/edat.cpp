@@ -9,6 +9,7 @@
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
 #include "contextmanager.h"
+#include "concurrency_ctrl.h"
 #include "metrics.h"
 
 #ifndef DO_METRICS
@@ -20,6 +21,7 @@ static Scheduler * scheduler;
 static Messaging * messaging;
 static ContextManager * contextManager;
 static Configuration * configuration;
+static ConcurrencyControl * concurrencyControl;
 
 static bool edatActive;
 
@@ -39,8 +41,9 @@ void edatInitWithConfiguration(int numberEntries, char ** keys, char ** values) 
 
 static void doInitialisation(Configuration * configuration) {
   threadPool=new ThreadPool(*configuration);
+  concurrencyControl=new ConcurrencyControl(threadPool);
   contextManager=new ContextManager(*configuration);
-  scheduler=new Scheduler(*threadPool, *configuration);
+  scheduler=new Scheduler(*threadPool, *configuration, *concurrencyControl);
   #if DO_METRICS
     metrics::METRICS = new EDAT_Metrics(*configuration);
   #endif
@@ -262,6 +265,19 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
   std::pair<int, EDAT_Event*> foundEvents = scheduler->retrieveAnyMatchingEvents(dependencies);
   *retrievedNumber=foundEvents.first;
   return foundEvents.second;
+}
+
+void edatLock(char* lockName) {
+  concurrencyControl->lock(std::string(lockName));
+}
+
+void edatUnlock(char* lockName) {
+  concurrencyControl->unlock(std::string(lockName));
+}
+
+int edatTestLock(char* lockName) {
+  if (concurrencyControl->test_lock(std::string(lockName))) return 1;
+  return 0;
 }
 
 /**

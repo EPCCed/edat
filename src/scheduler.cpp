@@ -152,7 +152,10 @@ EDAT_Event* Scheduler::pauseTask(std::vector<std::pair<int, std::string>> depend
     return generateEventsPayload(pausedTask, NULL);
   } else {
     pausedTasks.push_back(pausedTask);
+    // Now release any locks and keep track of the name of these
+    std::vector<std::string> releasedLocks=concurrencyControl.releaseCurrentWorkerLocks();
     threadPool.pauseThread(pausedTask, &outstandTaskEvt_lock);
+    concurrencyControl.aquireLocks(releasedLocks);  // Reacquire these locks before control goes back into user code
     return generateEventsPayload(pausedTask, NULL);
   }
 }
@@ -513,7 +516,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  threadPool.startThread(threadBootstrapperFunction, taskDescriptor);
+  threadPool.startThread(threadBootstrapperFunction, new TaskExecutionContext(taskDescriptor, &concurrencyControl));
 }
 
 EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, std::set<int> * eventsThatAreContexts) {
@@ -575,17 +578,20 @@ void Scheduler::generateEventPayload(SpecificEvent * specEvent, EDAT_Event * eve
 * in tern will also be executed by this thread
 */
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
-  PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
+  TaskExecutionContext * taskContext = (TaskExecutionContext *) pthreadRawData;
+  PendingTaskDescriptor * pendingTaskDescription=taskContext->taskDescriptor;
 
   std::set<int> eventsThatAreContexts;
 
-  EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
-  taskContainer->task_fn(events_payload, taskContainer->numArrivedEvents);
-  for (int j=0;j<taskContainer->numArrivedEvents;j++) {
+  EDAT_Event * events_payload = generateEventsPayload(pendingTaskDescription, &eventsThatAreContexts);
+  pendingTaskDescription->task_fn(events_payload, pendingTaskDescription->numArrivedEvents);
+  taskContext->concurrencyControl->releaseCurrentWorkerLocks(); // Release any locks held by the task
+  for (int j=0;j<pendingTaskDescription->numArrivedEvents;j++) {
     free(events_payload[j].metadata.event_id);
-    if (taskContainer->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
+    if (pendingTaskDescription->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
   delete events_payload;
+  delete pendingTaskDescription;
   free(pthreadRawData);
 }
 

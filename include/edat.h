@@ -52,6 +52,9 @@ void edatFirePersistentEvent(void*, int, int, int, const char *);
 int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
 void* edatCreateContext(int);
+void edatLock(char*);
+void edatUnlock(char*);
+int edatTestLock(char*);
 EDAT_Event* edatWait(int, ...);
 EDAT_Event* edatRetrieveAny(int*, int, ...);
 

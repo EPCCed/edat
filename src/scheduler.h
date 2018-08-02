@@ -4,6 +4,7 @@
 #include "edat.h"
 #include "threadpool.h"
 #include "configuration.h"
+#include "concurrency_ctrl.h"
 #include <map>
 #include <string>
 #include <mutex>
@@ -114,6 +115,15 @@ struct PausedTaskDescriptor : TaskDescriptor {
   virtual TaskDescriptorType getDescriptorType() {return PAUSED;}
 };
 
+// This TaskExecutionContext is provided to the bootstrapper method, that is static (called from the thread)
+// and hence we can pop in here more context to use before and after task execution.
+struct TaskExecutionContext {
+  PendingTaskDescriptor * taskDescriptor;
+  ConcurrencyControl * concurrencyControl;
+public:
+  TaskExecutionContext(PendingTaskDescriptor * td, ConcurrencyControl * cc) : taskDescriptor(td), concurrencyControl(cc) { }
+};
+
 class Scheduler {
     int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
     std::vector<PendingTaskDescriptor*> registeredTasks;
@@ -121,6 +131,7 @@ class Scheduler {
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
     Configuration & configuration;
     ThreadPool & threadPool;
+    ConcurrencyControl & concurrencyControl;
     std::mutex taskAndEvent_mutex;
     static void threadBootstrapperFunction(void*);
     std::pair<TaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
@@ -131,7 +142,8 @@ class Scheduler {
     static void generateEventPayload(SpecificEvent*, EDAT_Event*);
     void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
-    Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
+    Scheduler(ThreadPool & tp, Configuration & aconfig, ConcurrencyControl & cc) : threadPool(tp), configuration(aconfig),
+      concurrencyControl(cc) { outstandingEventsToHandle = 0; }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool, bool);
     EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
