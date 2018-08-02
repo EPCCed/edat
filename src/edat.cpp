@@ -40,7 +40,8 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks);
+    const int beat_period = configuration->get("EDAT_BEAT_PERIOD", DEFAULT_BEAT_PERIOD);
+    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, beat_period);
   }
   messaging->resetPolling();
   edatActive=true;
@@ -264,12 +265,13 @@ void edatSyntheticFailure(int level) {
       threadPool->syntheticFailureOfThread(thread_id);
       resilienceThreadFailed(thread_id);
     } else if (level == 1) {
+      const int beat_period = configuration->get("EDAT_BEAT_PERIOD", DEFAULT_BEAT_PERIOD);
       std::cout << "I've got a bad feeling about rank " << messaging->getRank() << "..." << std::endl;
       messaging->syntheticFinalise();
       scheduler->reset();
       threadPool->reset();
-      const int beat_period = resilienceSyntheticFinalise();
-      std::this_thread::sleep_for(std::chrono::seconds(2*beat_period));
+      resilienceSyntheticFinalise();
+      std::this_thread::sleep_for(std::chrono::seconds(beat_period));
     } else {
       std::cout << "Did not recognise failure level. Call edatSyntheticFailure(0) for a simulated thread failure. Call edatSyntheticFailure(1) for a simulated process failure." << std::endl;
     }

@@ -12,9 +12,11 @@
 #include <fstream>
 
 #define RESILIENCE_MASTER 0
+#define DEFAULT_BEAT_PERIOD 5
+
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
-void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int);
+void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const int);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 bool resilienceAddEvent(SpecificEvent&);
 void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
@@ -23,7 +25,7 @@ void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
 void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
-const int resilienceSyntheticFinalise(void);
+void resilienceSyntheticFinalise(void);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -69,7 +71,7 @@ private:
   const int NUM_RANKS;
   const task_ptr_t * const task_array;
   const int number_of_tasks;
-  const int beat_period = 5;
+  const int beat_period;
   bool monitor;
   bool * live_ranks;
   std::thread monitor_thread;
@@ -85,8 +87,8 @@ private:
   int getFuncID(const task_ptr_t);
   static void monitorProcesses(const int, bool&, std::mutex&, Messaging&, const char *, bool*, const int);
 public:
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int);
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const int, const task_ptr_t * const, const int);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const int, const task_ptr_t * const, const int, const int);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
@@ -99,7 +101,6 @@ public:
   void registerMonitorResponse(int);
   void endMonitoring();
   void deleteLedgerFile();
-  const int getBeatPeriod() const { return beat_period; };
   void display() const;
 };
 

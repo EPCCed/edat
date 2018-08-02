@@ -24,12 +24,12 @@ static const char response[4] = {'g', 'r', '8', '\0'};
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks) {
+void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const int beat_period) {
   int my_rank = amessaging.getRank();
   int num_ranks = amessaging.getNumRanks();
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks);
+  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, beat_period);
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
@@ -135,12 +135,11 @@ void resilienceFinalise(void) {
   delete external_ledger;
 }
 
-const int resilienceSyntheticFinalise(void) {
+void resilienceSyntheticFinalise(void) {
   external_ledger->endMonitoring();
-  const int beat_period = external_ledger->getBeatPeriod();
   delete internal_ledger;
   delete external_ledger;
-  return beat_period;
+  return;
 }
 
 /**
@@ -391,15 +390,15 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks)
-  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period)
+  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period) {
     std::stringstream filename;
     filename << "edat_ledger_" << my_rank;
     this->fname = filename.str();
     serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int dead_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int dead_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period) {
   const char tsk[4] = {'T', 'S', 'K', '\0'};
   const char evt[4] = {'E', 'V', 'T', '\0'};
   const char eoo[4] = {'E', 'O', 'O', '\0'};
