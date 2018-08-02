@@ -130,8 +130,17 @@ void resilienceThreadFailed(const std::thread::id thread_id) {
 */
 void resilienceFinalise(void) {
   external_ledger->endMonitoring();
+  external_ledger->deleteLedgerFile();
   delete internal_ledger;
   delete external_ledger;
+}
+
+const int resilienceSyntheticFinalise(void) {
+  external_ledger->endMonitoring();
+  const int beat_period = external_ledger->getBeatPeriod();
+  delete internal_ledger;
+  delete external_ledger;
+  return beat_period;
 }
 
 /**
@@ -553,8 +562,6 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
     delete tl_iter->second;
     task_log.erase(tl_iter);
   }
-
-  std::remove(fname.c_str());
 }
 
 void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
@@ -729,10 +736,7 @@ void EDAT_Process_Ledger::monitorProcesses(const int period, bool& do_monitor, s
     std::this_thread::sleep_for(std::chrono::seconds(period));
     m.lock();
     for (rank = 0; rank < NUMBER_OF_RANKS; rank++) {
-      if (rank_responded[rank]) {
-        // all good
-        printf("Rank %d lives!\n", rank);
-      } else {
+      if (!rank_responded[rank]) {
         // rank is dead, attempt recovery
         printf("RIP rank %d\n", rank);
       }
@@ -874,6 +878,11 @@ void EDAT_Process_Ledger::endMonitoring() {
     delete[] live_ranks;
   }
 
+  return;
+}
+
+void EDAT_Process_Ledger::deleteLedgerFile() {
+  std::remove(fname.c_str());
   return;
 }
 

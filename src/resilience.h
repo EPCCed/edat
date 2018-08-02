@@ -23,6 +23,7 @@ void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
 void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
+const int resilienceSyntheticFinalise(void);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -97,6 +98,8 @@ public:
   void respondToMonitor();
   void registerMonitorResponse(int);
   void endMonitoring();
+  void deleteLedgerFile();
+  const int getBeatPeriod() const { return beat_period; };
   void display() const;
 };
 
