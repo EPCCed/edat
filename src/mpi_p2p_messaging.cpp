@@ -488,3 +488,8 @@ bool MPI_P2P_Messaging::checkForCodeInList(int * codes_to_check, int failure_cod
   }
   return false;
 }
+
+void MPI_P2P_Messaging::syntheticFinalise() {
+  continue_polling=false;
+  Messaging::finalise();
+}

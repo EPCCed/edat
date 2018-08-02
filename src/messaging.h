@@ -43,6 +43,7 @@ public:
   virtual void attachMainThread(std::condition_variable*, std::mutex*, bool*);
   virtual bool doesProgressThreadExist() { return progress_thread; }
   virtual int getTypeSize(int);
+  virtual void syntheticFinalise() = 0;
 };
 
 #endif

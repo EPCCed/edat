@@ -40,5 +40,6 @@ public:
   virtual int getRank();
   virtual int getNumRanks();
   virtual bool isFinished();
+  virtual void syntheticFinalise();
 };
 #endif
