@@ -267,6 +267,7 @@ void edatSyntheticFailure(int level) {
       std::cout << "I've got a bad feeling about rank " << messaging->getRank() << "..." << std::endl;
       messaging->syntheticFinalise();
       scheduler->reset();
+      threadPool->reset();
       const int beat_period = resilienceSyntheticFinalise();
       std::this_thread::sleep_for(std::chrono::seconds(2*beat_period));
     } else {

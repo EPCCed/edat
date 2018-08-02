@@ -62,6 +62,7 @@ class ThreadPool {
   void launchThreadToPollForProgressIfPossible();
   int findIndexFromThreadId(std::thread::id);
   static void threadReportCoreIdFunction(void *);
+  void killWorker(const int);
  public:
   ThreadPool(Configuration&);
   void startThread(void (*)(void *), void *, taskID_t);
@@ -76,6 +77,7 @@ class ThreadPool {
   int getNumberActiveWorkers();
   void killWorker(const std::thread::id);
   void syntheticFailureOfThread(const std::thread::id);
+  void reset();
 };
 
 #endif /* SRC_THREADPOOL_H_ */

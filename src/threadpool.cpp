@@ -529,11 +529,78 @@ void ThreadPool::killWorker(const std::thread::id thread_id) {
   return;
 }
 
+void ThreadPool::killWorker(const int worker_idx) {
+  // a zombie worker is signified by being marked busy but having a NULL active thread
+  WorkerThread& wt = workers[worker_idx];
+  std::map<PausedTaskDescriptor*,ThreadPackage*>::iterator ptIter;
+
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  threadBusy[worker_idx] = true;
+
+  delete wt.activeThread;
+  wt.activeThread = NULL;
+
+  while (!wt.idleThreads.empty()) {
+    delete wt.idleThreads.front();
+    wt.idleThreads.pop();
+  }
+
+  std::unique_lock<std::mutex> pausedAndWaitingLock(wt.pausedAndWaitingMutex);
+  while (!wt.waitingThreads.empty()) {
+    delete wt.waitingThreads.front();
+    wt.waitingThreads.pop();
+  }
+
+  for (ptIter = wt.pausedThreads.begin(); ptIter != wt.pausedThreads.end(); ++ptIter) {
+    delete ptIter->first, ptIter->second;
+  }
+
+  return;
+}
+
 void ThreadPool::syntheticFailureOfThread(const std::thread::id thread_id) {
   int worker_idx = findIndexFromThreadId(thread_id);
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   workers[worker_idx].synthFail = true;
   workers[worker_idx].activeThread->abort();
+
+  return;
+}
+
+void ThreadPool::reset() {
+  int i, worker_idx;
+
+  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
+  while (!threadQueue.empty()) {
+    threadQueue.pop();
+  }
+  thread_start_mutex.unlock();
+
+  for (worker_idx = 0; worker_idx<number_of_workers; worker_idx++) {
+    killWorker(worker_idx);
+  }
+
+  delete[] threadBusy;
+  delete[] workers;
+
+  // knock-down complete, rebuild
+  progressPollIdleThread=false;
+  restartAnotherPoller=false;
+  pollingProgressThread=-1;
+  next_suggested_idle_thread = 0;
+
+  for (i = 0; i < number_of_workers; i++) {
+    threadBusy[i] = (i==0 && main_thread_is_worker);
+  }
+
+  threadBusy = new bool[number_of_workers];
+  workers = new WorkerThread[number_of_workers];
+  mapThreadsToCores(false);
+  for (i=0; i<number_of_workers; i++) {
+    new (&workers[i]) WorkerThread();
+    workers[i].activeThread=new ThreadPackage();
+    workers[i].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, i), workers[i].core_id);
+  }
 
   return;
 }
