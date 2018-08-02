@@ -220,6 +220,7 @@ public:
     bool isTaskScheduled(std::string);
     bool descheduleTask(std::string);
     std::pair<int, EDAT_Event*> retrieveAnyMatchingEvents(std::vector<std::pair<int, std::string>>);
+    void reset();
 };
 
 #endif

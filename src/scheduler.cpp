@@ -927,3 +927,32 @@ bool Scheduler::isFinished() {
   }
   return outstandingEventsToHandle==0;
 }
+
+void Scheduler::reset() {
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
+  SpecificEvent * event;
+
+  std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
+
+  while (!registeredTasks.empty()) {
+    delete registeredTasks.back();
+    registeredTasks.pop_back();
+  }
+
+  while (!pausedTasks.empty()) {
+    delete pausedTasks.back();
+    pausedTasks.pop_back();
+  }
+
+  while(!outstandingEvents.empty()) {
+    oe_iter = outstandingEvents.begin();
+    while (!oe_iter->second.empty()) {
+      event = oe_iter->second.front();
+      oe_iter->second.pop();
+      delete event;
+    }
+    outstandingEvents.erase(oe_iter);
+  }
+
+  return;
+}
