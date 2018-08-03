@@ -11,11 +11,21 @@
 #include <map>
 #include <queue>
 
+// ledgers
 static EDAT_Thread_Ledger * internal_ledger;
 static EDAT_Process_Ledger * external_ledger;
+
+// monitoring event IDs
 static const char call[4] = {'u', 'o', 'k', '\0'};
 static const char response[4] = {'a', 'o', 'k', '\0'};
 static const char obit[4] = {'r', 'i', 'p', '\0'};
+
+// serialization object markers
+static const char tsk[4] = {'T', 'S', 'K', '\0'};
+static const char evt[4] = {'E', 'V', 'T', '\0'};
+static const char eoo[4] = {'E', 'O', 'O', '\0'};
+static const char eol[4] = {'E', 'O', 'L', '\0'};
+static const size_t marker_size = 4 * sizeof(char);
 
 /**
 * Allocates the two ledgers and notifies the user that resilience is active.
@@ -172,7 +182,6 @@ LoggedTask::LoggedTask(PendingTaskDescriptor& src) {
 * a streampos marking the start of the object
 */
 LoggedTask::LoggedTask(std::istream& file, const std::streampos object_begin) {
-  char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4];
   char * memblock;
 
@@ -186,7 +195,7 @@ LoggedTask::LoggedTask(std::istream& file, const std::streampos object_begin) {
 
   this->ptd = new PendingTaskDescriptor(file, file.tellg());
 
-  file.read(marker_buf, sizeof(marker_buf));
+  file.read(marker_buf, marker_size);
   if(strcmp(marker_buf, eoo)) raiseError("LoggedTask deserialization error, EOO not found");
 }
 
@@ -219,15 +228,13 @@ LoggedTask::~LoggedTask() {
 void LoggedTask::serialize(std::ostream& file, const std::streampos object_begin) {
   // serialization schema:
   // TaskState state, PendingTaskDescriptor ptd, EOO
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
-
   file.seekp(object_begin);
   file_pos = object_begin;
 
   file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
   ptd->serialize(file, file.tellp());
 
-  file.write(eoo, sizeof(eoo));
+  file.write(eoo, marker_size);
 
   return;
 }
@@ -413,12 +420,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
 
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
   if (recovery) {
-    const char tsk[4] = {'T', 'S', 'K', '\0'};
-    const char evt[4] = {'E', 'V', 'T', '\0'};
-    const char eoo[4] = {'E', 'O', 'O', '\0'};
-    const char eol[4] = {'E', 'O', 'L', '\0'};
     char marker_buf[4], ledger_name_buf[24];
-    const size_t marker_size = sizeof(marker_buf);
     bool found_eol;
     char * memblock;
     taskID_t task_id;
@@ -571,11 +573,7 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
 
 void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
   std::fstream file;
-  const char tsk[4] = {'T', 'S', 'K', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
-  const char eol[4] = {'E', 'O', 'L', '\0'};
   char marker_buf[4];
-  const size_t marker_size = sizeof(marker_buf);
   std::streampos bookmark;
 
   std::lock_guard<std::mutex> lock(file_mutex);
@@ -600,11 +598,7 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
 
 void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
   std::fstream file;
-  const char evt[4] = {'E', 'V', 'T', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
-  const char eol[4] = {'E', 'O', 'L', '\0'};
   char marker_buf[4];
-  const size_t marker_size = sizeof(marker_buf);
   const taskID_t no_task_id = 0;
   std::streampos bookmark;
 
@@ -632,10 +626,7 @@ void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
 
 void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& spec_evt) {
   std::fstream file;
-  const char evt[4] = {'E', 'V', 'T', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4];
-  const size_t marker_size = sizeof(marker_buf);
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
@@ -680,12 +671,6 @@ void EDAT_Process_Ledger::serialize() {
   // TSK : taskID_t, LoggedTask : EOO
   // EVT : taskID_t, SpecificEvent : EOO
   // EOL
-  const char tsk[4] = {'T', 'S', 'K', '\0'};
-  const char evt[4] = {'E', 'V', 'T', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
-  const char eol[4] = {'E', 'O', 'L', '\0'};
-  char marker_buf[4];
-  const size_t marker_size = sizeof(marker_buf);
   const taskID_t no_task_id = 0;
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
