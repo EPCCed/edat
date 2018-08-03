@@ -27,9 +27,21 @@ static const char response[4] = {'g', 'r', '8', '\0'};
 void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const int beat_period) {
   int my_rank = amessaging.getRank();
   int num_ranks = amessaging.getNumRanks();
+  char ledger_name_buffer[20];
+  sprintf(ledger_name_buffer, "edat_ledger_%d", my_rank);
+  std::string ledger_name = std::string(ledger_name_buffer);
+  FILE * ftest;
+  bool recovery;
 
   internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, beat_period);
+  ftest = fopen(ledger_name_buffer, "r");
+  if (ftest == NULL) {
+    recovery = false;
+  } else {
+    fclose(ftest);
+    recovery = true;
+  }
+  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, beat_period, ledger_name, recovery);
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
@@ -390,108 +402,130 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period)
-  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period) {
-    std::stringstream filename;
-    filename << "edat_ledger_" << my_rank;
-    this->fname = filename.str();
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name)
+  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
     serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int dead_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period) {
-  const char tsk[4] = {'T', 'S', 'K', '\0'};
-  const char evt[4] = {'E', 'V', 'T', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
-  const char eol[4] = {'E', 'O', 'L', '\0'};
-  char marker_buf[4];
-  const size_t marker_size = sizeof(marker_buf);
-  bool found_eol;
-  char * memblock;
-  taskID_t task_id;
-  LoggedTask * lgt;
-  SpecificEvent * spec_evt;
-  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
-  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator ae_iter;
-  std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  std::map<taskID_t,std::queue<SpecificEvent*>> orphaned_events;
-  std::map<taskID_t,std::queue<SpecificEvent*>>::iterator orph_iter;
-  std::stringstream filename, loadname;
-  std::string dead_ledger, old_fname;
-  std::fstream file;
-  std::streampos bookmark;
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
+  if (recovery) {
+    const char tsk[4] = {'T', 'S', 'K', '\0'};
+    const char evt[4] = {'E', 'V', 'T', '\0'};
+    const char eoo[4] = {'E', 'O', 'O', '\0'};
+    const char eol[4] = {'E', 'O', 'L', '\0'};
+    char marker_buf[4], ledger_name_buf[24];
+    const size_t marker_size = sizeof(marker_buf);
+    bool found_eol;
+    char * memblock;
+    taskID_t task_id;
+    LoggedTask * lgt;
+    SpecificEvent * spec_evt;
+    std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
+    std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator ae_iter;
+    std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+    std::map<taskID_t,std::queue<SpecificEvent*>> orphaned_events;
+    std::map<taskID_t,std::queue<SpecificEvent*>>::iterator orph_iter;
+    std::string dead_ledger;
+    std::fstream file;
+    std::streampos bookmark;
 
-  // set fname using recovery rank ID
-  filename << "edat_ledger_" << my_rank;
-  this->fname = filename.str();
+    // rename ledger file of dead rank
+    sprintf(ledger_name_buf, "edat_ledger_%d_%s", RANK, "_DEAD");
+    dead_ledger = std::string(ledger_name_buf);
+    rename(fname.c_str(), ledger_name_buf);
 
-  // rename ledger file of dead rank
-  loadname << "edat_ledger_" << dead_rank;
-  old_fname = loadname.str();
+    // open old ledger file for reading
+    file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
+    file.seekg(std::ios::beg);
 
-  loadname << "_DEAD";
-  dead_ledger = loadname.str();
-  rename(old_fname.c_str(), dead_ledger.c_str());
-
-  // open old ledger file for reading
-  file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
-  file.seekg(std::ios::beg);
-
-  found_eol = false;
-  while (!found_eol) {
-    bookmark = file.tellg();
-    file.read(marker_buf, marker_size);
-    if (!strcmp(marker_buf, tsk)) {
-      // found a task
-      memblock = new char[sizeof(taskID_t)];
-      file.read(memblock, sizeof(taskID_t));
-      task_id = *(reinterpret_cast<taskID_t*>(memblock));
-      delete[] memblock;
-
-      lgt = new LoggedTask(file, file.tellg());
-
-      task_log.emplace(task_id, lgt);
-
+    found_eol = false;
+    while (!found_eol) {
+      bookmark = file.tellg();
       file.read(marker_buf, marker_size);
-      if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger task deserialization error, EOO not found");
-    } else if (!strcmp(marker_buf, evt)) {
-      // found an event
-      memblock = new char[sizeof(taskID_t)];
-      file.read(memblock, sizeof(taskID_t));
-      task_id = *(reinterpret_cast<taskID_t*>(memblock));
-      delete[] memblock;
+      if (!strcmp(marker_buf, tsk)) {
+        // found a task
+        memblock = new char[sizeof(taskID_t)];
+        file.read(memblock, sizeof(taskID_t));
+        task_id = *(reinterpret_cast<taskID_t*>(memblock));
+        delete[] memblock;
 
-      spec_evt = new SpecificEvent(file, file.tellg());
-      spec_evt->setFilePos(bookmark);
+        lgt = new LoggedTask(file, file.tellg());
 
-      file.read(marker_buf, marker_size);
-      if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
+        task_log.emplace(task_id, lgt);
 
-      DependencyKey depkey = DependencyKey(spec_evt->getEventId(), spec_evt->getSourcePid());
-      if (!task_id) {
-        // event is outstanding
-        oe_iter = outstanding_events.find(depkey);
-        if (oe_iter == outstanding_events.end()) {
-          std::queue<SpecificEvent*> event_queue;
-          event_queue.push(spec_evt);
-          outstanding_events.emplace(depkey, event_queue);
-        } else {
-          oe_iter->second.push(spec_evt);
-        }
-      } else {
-        // event belongs to a task, which might not have been loaded yet...
-        tl_iter = task_log.find(task_id);
-        if (tl_iter == task_log.end()) {
-          // task hasn't been loaded yet, so hold on to the event for now
-          orph_iter = orphaned_events.find(task_id);
-          if(orph_iter == orphaned_events.end()) {
+        file.read(marker_buf, marker_size);
+        if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger task deserialization error, EOO not found");
+      } else if (!strcmp(marker_buf, evt)) {
+        // found an event
+        memblock = new char[sizeof(taskID_t)];
+        file.read(memblock, sizeof(taskID_t));
+        task_id = *(reinterpret_cast<taskID_t*>(memblock));
+        delete[] memblock;
+
+        spec_evt = new SpecificEvent(file, file.tellg());
+        spec_evt->setFilePos(bookmark);
+
+        file.read(marker_buf, marker_size);
+        if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
+
+        DependencyKey depkey = DependencyKey(spec_evt->getEventId(), spec_evt->getSourcePid());
+        if (!task_id) {
+          // event is outstanding
+          oe_iter = outstanding_events.find(depkey);
+          if (oe_iter == outstanding_events.end()) {
             std::queue<SpecificEvent*> event_queue;
             event_queue.push(spec_evt);
-            orphaned_events.emplace(task_id, event_queue);
+            outstanding_events.emplace(depkey, event_queue);
           } else {
-            orph_iter->second.push(spec_evt);
+            oe_iter->second.push(spec_evt);
           }
         } else {
-          // give task the event
+          // event belongs to a task, which might not have been loaded yet...
+          tl_iter = task_log.find(task_id);
+          if (tl_iter == task_log.end()) {
+            // task hasn't been loaded yet, so hold on to the event for now
+            orph_iter = orphaned_events.find(task_id);
+            if(orph_iter == orphaned_events.end()) {
+              std::queue<SpecificEvent*> event_queue;
+              event_queue.push(spec_evt);
+              orphaned_events.emplace(task_id, event_queue);
+            } else {
+              orph_iter->second.push(spec_evt);
+            }
+          } else {
+            // give task the event
+            ae_iter = tl_iter->second->ptd->arrivedEvents.find(depkey);
+            if (ae_iter == tl_iter->second->ptd->arrivedEvents.end()) {
+              std::queue<SpecificEvent*> event_queue;
+              event_queue.push(spec_evt);
+              tl_iter->second->ptd->arrivedEvents.emplace(depkey, event_queue);
+            } else {
+              ae_iter->second.push(spec_evt);
+            }
+          }
+
+        }
+      } else if (!strcmp(marker_buf, eol)) {
+        // found the end of the ledger
+        found_eol = true;
+      } else {
+        // something bad has happened
+        raiseError("EDAT_Process_Ledger deserialization error, unable to parse marker");
+      }
+    }
+    file.close();
+
+    // deal with any orphaned events
+    for (orph_iter = orphaned_events.begin(); orph_iter != orphaned_events.end(); ++orph_iter) {
+      while (!orph_iter->second.empty()) {
+        spec_evt = orph_iter->second.front();
+        orph_iter->second.pop();
+        DependencyKey depkey = DependencyKey(spec_evt->getEventId(), spec_evt->getSourcePid());
+        tl_iter = task_log.find(orph_iter->first);
+        if (tl_iter == task_log.end()) {
+          // something bad has happened
+          raiseError("EDAT_Process_Ledger deserialization error, unable to match orphaned event with task");
+        } else {
           ae_iter = tl_iter->second->ptd->arrivedEvents.find(depkey);
           if (ae_iter == tl_iter->second->ptd->arrivedEvents.end()) {
             std::queue<SpecificEvent*> event_queue;
@@ -501,41 +535,9 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
             ae_iter->second.push(spec_evt);
           }
         }
-
-      }
-    } else if (!strcmp(marker_buf, eol)) {
-      // found the end of the ledger
-      found_eol = true;
-    } else {
-      // something bad has happened
-      raiseError("EDAT_Process_Ledger deserialization error, unable to parse marker");
-    }
-  }
-  file.close();
-
-  // deal with any orphaned events
-  for (orph_iter = orphaned_events.begin(); orph_iter != orphaned_events.end(); ++orph_iter) {
-    while (!orph_iter->second.empty()) {
-      spec_evt = orph_iter->second.front();
-      orph_iter->second.pop();
-      DependencyKey depkey = DependencyKey(spec_evt->getEventId(), spec_evt->getSourcePid());
-      tl_iter = task_log.find(orph_iter->first);
-      if (tl_iter == task_log.end()) {
-        // something bad has happened
-        raiseError("EDAT_Process_Ledger deserialization error, unable to match orphaned event with task");
-      } else {
-        ae_iter = tl_iter->second->ptd->arrivedEvents.find(depkey);
-        if (ae_iter == tl_iter->second->ptd->arrivedEvents.end()) {
-          std::queue<SpecificEvent*> event_queue;
-          event_queue.push(spec_evt);
-          tl_iter->second->ptd->arrivedEvents.emplace(depkey, event_queue);
-        } else {
-          ae_iter->second.push(spec_evt);
-        }
       }
     }
   }
-
   // write new file
   serialize();
 }

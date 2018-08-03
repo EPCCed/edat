@@ -87,8 +87,8 @@ private:
   int getFuncID(const task_ptr_t);
   static void monitorProcesses(const int, bool&, std::mutex&, Messaging&, const char *, bool*, const int);
 public:
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int);
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const int, const task_ptr_t * const, const int, const int);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string, bool);
   ~EDAT_Process_Ledger();
   void addEvent(const DependencyKey, const SpecificEvent&);
   void addTask(const taskID_t, PendingTaskDescriptor&);
