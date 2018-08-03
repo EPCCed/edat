@@ -71,9 +71,11 @@ class SpecificEvent {
   void serialize(std::ostream&, const std::streampos) const;
 };
 
+enum HeldEventState { HELD, RELEASED };
+
 struct HeldEvent {
+  HeldEventState state = HELD;
   int target;
-  const char * event_id;
   SpecificEvent * spec_evt;
 };
 
