@@ -254,14 +254,34 @@ taskID_t EDAT_Thread_Ledger::getCurrentlyActiveTask(const std::thread::id thread
 void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
+  const std::set<int> dead_ranks = external_ledger->getDeadRanks();
   HeldEvent held_event;
 
   while (!atd->firedEvents.empty()) {
     held_event = atd->firedEvents.front();
-    messaging.fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.event_id);
-    free(held_event.spec_evt->getData());
-    delete held_event.spec_evt;
-    atd->firedEvents.pop();
+    if (dead_ranks.empty()) {
+      // there are no dead ranks, fire at will
+      messaging.fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.spec_evt->getEventId().c_str());
+      free(held_event.spec_evt->getData());
+      delete held_event.spec_evt;
+      atd->firedEvents.pop();
+    } else {
+      // at least one rank is down, compare event target and fire if alive, otherwise send to
+      // external_ledger
+      int target = held_event.target;
+      std::set<int>::iterator dr_iter = dead_ranks.find(target);
+      if (target == EDAT_ALL || dr_iter != dead_ranks.end()) {
+        // send to external_ledger
+        external_ledger->holdEvent(held_event);
+        atd->firedEvents.pop();
+      } else {
+        // a rank is down, but not this event's target
+        messaging.fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.spec_evt->getEventId().c_str());
+        free(held_event.spec_evt->getData());
+        delete held_event.spec_evt;
+        atd->firedEvents.pop();
+      }
+    }
   }
 
   return;
@@ -311,7 +331,6 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
     }
 
     held_event.target = target;
-    held_event.event_id = event_id;
     held_event.spec_evt = spec_evt;
 
     at_mutex.lock();
@@ -896,6 +915,17 @@ void EDAT_Process_Ledger::endMonitoring() {
 
 void EDAT_Process_Ledger::deleteLedgerFile() {
   std::remove(fname.c_str());
+  return;
+}
+
+const std::set<int> EDAT_Process_Ledger::getDeadRanks() {
+  std::lock_guard<std::mutex> lock(dead_ranks_mutex);
+  return dead_ranks;
+}
+
+void EDAT_Process_Ledger::holdEvent(HeldEvent& held_event) {
+  std::lock_guard<std::mutex> lock(held_events_mutex);
+  held_events[held_event.target].push(&held_event);
   return;
 }
 

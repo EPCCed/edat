@@ -74,12 +74,13 @@ private:
   const int beat_period;
   bool monitor;
   bool * live_ranks;
-  std::set<int> dead_ranks;
   std::thread monitor_thread;
   std::string fname;
-  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex;
+  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
+  std::set<int> dead_ranks;
+  std::map<int,std::queue<HeldEvent*>> held_events;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(const taskID_t, const SpecificEvent&);
@@ -104,6 +105,8 @@ public:
   void registerObit(const int);
   void endMonitoring();
   void deleteLedgerFile();
+  const std::set<int> getDeadRanks();
+  void holdEvent(HeldEvent&);
   void display() const;
 };
 
