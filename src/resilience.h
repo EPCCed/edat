@@ -74,9 +74,10 @@ private:
   const int beat_period;
   bool monitor;
   bool * live_ranks;
+  std::set<int> dead_ranks;
   std::thread monitor_thread;
   std::string fname;
-  std::mutex log_mutex, file_mutex, monitor_mutex;
+  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   void commit(const taskID_t, LoggedTask&);
@@ -85,7 +86,8 @@ private:
   void commit(const TaskState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
-  static void monitorProcesses(const int, bool&, std::mutex&, Messaging&, const char *, bool*, const int);
+  static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
+  static void announceRankDead(std::mutex&, std::set<int>&, int, Messaging&);
 public:
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string, bool);
@@ -99,6 +101,7 @@ public:
   void beginMonitoring();
   void respondToMonitor();
   void registerMonitorResponse(int);
+  void registerObit(const int);
   void endMonitoring();
   void deleteLedgerFile();
   void display() const;
