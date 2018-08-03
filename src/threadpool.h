@@ -78,6 +78,7 @@ class ThreadPool {
   void killWorker(const std::thread::id);
   void syntheticFailureOfThread(const std::thread::id);
   void reset();
+  void reinit();
 };
 
 #endif /* SRC_THREADPOOL_H_ */

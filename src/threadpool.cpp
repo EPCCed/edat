@@ -568,7 +568,7 @@ void ThreadPool::syntheticFailureOfThread(const std::thread::id thread_id) {
 }
 
 void ThreadPool::reset() {
-  int i, worker_idx;
+  int worker_idx;
 
   std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   while (!threadQueue.empty()) {
@@ -580,10 +580,16 @@ void ThreadPool::reset() {
     killWorker(worker_idx);
   }
 
+  messaging = NULL;
+
   delete[] threadBusy;
   delete[] workers;
 
-  // knock-down complete, rebuild
+  return;
+}
+
+void ThreadPool::reinit() {
+  int i;
   progressPollIdleThread=false;
   restartAnotherPoller=false;
   pollingProgressThread=-1;
