@@ -83,6 +83,7 @@ private:
   std::map<int,std::queue<HeldEvent*>> held_events;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
+  void commit(HeldEvent&);
   void commit(const taskID_t, const SpecificEvent&);
   void commit(const TaskState&, const std::streampos);
   void serialize();

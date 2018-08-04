@@ -104,6 +104,18 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
   return;
 }
 
+void HeldEvent::serialize(std::ostream& file, const std::streampos object_begin) {
+  file.seekp(object_begin);
+  file_pos = object_begin;
+
+  file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
+  file.write(reinterpret_cast<const char *>(&target), sizeof(int));
+  spec_evt->serialize(file, file.tellp());
+  file.write(eoo, marker_size);
+
+  return;
+}
+
 /**
 * Generates a unique identifier for each task, used by resilience to track
 * which tasks are active, and store data for restart

@@ -74,9 +74,11 @@ class SpecificEvent {
 enum HeldEventState { HELD, RELEASED };
 
 struct HeldEvent {
+  std::streampos file_pos;
   HeldEventState state = HELD;
   int target;
   SpecificEvent * spec_evt;
+  void serialize(std::ostream& file, const std::streampos);
 };
 
 class DependencyKey {

@@ -23,6 +23,7 @@ static const char obit[4] = {'r', 'i', 'p', '\0'};
 // serialization object markers
 static const char tsk[4] = {'T', 'S', 'K', '\0'};
 static const char evt[4] = {'E', 'V', 'T', '\0'};
+static const char hvt[4] = {'H', 'V', 'T', '\0'};
 static const char eoo[4] = {'E', 'O', 'O', '\0'};
 static const char eol[4] = {'E', 'O', 'L', '\0'};
 static const size_t marker_size = 4 * sizeof(char);
@@ -643,6 +644,28 @@ void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
   return;
 }
 
+void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
+  std::fstream file;
+  char marker_buf[4];
+  std::streampos bookmark;
+
+  std::lock_guard<std::mutex> lock(file_mutex);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.seekp(-marker_size, std::ios::end);
+  bookmark = file.tellp();
+
+  file.read(marker_buf, marker_size);
+  if (strcmp(marker_buf, eol)) raiseError("Error in HeldEvent commit, EOL not found");
+
+  file.write(hvt, marker_size);
+  held_event.serialize(file, file.tellp());
+  file.write(eol, marker_size);
+
+  file.close();
+
+  return;
+}
+
 void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& spec_evt) {
   std::fstream file;
   char marker_buf[4];
@@ -926,6 +949,7 @@ const std::set<int> EDAT_Process_Ledger::getDeadRanks() {
 void EDAT_Process_Ledger::holdEvent(HeldEvent& held_event) {
   std::lock_guard<std::mutex> lock(held_events_mutex);
   held_events[held_event.target].push(&held_event);
+  commit(held_event);
   return;
 }
 
