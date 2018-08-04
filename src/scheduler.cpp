@@ -18,13 +18,18 @@
 #define DO_METRICS false
 #endif
 
+// serialization markers
+static const char eod[4] = {'E', 'O', 'D', '\0'};
+static const char eoo[4] = {'E', 'O', 'O', '\0'};
+static const char eom[4] = {'E', 'O', 'M', '\0'};
+static const char eov[4] = {'E', 'O', 'V', '\0'};
+static const size_t marker_size = 4 * sizeof(char);
+
 /**
 * Deserialize constructor. Instantiates a SpecificEvent from an istream (an open binary file)
 * and a streamposition (a valid file pointer to the start of the object).
 */
 SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_begin) {
-  const char eod[4] = {'E', 'O', 'D', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4], byte;
   char * memblock;
   int int_data[6];
@@ -49,7 +54,7 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   this->data = (char *) malloc(raw_data_length);
   file.read(data, raw_data_length);
 
-  file.read(marker_buf, 4);
+  file.read(marker_buf, marker_size);
   if (strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
 
   id_length = 0;
@@ -71,7 +76,7 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   this->event_id = std::string(memblock);
   delete[] memblock;
 
-  file.read(marker_buf, 4);
+  file.read(marker_buf, marker_size);
   if (strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
 }
 
@@ -82,10 +87,7 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
 * the end of the SpecificEvent marked by EOO\0
 */
 void SpecificEvent::serialize(std::ostream& file, const std::streampos object_begin) const {
-  const char eod[4] = {'E', 'O', 'D', '\0'};
-  const char eoo[4] = {'E', 'O', 'O', '\0'};
   int int_data[6] = {source_pid, message_length, raw_data_length, message_type, 0, 0};
-
   if (persistent) int_data[4] = 1;
   if (aContext) int_data[5] = 1;
 
@@ -93,9 +95,9 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
 
   file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
   file.write(data, raw_data_length);
-  file.write(eod, sizeof(eod));
+  file.write(eod, marker_size);
   file.write(event_id.c_str(), event_id.size()+1);
-  file.write(eoo, sizeof(eoo));
+  file.write(eoo, marker_size);
 
   if (file.bad()) raiseError("SpecificEvent write error");
 
@@ -123,9 +125,6 @@ void TaskDescriptor::generateTaskID(void) {
 * of the object).
 */
 PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::streampos object_begin) {
-  char eom[4] = {'E', 'O', 'M', '\0'};
-  char eov[4] = {'E', 'O', 'V', '\0'};
-  char eoo[4] = {'E', 'O', 'O', '\0'};
   char marker_buf[4], byte;
   char * memblock;
   int int_data[5], od_int;
@@ -173,7 +172,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
   found_eom = false;
   while(!found_eom) {
     bookmark = file.tellg();
-    file.read(marker_buf, sizeof(marker_buf));
+    file.read(marker_buf, marker_size);
     if(!strcmp(marker_buf, eom)) {
       found_eom = true;
     } else {
@@ -191,7 +190,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
   found_eov = false;
   while(!found_eov) {
     bookmark = file.tellg();
-    file.read(marker_buf, sizeof(marker_buf));
+    file.read(marker_buf, marker_size);
     if(!strcmp(marker_buf, eov)) {
       found_eov = true;
     } else {
@@ -203,7 +202,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
   found_eom = false;
   while(!found_eom) {
     bookmark = file.tellg();
-    file.read(marker_buf, sizeof(marker_buf));
+    file.read(marker_buf, marker_size);
     if(!strcmp(marker_buf, eom)) {
       found_eom = true;
     } else {
@@ -218,7 +217,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
     }
   }
 
-  file.read(marker_buf, sizeof(marker_buf));
+  file.read(marker_buf, marker_size);
   if(strcmp(marker_buf, eoo)) raiseError("PendingTaskDescriptor deserialization error, EOO not found");
 }
 
@@ -288,10 +287,6 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   // map<DependencyKey, int> outstandingDependencies : EOM,
   // vector<DependencyKey> taskDependencyOrder : EOV,
   // map<DependencyKey, int> originalDependencies : EOM, EOO
-  char eom[4] = {'E', 'O', 'M', '\0'};
-  char eov[4] = {'E', 'O', 'V', '\0'};
-  char eoo[4] = {'E', 'O', 'O', '\0'};
-
   std::map<DependencyKey, int*>::const_iterator od_iter;
   std::vector<DependencyKey>::const_iterator tdo_iter;
   std::streampos bookmark;
@@ -314,14 +309,14 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
     od_iter->first.serialize(file, bookmark);
     file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
   }
-  file.write(eom, sizeof(eom));
+  file.write(eom, marker_size);
 
   // vector<DependencyKey> taskDependencyOrder
   for(tdo_iter = taskDependencyOrder.begin(); tdo_iter != taskDependencyOrder.end(); ++tdo_iter) {
     bookmark = file.tellp();
     tdo_iter->serialize(file, bookmark);
   }
-  file.write(eov, sizeof(eov));
+  file.write(eov, marker_size);
 
   // map<DependencyKey, int> originalDependencies
   for(od_iter = originalDependencies.begin(); od_iter != originalDependencies.end(); ++od_iter) {
@@ -329,9 +324,9 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
     od_iter->first.serialize(file, bookmark);
     file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
   }
-  file.write(eom, sizeof(eom));
+  file.write(eom, marker_size);
 
-  file.write(eoo, sizeof(eoo));
+  file.write(eoo, marker_size);
 
   return;
 }
