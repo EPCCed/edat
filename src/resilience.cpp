@@ -446,6 +446,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     taskID_t task_id;
     LoggedTask * lgt;
     SpecificEvent * spec_evt;
+    HeldEvent * held_event;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator ae_iter;
     std::map<taskID_t,LoggedTask*>::iterator tl_iter;
@@ -513,6 +514,19 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
           } else {
             oe_iter->second.push(spec_evt);
           }
+        } else if (!strcmp(marker_buf, hvt)) {
+          // found a held event
+          held_event = new HeldEvent(file, file.tellp());
+          std::map<int,std::queue<HeldEvent*>>::iterator he_iter = held_events.find(held_event->target);
+          if (he_iter == held_events.end()) {
+            std::queue<HeldEvent*> held_q;
+            held_q.push(held_event);
+            held_events.emplace(held_event->target, held_q);
+          } else {
+            he_iter->second.push(held_event);
+          }
+          file.read(marker_buf, marker_size);
+          if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
         } else {
           // event belongs to a task, which might not have been loaded yet...
           tl_iter = task_log.find(task_id);
@@ -749,8 +763,11 @@ void EDAT_Process_Ledger::serialize() {
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  std::queue<SpecificEvent*> temp_queue;
+  std::map<int,std::queue<HeldEvent*>>::iterator he_iter;
+  std::queue<SpecificEvent*> spec_q;
+  std::queue<HeldEvent*> held_q;
   SpecificEvent * spec_event;
+  HeldEvent * held_event;
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -780,15 +797,32 @@ void EDAT_Process_Ledger::serialize() {
       file.write(evt, marker_size);
       file.write(reinterpret_cast<const char *>(&no_task_id), sizeof(taskID_t));
       oe_iter->second.pop();
-      temp_queue.push(spec_event);
+      spec_q.push(spec_event);
       spec_event->serialize(file, file.tellp());
       file.write(eoo, marker_size);
     }
 
-    while(!temp_queue.empty()) {
-      spec_event = temp_queue.front();
-      temp_queue.pop();
+    while(!spec_q.empty()) {
+      spec_event = spec_q.front();
+      spec_q.pop();
       oe_iter->second.push(spec_event);
+    }
+  }
+
+  for (he_iter = held_events.begin(); he_iter != held_events.end(); ++he_iter) {
+    while (!he_iter->second.empty()) {
+      file.write(hvt, marker_size);
+      held_event = he_iter->second.front();
+      he_iter->second.pop();
+      held_q.push(held_event);
+      held_event->serialize(file, file.tellp());
+      file.write(eoo, marker_size);
+    }
+
+    while (!held_q.empty()) {
+      held_event = held_q.front();
+      held_q.pop();
+      he_iter->second.push(held_event);
     }
   }
 
