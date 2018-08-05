@@ -104,6 +104,29 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
   return;
 }
 
+HeldEvent::HeldEvent(std::istream& file, const std::streampos object_begin) {
+  char * memblock;
+  char marker_buf[4];
+
+  this->file_pos = object_begin;
+  file.seekg(object_begin);
+
+  memblock = new char[sizeof(HeldEventState)];
+  file.read(memblock, sizeof(HeldEventState));
+  this->state = *(reinterpret_cast<HeldEventState*>(memblock));
+  delete[] memblock;
+
+  memblock = new char[sizeof(int)];
+  file.read(memblock, sizeof(int));
+  this->target = *(reinterpret_cast<int*>(memblock));
+  delete[] memblock;
+
+  this->spec_evt = new SpecificEvent(file, file.tellg());
+
+  file.read(marker_buf, marker_size);
+  if(strcmp(marker_buf, eoo)) raiseError("HeldEvent deserialization error, EOO not found");
+}
+
 void HeldEvent::serialize(std::ostream& file, const std::streampos object_begin) {
   file.seekp(object_begin);
   file_pos = object_begin;

@@ -78,7 +78,9 @@ struct HeldEvent {
   HeldEventState state = HELD;
   int target;
   SpecificEvent * spec_evt;
-  void serialize(std::ostream& file, const std::streampos);
+  HeldEvent() = default;
+  HeldEvent(std::istream&, const std::streampos);
+  void serialize(std::ostream&, const std::streampos);
 };
 
 class DependencyKey {
