@@ -464,6 +464,14 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
     file.seekg(std::ios::beg);
 
+    memblock = new char[NUM_RANKS*sizeof(int)];
+    file.read(memblock, NUM_RANKS*sizeof(int));
+    int * ranks_are_dead = reinterpret_cast<int*>(memblock);
+    for (int rank=0; rank<NUM_RANKS; rank++) {
+      if (ranks_are_dead[rank]) dead_ranks.emplace(rank);
+    }
+    delete[] memblock;
+
     found_eol = false;
     while (!found_eol) {
       bookmark = file.tellg();
@@ -666,6 +674,19 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   return;
 }
 
+void EDAT_Process_Ledger::commit(const int rank, const int rank_is_dead) {
+  std::fstream file;
+  std::lock_guard<std::mutex> lock(file_mutex);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+
+  file.seekp(rank*sizeof(int), std::ios::beg);
+  file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
+
+  file.close();
+
+  return;
+}
+
 void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& spec_evt) {
   std::fstream file;
   char marker_buf[4];
@@ -701,6 +722,16 @@ void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos fi
   return;
 }
 
+void EDAT_Process_Ledger::commit(const HeldEventState& state, const std::streampos file_pos) {
+  std::fstream file;
+  std::lock_guard<std::mutex> lock(file_mutex);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.seekp(file_pos);
+  file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
+  file.close();
+  return;
+}
+
 int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   for (int func_id = 0; func_id<number_of_tasks; ++func_id) {
     if (task_array[func_id] == task_fn) return func_id;
@@ -710,6 +741,7 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
 
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
+  // dead_ranks as int[NUM_RANKS]
   // TSK : taskID_t, LoggedTask : EOO
   // EVT : taskID_t, SpecificEvent : EOO
   // EOL
@@ -722,6 +754,17 @@ void EDAT_Process_Ledger::serialize() {
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
+
+  int rank_is_dead;
+  for (int rank = 0; rank < NUM_RANKS; rank++) {
+    if (dead_ranks.find(rank) == dead_ranks.end()) {
+      rank_is_dead = 0;
+      file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
+    } else {
+      rank_is_dead = 1;
+      file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
+    }
+  }
 
   for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
     file.write(tsk, marker_size);
@@ -919,6 +962,7 @@ void EDAT_Process_Ledger::registerObit(const int rank) {
   if (RANK != RESILIENCE_MASTER) {
     std::lock_guard<std::mutex> lock(dead_ranks_mutex);
     dead_ranks.emplace(rank);
+    commit(rank, 1);
   }
   return;
 }

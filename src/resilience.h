@@ -84,8 +84,10 @@ private:
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
+  void commit(const int, const int);
   void commit(const taskID_t, const SpecificEvent&);
   void commit(const TaskState&, const std::streampos);
+  void commit(const HeldEventState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
   static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
