@@ -19,6 +19,7 @@ static EDAT_Process_Ledger * external_ledger;
 static const char call[4] = {'u', 'o', 'k', '\0'};
 static const char response[4] = {'a', 'o', 'k', '\0'};
 static const char obit[4] = {'r', 'i', 'p', '\0'};
+static const char phoenix[4] = {'p', 'i', 'r', '\0'};
 
 // serialization object markers
 static const char tsk[4] = {'T', 'S', 'K', '\0'};
@@ -59,7 +60,7 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
     std::cout << "Please do not use the following character strings as event IDs: ";
-    std::cout << std::string(call) << " " << std::string(response) << " " << std::string(obit) << std::endl;
+    std::cout << std::string(call) << " " << std::string(response) << " " << std::string(obit) << " " << std::string(phoenix) << std::endl;
   }
   external_ledger->beginMonitoring();
 
@@ -92,6 +93,10 @@ bool resilienceAddEvent(SpecificEvent& event) {
   } else if (!strcmp(c_event_id, obit)) {
     const int dead_rank = *((int *) event.getData());
     external_ledger->registerObit(dead_rank);
+    return false;
+  } else if (!strcmp(c_event_id, phoenix)) {
+    const int revived_rank = *((int *) event.getData());
+    external_ledger->registerPhoenix(revived_rank);
     return false;
   } else {
     DependencyKey depkey = DependencyKey(event_id, source_id);
@@ -588,6 +593,12 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         }
       }
     }
+
+    // this rank had to be recovered, so it should be in the dead_ranks set (for now)
+    dead_ranks_mutex.lock();
+    dead_ranks.emplace(RANK);
+    dead_ranks_mutex.unlock();
+
   }
   // write new file
   serialize();
@@ -756,6 +767,23 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   return -1;
 }
 
+void EDAT_Process_Ledger::releaseHeldEvents(const int rank) {
+  std::lock_guard<std::mutex> lock(held_events_mutex);
+  std::queue<HeldEvent*> held_q = held_events.at(rank);
+  HeldEvent * held_event;
+  while (!held_q.empty()) {
+    held_event = held_q.front();
+    held_q.pop();
+
+    held_event->fire(messaging);
+    commit(RELEASED, held_event->file_pos);
+    delete held_event;
+  }
+  held_events.erase(rank);
+
+  return;
+}
+
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
   // dead_ranks as int[NUM_RANKS]
@@ -838,6 +866,8 @@ void EDAT_Process_Ledger::serialize() {
 
 void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& mp_monitor, const int mp_NUM_RANKS, bool * mp_live_ranks, Messaging& mp_messaging, const int mp_beat_period, std::mutex& mp_dead_ranks_mutex, std::set<int>& mp_dead_ranks) {
   int rank;
+  std::set<int>::iterator dr_iter;
+
   mp_monitor_mutex.lock();
   mp_monitor = true;
   while (mp_monitor) {
@@ -849,26 +879,41 @@ void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& m
     std::this_thread::sleep_for(std::chrono::seconds(mp_beat_period));
 
     mp_monitor_mutex.lock();
-    for (rank = 0; rank < mp_NUM_RANKS; rank++) {
-      if (!mp_live_ranks[rank]) {
-        // rank is dead, attempt recovery
-        printf("RIP rank %d\n", rank);
-        announceRankDead(mp_dead_ranks_mutex, mp_dead_ranks, rank, mp_messaging);
+    mp_dead_ranks_mutex.lock();
+    if (mp_dead_ranks.empty()) {
+      // all ranks are currently alive, if one hasn't responded we have a (new) problem
+      mp_dead_ranks_mutex.unlock();
+      for (rank = 0; rank < mp_NUM_RANKS; rank++) {
+        if (!mp_live_ranks[rank]) {
+          // rank is dead, tell the world
+          printf("RIP rank %d\n", rank);
+          mp_messaging.fireEvent(&rank, 1, EDAT_INT, EDAT_ALL, false, obit);
+        }
       }
-    }
-  }
-
-  return;
-}
-
-void EDAT_Process_Ledger::announceRankDead(std::mutex& ard_dead_ranks_mutex, std::set<int>& ard_dead_ranks, int rank, Messaging& ard_messaging) {
-  std::pair<std::set<int>::iterator,bool> set_ret;
-  // try to emplace the dead rank in the dead_ranks_set
-  ard_dead_ranks_mutex.lock();
-  set_ret = ard_dead_ranks.emplace(rank);
-  ard_dead_ranks_mutex.unlock();
-  // if true, rank was not already in the set, so give all ranks the sad news
-  if (set_ret.second) ard_messaging.fireEvent(&rank, 1, EDAT_INT, EDAT_ALL, false, obit);
+    } else {
+      // some ranks are already dead
+      for (rank = 0; rank < mp_NUM_RANKS; rank++) {
+        dr_iter = mp_dead_ranks.find(rank);
+        if (dr_iter == mp_dead_ranks.end()) {
+          // rank was alive...
+          mp_dead_ranks_mutex.unlock();
+          if (!mp_live_ranks[rank]) {
+            // ...but it's dead now
+            printf("RIP rank %d\n", rank);
+            mp_messaging.fireEvent(&rank, 1, EDAT_INT, EDAT_ALL, false, obit);
+          }
+        } else {
+          // rank was dead...
+          mp_dead_ranks_mutex.unlock();
+          if (mp_live_ranks[rank]) {
+            // ...but now it lives again!
+            printf("Rank %d has recovered\n", rank);
+            mp_messaging.fireEvent(&rank, 1, EDAT_INT, EDAT_ALL, false, phoenix);
+          }
+        }
+      }
+    } // if (mp_dead_ranks.empty())
+  } // while (mp_monitor)
 
   return;
 }
@@ -996,11 +1041,17 @@ void EDAT_Process_Ledger::registerMonitorResponse(int rank) {
 }
 
 void EDAT_Process_Ledger::registerObit(const int rank) {
-  if (RANK != RESILIENCE_MASTER) {
-    std::lock_guard<std::mutex> lock(dead_ranks_mutex);
-    dead_ranks.emplace(rank);
-    commit(rank, 1);
-  }
+  std::lock_guard<std::mutex> lock(dead_ranks_mutex);
+  dead_ranks.emplace(rank);
+  commit(rank, 1);
+  return;
+}
+
+void EDAT_Process_Ledger::registerPhoenix(const int rank) {
+  std::lock_guard<std::mutex> lock(dead_ranks_mutex);
+  releaseHeldEvents(rank);
+  dead_ranks.erase(rank);
+  commit(rank, 0);
   return;
 }
 

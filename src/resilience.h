@@ -98,8 +98,8 @@ private:
   void commit(const HeldEventState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
+  void releaseHeldEvents(const int);
   static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
-  static void announceRankDead(std::mutex&, std::set<int>&, int, Messaging&);
 public:
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string, bool);
@@ -114,6 +114,7 @@ public:
   void respondToMonitor();
   void registerMonitorResponse(int);
   void registerObit(const int);
+  void registerPhoenix(const int);
   void endMonitoring();
   void deleteLedgerFile();
   const std::set<int> getDeadRanks();
