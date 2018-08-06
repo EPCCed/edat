@@ -62,6 +62,9 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
     std::cout << "Please do not use the following character strings as event IDs: ";
     std::cout << std::string(call) << " " << std::string(response) << " " << std::string(obit) << " " << std::string(phoenix) << std::endl;
   }
+
+  if (recovery) external_ledger->recover();
+
   external_ledger->beginMonitoring();
 
   return;
@@ -518,19 +521,6 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
           } else {
             oe_iter->second.push(spec_evt);
           }
-        } else if (!strcmp(marker_buf, hvt)) {
-          // found a held event
-          held_event = new HeldEvent(file, file.tellp());
-          std::map<int,std::queue<HeldEvent*>>::iterator he_iter = held_events.find(held_event->target);
-          if (he_iter == held_events.end()) {
-            std::queue<HeldEvent*> held_q;
-            held_q.push(held_event);
-            held_events.emplace(held_event->target, held_q);
-          } else {
-            he_iter->second.push(held_event);
-          }
-          file.read(marker_buf, marker_size);
-          if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
         } else {
           // event belongs to a task, which might not have been loaded yet...
           tl_iter = task_log.find(task_id);
@@ -557,6 +547,19 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
           }
 
         }
+      } else if (!strcmp(marker_buf, hvt)) {
+        // found a held event
+        held_event = new HeldEvent(file, file.tellp());
+        std::map<int,std::queue<HeldEvent*>>::iterator he_iter = held_events.find(held_event->target);
+        if (he_iter == held_events.end()) {
+          std::queue<HeldEvent*> held_q;
+          held_q.push(held_event);
+          held_events.emplace(held_event->target, held_q);
+        } else {
+          he_iter->second.push(held_event);
+        }
+        file.read(marker_buf, marker_size);
+        if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
         found_eol = true;
@@ -564,7 +567,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         // something bad has happened
         raiseError("EDAT_Process_Ledger deserialization error, unable to parse marker");
       }
-    }
+    } // while (!found_eol)
     file.close();
 
     // deal with any orphaned events
@@ -595,7 +598,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     dead_ranks.emplace(RANK);
     dead_ranks_mutex.unlock();
 
-  }
+  } // if (recovery)
   // write new file
   serialize();
 }
@@ -910,6 +913,63 @@ void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& m
       }
     } // if (mp_dead_ranks.empty())
   } // while (mp_monitor)
+
+  return;
+}
+
+/**
+* Restores the state of the EDAT rank from the ledger
+*/
+void EDAT_Process_Ledger::recover() {
+  std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+  std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
+  taskID_t highest_previous_task_id = task_log.size();
+  LoggedTask * logged_task;
+  PendingTaskDescriptor * exec_task, * sched_task;
+  std::queue<SpecificEvent*> temp_q;
+  SpecificEvent * spec_event;
+
+  std::lock_guard<std::mutex> lock(log_mutex);
+
+  // make sure that any new task IDs are unique
+  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
+    if (tl_iter->first > highest_previous_task_id) highest_previous_task_id = tl_iter->first;
+  }
+  TaskDescriptor::resetTaskID(highest_previous_task_id);
+
+  for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
+    logged_task = tl_iter->second;
+    if (logged_task->state == RUNNING) {
+      // task is ready to go! It will get held up by the locked log_mutex until this function returns
+      // depending on the number of tasks which were still running vs number of threads it may end up sitting in a queue
+      exec_task = new PendingTaskDescriptor();
+      exec_task->deepCopy(*(logged_task->ptd));
+      scheduler.readyToRunTask(exec_task);
+    } else if (logged_task->state == SCHEDULED) {
+      // task still missing events, add it to Scheduler::registeredTasks
+      sched_task = new PendingTaskDescriptor();
+      sched_task->deepCopy(*(logged_task->ptd));
+      scheduler.registerTask(sched_task);
+    }
+  }
+
+  for (oe_iter = outstanding_events.begin(); oe_iter != outstanding_events.end(); ++oe_iter) {
+    std::queue<SpecificEvent*> event_q;
+    while (!oe_iter->second.empty()) {
+      spec_event = oe_iter->second.front();
+      oe_iter->second.pop();
+      temp_q.push(spec_event);
+      event_q.push(new SpecificEvent(*spec_event));
+    }
+
+    scheduler.registerEvent(std::pair<DependencyKey,std::queue<SpecificEvent*>>(oe_iter->first,event_q));
+
+    while (!temp_q.empty()) {
+      spec_event = temp_q.front();
+      temp_q.pop();
+      oe_iter->second.push(spec_event);
+    }
+  }
 
   return;
 }
