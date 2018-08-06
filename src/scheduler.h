@@ -81,6 +81,7 @@ struct HeldEvent {
   HeldEvent() = default;
   HeldEvent(std::istream&, const std::streampos);
   void serialize(std::ostream&, const std::streampos);
+  void fire(Messaging&);
 };
 
 class DependencyKey {

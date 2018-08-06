@@ -139,6 +139,14 @@ void HeldEvent::serialize(std::ostream& file, const std::streampos object_begin)
   return;
 }
 
+void HeldEvent::fire(Messaging& messaging) {
+  messaging.fireEvent(spec_evt->getData(), spec_evt->getMessageLength(), spec_evt->getMessageType(), target, spec_evt->isPersistent(), spec_evt->getEventId().c_str());
+  state = RELEASED;
+  free(spec_evt->getData());
+  delete spec_evt;
+  return;
+}
+
 /**
 * Generates a unique identifier for each task, used by resilience to track
 * which tasks are active, and store data for restart
