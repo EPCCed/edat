@@ -270,9 +270,7 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
     held_event = atd->firedEvents.front();
     if (dead_ranks.empty()) {
       // there are no dead ranks, fire at will
-      messaging.fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.spec_evt->getEventId().c_str());
-      free(held_event.spec_evt->getData());
-      delete held_event.spec_evt;
+      held_event.fire(messaging);
       atd->firedEvents.pop();
     } else {
       // at least one rank is down, compare event target and fire if alive, otherwise send to
@@ -285,9 +283,7 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
         atd->firedEvents.pop();
       } else {
         // a rank is down, but not this event's target
-        messaging.fireEvent(held_event.spec_evt->getData(), held_event.spec_evt->getMessageLength(), held_event.spec_evt->getMessageType(), held_event.target, false, held_event.spec_evt->getEventId().c_str());
-        free(held_event.spec_evt->getData());
-        delete held_event.spec_evt;
+        held_event.fire(messaging);
         atd->firedEvents.pop();
       }
     }
