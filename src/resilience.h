@@ -16,6 +16,13 @@
 
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
+struct ContinuityData {
+  const std::thread::id main_thread_id;
+  const task_ptr_t * const task_array;
+  const int num_tasks;
+  ContinuityData(const std::thread::id a_thread, const task_ptr_t * const a_task_array, const int a_num_tasks) : main_thread_id(a_thread), task_array(a_task_array), num_tasks(a_num_tasks) {};
+};
+
 void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const int);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 bool resilienceAddEvent(SpecificEvent&);
@@ -25,7 +32,7 @@ void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
 void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
-void resilienceSyntheticFinalise(void);
+const ContinuityData resilienceSyntheticFinalise(void);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -61,6 +68,7 @@ public:
   void taskActiveOnThread(const std::thread::id, PendingTaskDescriptor&);
   void taskComplete(const std::thread::id, const taskID_t);
   void threadFailure(const std::thread::id, const taskID_t);
+  const std::thread::id getMainThread() const { return main_thread_id; };
 };
 
 class EDAT_Process_Ledger {
@@ -109,6 +117,7 @@ public:
   void endMonitoring();
   void deleteLedgerFile();
   const std::set<int> getDeadRanks();
+  const std::pair<const task_ptr_t * const, const int> getTaskArray() const { return std::pair<const task_ptr_t * const, const int>(task_array, number_of_tasks); };
   void holdEvent(HeldEvent&);
   void display() const;
 };

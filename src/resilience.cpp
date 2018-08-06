@@ -162,11 +162,14 @@ void resilienceFinalise(void) {
   delete external_ledger;
 }
 
-void resilienceSyntheticFinalise(void) {
+const ContinuityData resilienceSyntheticFinalise(void) {
   external_ledger->endMonitoring();
+  const std::thread::id main_thread = internal_ledger->getMainThread();
+  const std::pair<const task_ptr_t * const, const int> task_data = external_ledger->getTaskArray();
+  const ContinuityData con_data = ContinuityData(main_thread, task_data.first, task_data.second);
   delete internal_ledger;
   delete external_ledger;
-  return;
+  return con_data;
 }
 
 /**
