@@ -18,6 +18,11 @@
 #define DO_METRICS false
 #endif
 
+// static initilization for new_task_id
+// TaskDescriptor::task_id = 0 is used to signify no task
+static std::mutex task_id_mutex;
+static taskID_t new_task_id = 1;
+
 // serialization markers
 static const char eod[4] = {'E', 'O', 'D', '\0'};
 static const char eoo[4] = {'E', 'O', 'O', '\0'};
@@ -153,12 +158,15 @@ void HeldEvent::fire(Messaging& messaging) {
 */
 void TaskDescriptor::generateTaskID(void) {
   // we statically initialise task_id to 1, and use 0 for no task
-  static std::mutex task_id_mutex;
-  static taskID_t new_task_id = 1;
-
   std::lock_guard<std::mutex> lock(task_id_mutex);
   task_id = new_task_id++;
 
+  return;
+}
+
+void TaskDescriptor::resetTaskID(taskID_t old_task_id) {
+  std::lock_guard<std::mutex> lock(task_id_mutex);
+  new_task_id = ++old_task_id;
   return;
 }
 
@@ -537,6 +545,12 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   }
 }
 
+void Scheduler::registerTask(PendingTaskDescriptor * pending_task) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  registeredTasks.push_back(pending_task);
+  return;
+}
+
 /**
 * Pauses a specific task to be reactivated when the dependencies arrive. Will check to find whether any (all?) event dependencies have already arrived and if so then
 * is a simple call back with these. Otherwise will call into the thread pool to pause the thread.
@@ -812,6 +826,13 @@ void Scheduler::registerEvent(SpecificEvent * event) {
   }
 }
 
+void Scheduler::registerEvent(std::pair<DependencyKey,std::queue<SpecificEvent*>> oe_entry) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  outstandingEvents.insert(oe_entry);
+  if (!oe_entry.second.front()->isPersistent()) outstandingEventsToHandle += oe_entry.second.size();
+  return;
+}
+
 /**
 * Finds a task that depends on a specific event and updates the outstanding dependencies of that task to no longer be waiting for this
 * and place this event in the arrived dependencies of that task. IT will return either the task itself (and index, as the task might be
@@ -991,6 +1012,8 @@ void Scheduler::reset() {
     }
     outstandingEvents.erase(oe_iter);
   }
+
+  outstandingEventsToHandle = 0;
 
   return;
 }

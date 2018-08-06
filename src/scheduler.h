@@ -169,6 +169,7 @@ struct TaskDescriptor {
   taskID_t task_id;
   TaskDescriptor() { generateTaskID(); }
   void generateTaskID(void);
+  static void resetTaskID(taskID_t);
   virtual TaskDescriptorType getDescriptorType() = 0;
   virtual ~TaskDescriptor() = default;
 };
@@ -220,8 +221,10 @@ class Scheduler {
 public:
     Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
+    void registerTask(PendingTaskDescriptor*);
     EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
+    void registerEvent(std::pair<DependencyKey,std::queue<SpecificEvent*>>);
     bool isFinished();
     void readyToRunTask(PendingTaskDescriptor*);
     bool isTaskScheduled(std::string);
