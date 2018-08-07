@@ -1,6 +1,6 @@
 CC       = mpicxx
 # compiling flags here
-CFLAGS   = -fPIC -Iinclude -std=c++11 
+CFLAGS   = -fPIC -Iinclude -std=c++11
 
 LFLAGS   =
 
@@ -15,12 +15,12 @@ rm       = rm -Rf
 
 all: CFLAGS += -O3
 all: edat
-	
+
 debug: CFLAGS += -g
 debug: edat
 
 noopt: CFLAGS += -Wall
-noopt: edat	
+noopt: edat
 
 edat: build_buildDir $(OBJECTS)
 	$(CC) -shared -Wl,-soname,libedat.so -o libedat.so $(OBJECTS) $(LFLAGS)
@@ -34,5 +34,6 @@ $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 
 .PHONEY: clean
 clean:
-	$(rm) $(OBJDIR)	
+	$(rm) $(OBJDIR)
 	$(rm) libedat.so libedat.a
+	$(rm) edat_ledger_*
