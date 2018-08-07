@@ -1,6 +1,7 @@
 #include "resilience.h"
 #include "messaging.h"
 #include "scheduler.h"
+#include "metrics.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -38,6 +39,10 @@ static const size_t marker_size = 4 * sizeof(char);
 * not run.
 */
 void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const int beat_period) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("resilienceInit");
+  #endif
+
   int my_rank = amessaging.getRank();
   int num_ranks = amessaging.getNumRanks();
   char ledger_name_buffer[20];
@@ -67,6 +72,10 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
 
   external_ledger->beginMonitoring();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("resilienceInit", timer_key);
+  #endif
+
   return;
 }
 
@@ -75,7 +84,13 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
 * when events arrive and at state changes.
 */
 void resilienceTaskScheduled(PendingTaskDescriptor& ptd) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("resilienceTaskScheduled");
+  #endif
   external_ledger->addTask(ptd.task_id, ptd);
+  #if DO_METRICS
+  metrics::METRICS->timerStop("resilienceTaskScheduled", timer_key);
+  #endif
   return;
 }
 
@@ -88,7 +103,13 @@ bool resilienceAddEvent(SpecificEvent& event) {
   const char * c_event_id = event_id.c_str();
 
   if (!strcmp(c_event_id, call)) {
+    #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("respondToMonitor");
+    #endif
     external_ledger->respondToMonitor();
+    #if DO_METRICS
+    metrics::METRICS->timerStop("respondToMonitor", timer_key);
+    #endif
     return false;
   } else if (!strcmp(c_event_id, response)) {
     if (source_id != RESILIENCE_MASTER) external_ledger->registerMonitorResponse(source_id);
@@ -102,8 +123,14 @@ bool resilienceAddEvent(SpecificEvent& event) {
     external_ledger->registerPhoenix(revived_rank);
     return false;
   } else {
+    #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("resilienceAddEvent");
+    #endif
     DependencyKey depkey = DependencyKey(event_id, source_id);
     external_ledger->addEvent(depkey, event);
+    #if DO_METRICS
+    metrics::METRICS->timerStop("resilienceAddEvent", timer_key);
+    #endif
     return true;
   }
 }
@@ -627,6 +654,10 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
 }
 
 void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_addTask");
+  #endif
+
   std::fstream file;
   char marker_buf[4];
   std::streampos bookmark;
@@ -648,10 +679,17 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
 
   file.close();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_addTask", timer_key);
+  #endif
+
   return;
 }
 
 void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_addEvent");
+  #endif
   std::fstream file;
   char marker_buf[4];
   const taskID_t no_task_id = 0;
@@ -676,10 +714,16 @@ void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
 
   file.close();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_addEvent", timer_key);
+  #endif
   return;
 }
 
 void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_holdEvent");
+  #endif
   std::fstream file;
   char marker_buf[4];
   std::streampos bookmark;
@@ -698,10 +742,16 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
 
   file.close();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_holdEvent", timer_key);
+  #endif
   return;
 }
 
 void EDAT_Process_Ledger::commit(const int rank, const int rank_is_dead) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_deadRank");
+  #endif
   std::fstream file;
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
@@ -711,10 +761,16 @@ void EDAT_Process_Ledger::commit(const int rank, const int rank_is_dead) {
 
   file.close();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_deadRank", timer_key);
+  #endif
   return;
 }
 
 void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& spec_evt) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_mvEvtToTsk");
+  #endif
   std::fstream file;
   char marker_buf[4];
 
@@ -736,26 +792,41 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& sp
 
   file.close();
 
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_mvEvtToTsk", timer_key);
+  #endif
   return;
 }
 
 void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos file_pos) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_taskState");
+  #endif
   std::fstream file;
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
   file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
   file.close();
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_taskState", timer_key);
+  #endif
   return;
 }
 
 void EDAT_Process_Ledger::commit(const HeldEventState& state, const std::streampos file_pos) {
+  #if DO_METRICS
+  unsigned long int timer_key = metrics::METRICS->timerStart("commit_hvtState");
+  #endif
   std::fstream file;
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
   file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
   file.close();
+  #if DO_METRICS
+  metrics::METRICS->timerStop("commit_hvtState", timer_key);
+  #endif
   return;
 }
 
