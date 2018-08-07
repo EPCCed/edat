@@ -58,7 +58,8 @@ int main(int argc, char ** argv) {
   /*******************************************************************************
   ** Initialize the MPI environment
   ********************************************************************************/
-  edatInit(&argc, &argv, NULL);
+  task_ptr_t task_array[10] = {complete_run, compute_kernel, halo_swap_from_up, halo_swap_to_up, halo_swap_from_down, halo_swap_to_down, halo_swap_from_left, halo_swap_to_left, halo_swap_from_right, halo_swap_to_right};
+  edatInit(&argc, &argv, NULL, task_array, 10);
   my_ID=edatGetRank();
   Num_procs=edatGetNumRanks();
 
