@@ -58,7 +58,7 @@ int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
 void* edatCreateContext(int);
 EDAT_Event* edatWait(int, ...);
-void edatSyntheticFailure(int);
+void edatSyntheticFailure(const int);
 EDAT_Event* edatRetrieveAny(int*, int, ...);
 
 #ifdef __cplusplus

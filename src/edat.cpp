@@ -257,7 +257,7 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
 /**
 * Testing function, initiates simulated failure of a task
 */
-void edatSyntheticFailure(int level) {
+void edatSyntheticFailure(const int level) {
   if (configuration->get("EDAT_RESILIENCE", false)) {
     if (level == 0) {
       const std::thread::id thread_id = std::this_thread::get_id();
@@ -270,8 +270,16 @@ void edatSyntheticFailure(int level) {
       messaging->syntheticFinalise();
       scheduler->reset();
       threadPool->reset();
-      resilienceSyntheticFinalise();
+      const ContinuityData con_data = resilienceSyntheticFinalise();
+      edatActive=false;
+      // knock-down complete, go to sleep
       std::this_thread::sleep_for(std::chrono::seconds(beat_period));
+      // reinitialise rank
+      threadPool->reinit();
+      threadPool->setMessaging(messaging);
+      resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, beat_period);
+      messaging->resetPolling();
+      edatActive=true;
     } else {
       std::cout << "Did not recognise failure level. Call edatSyntheticFailure(0) for a simulated thread failure. Call edatSyntheticFailure(1) for a simulated process failure." << std::endl;
     }
