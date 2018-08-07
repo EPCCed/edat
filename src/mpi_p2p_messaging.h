@@ -8,7 +8,7 @@
 #include "configuration.h"
 
 class MPI_P2P_Messaging : public Messaging {
-  bool protectMPI, mpiInitHere, terminated, eligable_for_termination;
+  bool protectMPI, mpiInitHere, terminated, eligable_for_termination, syntheticFailure;
   int my_rank, total_ranks, reply_from_master;
   int terminated_id, mode=0;
   int * termination_codes, *pingback_termination_codes;

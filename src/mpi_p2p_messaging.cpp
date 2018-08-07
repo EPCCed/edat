@@ -67,6 +67,7 @@ void MPI_P2P_Messaging::fireEvent(void * data, int data_count, int data_type, in
 void MPI_P2P_Messaging::resetPolling() {
   mode=0;
   terminated_id=0;
+  syntheticFailure=false;
   terminated=false;
   eligable_for_termination=false;
   if (my_rank == 0) {
@@ -298,6 +299,7 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   #if DO_METRICS
     metrics::METRICS->timerStop("performSinglePoll", timer_key_psp);
   #endif
+  if (syntheticFailure) return false;
   return eligable_for_termination ? handleTerminationProtocol() : true;
 }
 
@@ -490,6 +492,7 @@ bool MPI_P2P_Messaging::checkForCodeInList(int * codes_to_check, int failure_cod
 }
 
 void MPI_P2P_Messaging::syntheticFinalise() {
-  continue_polling=false;
+  syntheticFailure = true;
+  continue_polling = false;
   Messaging::finalise();
 }
