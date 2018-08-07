@@ -464,7 +464,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     std::streampos bookmark;
 
     // rename ledger file of dead rank
-    sprintf(ledger_name_buf, "edat_ledger_%d_%s", RANK, "_DEAD");
+    sprintf(ledger_name_buf, "edat_ledger_%d_DEAD", RANK);
     dead_ledger = std::string(ledger_name_buf);
     rename(fname.c_str(), ledger_name_buf);
 
@@ -997,7 +997,7 @@ void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor&
 * task to outstanding_events
 */
 void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEvent& event) {
-  std::lock_guard<std::mutex> lock(log_mutex);
+  log_mutex.lock();
 
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
   SpecificEvent * event_copy = new SpecificEvent(event);
@@ -1010,6 +1010,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
     oe_iter->second.push(event_copy);
   }
 
+  log_mutex.unlock();
   commit(*event_copy);
   return;
 }
@@ -1018,7 +1019,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
 * Updates a task embedded in the log with an arrived event.
 */
 void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const taskID_t task_id) {
-  std::lock_guard<std::mutex> lock(log_mutex);
+  log_mutex.lock();
 
   PendingTaskDescriptor * ptd = task_log.at(task_id)->ptd;
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
@@ -1040,6 +1041,7 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
     ae_iter->second.push(event);
   }
 
+  log_mutex.unlock();
   commit(task_id, *event);
   return;
 }
@@ -1057,20 +1059,28 @@ void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
 void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
   log_mutex.lock();
   LoggedTask * const lgt = task_log.at(task_id);
-  const std::streampos bookmark = lgt->file_pos;
-  lgt->state = COMPLETE;
-  log_mutex.unlock();
-  commit(COMPLETE, bookmark);
+  if (lgt->state != FAILED) {
+    const std::streampos bookmark = lgt->file_pos;
+    lgt->state = COMPLETE;
+    log_mutex.unlock();
+    commit(COMPLETE, bookmark);
+  } else {
+    log_mutex.unlock();
+  }
   return;
 }
 
 void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   log_mutex.lock();
   LoggedTask * const lgt = task_log.at(task_id);
-  const std::streampos bookmark = lgt->file_pos;
-  lgt->state = FAILED;
-  log_mutex.unlock();
-  commit(FAILED, bookmark);
+  if (lgt->state != COMPLETE) {
+    const std::streampos bookmark = lgt->file_pos;
+    lgt->state = FAILED;
+    log_mutex.unlock();
+    commit(FAILED, bookmark);
+  } else {
+    log_mutex.unlock();
+  }
   return;
 }
 
