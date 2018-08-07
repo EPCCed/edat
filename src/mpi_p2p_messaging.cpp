@@ -495,4 +495,5 @@ void MPI_P2P_Messaging::syntheticFinalise() {
   syntheticFailure = true;
   continue_polling = false;
   Messaging::finalise();
+  return;
 }
