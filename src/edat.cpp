@@ -259,8 +259,8 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
 */
 void edatSyntheticFailure(const int level) {
   if (configuration->get("EDAT_RESILIENCE", false)) {
+    const std::thread::id thread_id = std::this_thread::get_id();
     if (level == 0) {
-      const std::thread::id thread_id = std::this_thread::get_id();
       std::cout << "Oh no! This task has failed! How terrible, and completely unexpected." << std::endl;
       threadPool->syntheticFailureOfThread(thread_id);
       resilienceThreadFailed(thread_id);
@@ -269,17 +269,16 @@ void edatSyntheticFailure(const int level) {
       std::cout << "I've got a bad feeling about rank " << messaging->getRank() << "..." << std::endl;
       messaging->syntheticFinalise();
       scheduler->reset();
-      threadPool->reset();
-      const ContinuityData con_data = resilienceSyntheticFinalise();
-      edatActive=false;
+      WorkerThread * wt = threadPool->reset();
+      const ContinuityData con_data = resilienceSyntheticFinalise(thread_id);
       // knock-down complete, go to sleep
-      std::this_thread::sleep_for(std::chrono::seconds(beat_period));
+      std::this_thread::sleep_for(std::chrono::seconds(3*beat_period));
       // reinitialise rank
-      threadPool->reinit();
+      threadPool->reinit(wt);
       threadPool->setMessaging(messaging);
       resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, beat_period);
+      resilienceRestoreTaskToActive(thread_id, con_data.ptd);
       messaging->resetPolling();
-      edatActive=true;
     } else {
       std::cout << "Did not recognise failure level. Call edatSyntheticFailure(0) for a simulated thread failure. Call edatSyntheticFailure(1) for a simulated process failure." << std::endl;
     }
@@ -287,6 +286,7 @@ void edatSyntheticFailure(const int level) {
     std::cout << "edatSyntheticFailure is unavailable when EDAT_RESILIENCE is not true." << std::endl;
   }
 
+  std::cout << "edatSyntheticFailure returning" << std::endl;
   return;
 }
 
