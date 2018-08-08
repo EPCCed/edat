@@ -39,6 +39,8 @@ struct WorkerThread {
   taskID_t active_task_id=0;
   bool synthFail = false;
   ThreadPoolCommand threadCommand;
+  WorkerThread() = default;
+  WorkerThread(WorkerThread&);
 };
 
 class ThreadPool {
@@ -77,8 +79,8 @@ class ThreadPool {
   int getNumberActiveWorkers();
   void killWorker(const std::thread::id);
   void syntheticFailureOfThread(const std::thread::id);
-  void reset();
-  void reinit();
+  WorkerThread * reset();
+  void reinit(WorkerThread *);
 };
 
 #endif /* SRC_THREADPOOL_H_ */

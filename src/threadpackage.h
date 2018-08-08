@@ -25,6 +25,7 @@ public:
   void resume();
   bool shouldAbort() { return abort_thread; }
   void abort();
+  std::thread * getThread() const { return thread; }
 };
 
 #endif /* SRC_THREADPACKAGE_H_ */
