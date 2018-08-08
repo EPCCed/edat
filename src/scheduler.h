@@ -95,7 +95,6 @@ public:
 
   DependencyKey(std::istream& file, const std::streampos object_begin) {
     const char eoo[4] = {'E', 'O', 'O', '\0'};
-    char * memblock;
     int str_len;
     char marker_buf[4], byte;
     bool end_of_string;
@@ -103,10 +102,7 @@ public:
 
     file.seekg(object_begin);
 
-    memblock = new char[sizeof(int)];
-    file.read(memblock, sizeof(int));
-    this->i = *memblock;
-    delete[] memblock;
+    file.read(reinterpret_cast<char*>(&(this->i)), sizeof(int));
 
     bookmark = file.tellg();
     str_len = 0;
@@ -122,7 +118,7 @@ public:
     }
 
     file.seekg(bookmark);
-    memblock = new char[str_len];
+    char * memblock = new char[str_len];
     file.read(memblock, str_len);
     this->s = std::string(memblock);
     delete[] memblock;

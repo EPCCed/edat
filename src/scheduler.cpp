@@ -36,18 +36,13 @@ static const size_t marker_size = 4 * sizeof(char);
 */
 SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_begin) {
   char marker_buf[4], byte;
-  char * memblock;
   int int_data[6];
   size_t id_length;
   std::streampos bookmark;
   bool end_of_string = false;
 
   file.seekg(object_begin);
-
-  memblock = new char[sizeof(int_data)];
-  file.read(memblock, sizeof(int_data));
-  memcpy(int_data, memblock, sizeof(int_data));
-  delete[] memblock;
+  file.read(reinterpret_cast<char*>(int_data), sizeof(int_data));
 
   this->source_pid = int_data[0];
   this->message_length = int_data[1];
@@ -55,9 +50,8 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   this->message_type = int_data[3];
   this->persistent = int_data[4] ? true : false;
   this->aContext = int_data[5] ? true : false;
-
-  this->data = (char *) malloc(raw_data_length);
-  file.read(data, raw_data_length);
+  this->data = (char *) malloc(this->raw_data_length);
+  file.read(data, this->raw_data_length);
 
   file.read(marker_buf, marker_size);
   if (strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
@@ -75,9 +69,8 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   }
 
   file.seekg(bookmark);
-  memblock = new char[id_length];
+  char * memblock = new char[id_length];
   file.read(memblock, id_length);
-
   this->event_id = std::string(memblock);
   delete[] memblock;
 
@@ -110,21 +103,13 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
 }
 
 HeldEvent::HeldEvent(std::istream& file, const std::streampos object_begin) {
-  char * memblock;
   char marker_buf[4];
 
   this->file_pos = object_begin;
   file.seekg(object_begin);
 
-  memblock = new char[sizeof(HeldEventState)];
-  file.read(memblock, sizeof(HeldEventState));
-  this->state = *(reinterpret_cast<HeldEventState*>(memblock));
-  delete[] memblock;
-
-  memblock = new char[sizeof(int)];
-  file.read(memblock, sizeof(int));
-  this->target = *(reinterpret_cast<int*>(memblock));
-  delete[] memblock;
+  file.read(reinterpret_cast<char *>(&(this->state)), sizeof(HeldEventState));
+  file.read(reinterpret_cast<char *>(&(this->target)), sizeof(int));
 
   this->spec_evt = new SpecificEvent(file, file.tellg());
 
@@ -177,7 +162,6 @@ void TaskDescriptor::resetTaskID(taskID_t old_task_id) {
 */
 PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::streampos object_begin) {
   char marker_buf[4], byte;
-  char * memblock;
   int int_data[5], od_int;
   size_t task_name_length;
   std::streampos bookmark;
@@ -185,15 +169,8 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
 
   file.seekg(object_begin);
 
-  memblock = new char[sizeof(taskID_t)];
-  file.read(memblock, sizeof(taskID_t));
-  this->task_id = *(reinterpret_cast<taskID_t*>(memblock));
-  delete[] memblock;
-
-  memblock = new char[sizeof(int_data)];
-  file.read(memblock, sizeof(int_data));
-  memcpy(int_data, memblock, sizeof(int_data));
-  delete[] memblock;
+  file.read(reinterpret_cast<char*>(&(this->task_id)), sizeof(taskID_t));
+  file.read(reinterpret_cast<char*>(int_data), sizeof(int_data));
 
   this->func_id = int_data[0];
   this->numArrivedEvents = int_data[1];
@@ -215,7 +192,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
   }
 
   file.seekg(bookmark);
-  memblock = new char[task_name_length];
+  char * memblock = new char[task_name_length];
   file.read(memblock, task_name_length);
   this->task_name = std::string(memblock);
   delete[] memblock;
@@ -229,10 +206,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
     } else {
       DependencyKey depkey = DependencyKey(file, bookmark);
 
-      memblock = new char[sizeof(int)];
-      file.read(memblock, sizeof(int));
-      od_int = *(reinterpret_cast<int *>(memblock));
-      delete[] memblock;
+      file.read(reinterpret_cast<char *>(&od_int), sizeof(int));
 
       if (od_int > 0) this->outstandingDependencies.emplace(depkey, new int(od_int));
     }
@@ -259,10 +233,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
     } else {
       DependencyKey depkey = DependencyKey(file, bookmark);
 
-      memblock = new char[sizeof(int)];
-      file.read(memblock, sizeof(int));
-      od_int = *(reinterpret_cast<int *>(memblock));
-      delete[] memblock;
+      file.read(reinterpret_cast<char *>(&od_int), sizeof(int));
 
       this->originalDependencies.emplace(depkey, new int(od_int));
     }
