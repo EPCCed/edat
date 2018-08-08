@@ -21,7 +21,7 @@ protected:
   ThreadPool & threadPool;
   ContextManager & contextManager;
   Configuration & configuration;
-  bool continue_polling;
+  bool continue_polling, syntheticFailure;
   bool progress_thread;
   int it_count;
   virtual bool fireASingleLocalEvent();

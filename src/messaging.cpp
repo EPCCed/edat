@@ -73,7 +73,7 @@ void Messaging::reactivateMainThread() {
 void Messaging::entryThreadPollForEvents() {
   runPollForEvents();
   // Wake up condition variable now
-  reactivateMainThread();
+  if (!syntheticFailure) reactivateMainThread();
 }
 
 /**
