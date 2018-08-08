@@ -943,8 +943,8 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     resilienceTaskCompleted(thread_id, taskContainer->task_id);
   }
 
-  delete events_payload;
-  free(pthreadRawData);
+  delete[] events_payload;
+  delete taskContainer;
 }
 
 /**

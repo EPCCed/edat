@@ -595,13 +595,15 @@ void ThreadPool::reinit() {
   pollingProgressThread=-1;
   next_suggested_idle_thread = 0;
 
+  threadBusy = new bool[number_of_workers];
+  workers = new WorkerThread[number_of_workers];
+
   for (i = 0; i < number_of_workers; i++) {
     threadBusy[i] = (i==0 && main_thread_is_worker);
   }
 
-  threadBusy = new bool[number_of_workers];
-  workers = new WorkerThread[number_of_workers];
   mapThreadsToCores(false);
+
   for (i=0; i<number_of_workers; i++) {
     new (&workers[i]) WorkerThread();
     workers[i].activeThread=new ThreadPackage();

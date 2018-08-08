@@ -172,7 +172,7 @@ struct TaskDescriptor {
 
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
-  bool freeData, persistent, resilient;
+  bool freeData=true, persistent=false, resilient=false;
   int func_id = -1;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
