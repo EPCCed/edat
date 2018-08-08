@@ -299,7 +299,10 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   #if DO_METRICS
     metrics::METRICS->timerStop("performSinglePoll", timer_key_psp);
   #endif
-  if (syntheticFailure) return false;
+  if (syntheticFailure) {
+    if (termination_pingback_request != MPI_REQUEST_NULL) MPI_Cancel(&termination_pingback_request);
+    return false;
+  }
   return eligable_for_termination ? handleTerminationProtocol() : true;
 }
 
@@ -493,7 +496,6 @@ bool MPI_P2P_Messaging::checkForCodeInList(int * codes_to_check, int failure_cod
 
 void MPI_P2P_Messaging::syntheticFinalise() {
   syntheticFailure = true;
-  continue_polling = false;
   Messaging::finalise();
   return;
 }
