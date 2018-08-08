@@ -197,14 +197,20 @@ void resilienceFinalise(void) {
   delete external_ledger;
 }
 
-const ContinuityData resilienceSyntheticFinalise(void) {
+ContinuityData resilienceSyntheticFinalise(const std::thread::id thread_id) {
   external_ledger->endMonitoring();
   const std::thread::id main_thread = internal_ledger->getMainThread();
+  PendingTaskDescriptor * ptd = internal_ledger->getPendingTaskFromCurrentlyActiveTask(thread_id);
   const std::pair<const task_ptr_t * const, const int> task_data = external_ledger->getTaskArray();
-  const ContinuityData con_data = ContinuityData(main_thread, task_data.first, task_data.second);
+  ContinuityData con_data = ContinuityData(main_thread, task_data.first, task_data.second, ptd);
   delete internal_ledger;
   delete external_ledger;
   return con_data;
+}
+
+void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskDescriptor * ptd) {
+  internal_ledger->taskActiveOnThread(thread_id, *ptd);
+  return;
 }
 
 /**
@@ -280,6 +286,20 @@ void LoggedTask::serialize(std::ostream& file, const std::streampos object_begin
 taskID_t EDAT_Thread_Ledger::getCurrentlyActiveTask(const std::thread::id thread_id) {
   std::lock_guard<std::mutex> lock(id_mutex);
   return threadID_to_taskID.at(thread_id).back();
+}
+
+PendingTaskDescriptor * EDAT_Thread_Ledger::getPendingTaskFromCurrentlyActiveTask(const std::thread::id thread_id) {
+  id_mutex.lock();
+  taskID_t task_id = threadID_to_taskID.at(thread_id).back();
+  id_mutex.unlock();
+
+  at_mutex.lock();
+  PendingTaskDescriptor * ptd = active_tasks.at(task_id)->generatePendingTask();
+  at_mutex.unlock();
+
+  ptd->task_id = task_id;
+
+  return ptd;
 }
 
 /**

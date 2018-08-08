@@ -20,7 +20,8 @@ struct ContinuityData {
   const std::thread::id main_thread_id;
   const task_ptr_t * const task_array;
   const int num_tasks;
-  ContinuityData(const std::thread::id a_thread, const task_ptr_t * const a_task_array, const int a_num_tasks) : main_thread_id(a_thread), task_array(a_task_array), num_tasks(a_num_tasks) {};
+  PendingTaskDescriptor * ptd;
+  ContinuityData(const std::thread::id a_thread, const task_ptr_t * const a_task_array, const int a_num_tasks, PendingTaskDescriptor* task) : main_thread_id(a_thread), task_array(a_task_array), num_tasks(a_num_tasks), ptd(task) {};
 };
 
 void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const int);
@@ -32,7 +33,8 @@ void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
 void resilienceTaskCompleted(const std::thread::id, const taskID_t);
 void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
-const ContinuityData resilienceSyntheticFinalise(void);
+ContinuityData resilienceSyntheticFinalise(const std::thread::id);
+void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskDescriptor*);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -64,6 +66,7 @@ public:
   EDAT_Thread_Ledger(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id)
     : scheduler(ascheduler), threadpool(athreadpool), messaging(amessaging), main_thread_id(thread_id) {};
   taskID_t getCurrentlyActiveTask(const std::thread::id);
+  PendingTaskDescriptor* getPendingTaskFromCurrentlyActiveTask(const std::thread::id);
   void holdFiredEvent(const std::thread::id, void*, int, int, int, bool, const char*);
   void taskActiveOnThread(const std::thread::id, PendingTaskDescriptor&);
   void taskComplete(const std::thread::id, const taskID_t);
