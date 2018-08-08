@@ -222,15 +222,11 @@ LoggedTask::LoggedTask(PendingTaskDescriptor& src) {
 */
 LoggedTask::LoggedTask(std::istream& file, const std::streampos object_begin) {
   char marker_buf[4];
-  char * memblock;
 
   this->file_pos = object_begin;
   file.seekg(object_begin);
 
-  memblock = new char[sizeof(TaskState)];
-  file.read(memblock, sizeof(TaskState));
-  this->state = *(reinterpret_cast<TaskState*>(memblock));
-  delete[] memblock;
+  file.read(reinterpret_cast<char *>(&(this->state)), sizeof(TaskState));
 
   this->ptd = new PendingTaskDescriptor(file, file.tellg());
 
@@ -476,11 +472,6 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
   if (recovery) {
     char marker_buf[4], ledger_name_buf[24];
     bool found_eol;
-    char * memblock;
-    taskID_t task_id;
-    LoggedTask * lgt;
-    SpecificEvent * spec_evt;
-    HeldEvent * held_event;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator ae_iter;
     std::map<taskID_t,LoggedTask*>::iterator tl_iter;
@@ -499,13 +490,12 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
     file.seekg(std::ios::beg);
 
-    memblock = new char[NUM_RANKS*sizeof(int)];
-    file.read(memblock, NUM_RANKS*sizeof(int));
-    int * ranks_are_dead = reinterpret_cast<int*>(memblock);
+    int * ranks_are_dead = new int[NUM_RANKS];
+    file.read(reinterpret_cast<char *>(ranks_are_dead), NUM_RANKS*sizeof(int));
     for (int rank=0; rank<NUM_RANKS; rank++) {
       if (ranks_are_dead[rank]) dead_ranks.emplace(rank);
     }
-    delete[] memblock;
+    delete[] ranks_are_dead;
 
     found_eol = false;
     while (!found_eol) {
@@ -513,25 +503,19 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
       file.read(marker_buf, marker_size);
       if (!strcmp(marker_buf, tsk)) {
         // found a task
-        memblock = new char[sizeof(taskID_t)];
-        file.read(memblock, sizeof(taskID_t));
-        task_id = *(reinterpret_cast<taskID_t*>(memblock));
-        delete[] memblock;
-
-        lgt = new LoggedTask(file, file.tellg());
-
+        taskID_t task_id;
+        file.read(reinterpret_cast<char *>(&task_id), sizeof(taskID_t));
+        LoggedTask * lgt = new LoggedTask(file, file.tellg());
         task_log.emplace(task_id, lgt);
 
         file.read(marker_buf, marker_size);
         if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger task deserialization error, EOO not found");
       } else if (!strcmp(marker_buf, evt)) {
         // found an event
-        memblock = new char[sizeof(taskID_t)];
-        file.read(memblock, sizeof(taskID_t));
-        task_id = *(reinterpret_cast<taskID_t*>(memblock));
-        delete[] memblock;
+        taskID_t task_id;
+        file.read(reinterpret_cast<char *>(&task_id), sizeof(taskID_t));
 
-        spec_evt = new SpecificEvent(file, file.tellg());
+        SpecificEvent * spec_evt = new SpecificEvent(file, file.tellg());
         spec_evt->setFilePos(bookmark);
 
         file.read(marker_buf, marker_size);
@@ -572,11 +556,10 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
               ae_iter->second.push(spec_evt);
             }
           }
-
         }
       } else if (!strcmp(marker_buf, hvt)) {
         // found a held event
-        held_event = new HeldEvent(file, file.tellp());
+        HeldEvent * held_event = new HeldEvent(file, file.tellp());
         std::map<int,std::queue<HeldEvent*>>::iterator he_iter = held_events.find(held_event->target);
         if (he_iter == held_events.end()) {
           std::queue<HeldEvent*> held_q;
@@ -600,7 +583,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     // deal with any orphaned events
     for (orph_iter = orphaned_events.begin(); orph_iter != orphaned_events.end(); ++orph_iter) {
       while (!orph_iter->second.empty()) {
-        spec_evt = orph_iter->second.front();
+        SpecificEvent * spec_evt = orph_iter->second.front();
         orph_iter->second.pop();
         DependencyKey depkey = DependencyKey(spec_evt->getEventId(), spec_evt->getSourcePid());
         tl_iter = task_log.find(orph_iter->first);
