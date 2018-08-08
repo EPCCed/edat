@@ -572,6 +572,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
               std::queue<SpecificEvent*> event_queue;
               event_queue.push(spec_evt);
               tl_iter->second->ptd->arrivedEvents.emplace(depkey, event_queue);
+              tl_iter->second->ptd->numArrivedEvents++;
             } else {
               ae_iter->second.push(spec_evt);
             }
@@ -616,6 +617,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
             std::queue<SpecificEvent*> event_queue;
             event_queue.push(spec_evt);
             tl_iter->second->ptd->arrivedEvents.emplace(depkey, event_queue);
+            tl_iter->second->ptd->numArrivedEvents++;
           } else {
             ae_iter->second.push(spec_evt);
           }
@@ -1018,11 +1020,13 @@ void EDAT_Process_Ledger::recover() {
       // depending on the number of tasks which were still running vs number of threads it may end up sitting in a queue
       exec_task = new PendingTaskDescriptor();
       exec_task->deepCopy(*(logged_task->ptd));
+      exec_task->task_fn = getFunc(exec_task->func_id);
       scheduler.readyToRunTask(exec_task);
     } else if (logged_task->state == SCHEDULED) {
       // task still missing events, add it to Scheduler::registeredTasks
       sched_task = new PendingTaskDescriptor();
       sched_task->deepCopy(*(logged_task->ptd));
+      sched_task->task_fn = getFunc(sched_task->func_id);
       scheduler.registerTask(sched_task);
     }
   }
@@ -1181,8 +1185,15 @@ void EDAT_Process_Ledger::registerMonitorResponse(int rank) {
 }
 
 void EDAT_Process_Ledger::registerObit(const int rank) {
-  std::lock_guard<std::mutex> lock(dead_ranks_mutex);
+  dead_ranks_mutex.lock();
   dead_ranks.emplace(rank);
+  dead_ranks_mutex.unlock();
+
+  std::queue<HeldEvent*> held_q;
+  held_events_mutex.lock();
+  held_events.emplace(rank, held_q);
+  held_events_mutex.unlock();
+
   commit(rank, 1);
   return;
 }

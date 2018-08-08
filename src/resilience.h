@@ -101,6 +101,7 @@ private:
   void commit(const HeldEventState&, const std::streampos);
   void serialize();
   int getFuncID(const task_ptr_t);
+  const task_ptr_t getFunc(const int func_id) { return task_array[func_id]; }
   void releaseHeldEvents(const int);
   static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
 public:

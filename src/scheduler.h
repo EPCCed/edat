@@ -161,7 +161,7 @@ struct TaskDescriptor {
   std::map<DependencyKey, int*> outstandingDependencies;
   std::map<DependencyKey, std::queue<SpecificEvent*>> arrivedEvents;
   std::vector<DependencyKey> taskDependencyOrder;
-  int numArrivedEvents;
+  int numArrivedEvents=0;
   taskID_t task_id;
   TaskDescriptor() { generateTaskID(); }
   void generateTaskID(void);
