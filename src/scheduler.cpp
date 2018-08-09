@@ -294,6 +294,7 @@ void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
 
   freeData = src.freeData;
   persistent = src.persistent;
+  func_id = src.func_id;
   task_name = src.task_name;
   task_fn = src.task_fn;
 }
