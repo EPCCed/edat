@@ -839,7 +839,7 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   for (int func_id = 0; func_id<number_of_tasks; ++func_id) {
     if (task_array[func_id] == task_fn) return func_id;
   }
-  return -1;
+  raiseError("Could not find task function");
 }
 
 void EDAT_Process_Ledger::releaseHeldEvents(const int rank) {
@@ -1020,7 +1020,19 @@ void EDAT_Process_Ledger::recover() {
       // depending on the number of tasks which were still running vs number of threads it may end up sitting in a queue
       exec_task = new PendingTaskDescriptor();
       exec_task->deepCopy(*(logged_task->ptd));
+      exec_task->generateTaskID();
       exec_task->task_fn = getFunc(exec_task->func_id);
+
+      // mark old task as failed
+      logged_task->state = FAILED;
+      commit(FAILED, logged_task->file_pos);
+
+      // add 'new' task to task log
+      LoggedTask * lgt = new LoggedTask(*exec_task);
+      task_log.emplace(exec_task->task_id, lgt);
+      commit(exec_task->task_id, *lgt);
+
+      // run the task
       scheduler.readyToRunTask(exec_task);
     } else if (logged_task->state == SCHEDULED) {
       // task still missing events, add it to Scheduler::registeredTasks
