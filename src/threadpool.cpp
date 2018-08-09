@@ -615,6 +615,7 @@ void ThreadPool::reinit(WorkerThread * wt) {
   mapThreadsToCores(false);
 
   new (&workers[0]) WorkerThread(*wt);
+  threadBusy[0] = true;
   for (i=1; i<number_of_workers; i++) {
     new (&workers[i]) WorkerThread();
     workers[i].activeThread=new ThreadPackage();
