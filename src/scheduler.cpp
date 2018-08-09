@@ -102,6 +102,13 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
   return;
 }
 
+HeldEvent::HeldEvent(const HeldEvent& src, int new_target) {
+  this->file_pos = -1;
+  this->target = new_target;
+  this->state = HELD;
+  this->spec_evt = new SpecificEvent(*(src.spec_evt));
+}
+
 HeldEvent::HeldEvent(std::istream& file, const std::streampos object_begin) {
   char marker_buf[4];
 

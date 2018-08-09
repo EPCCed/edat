@@ -91,7 +91,7 @@ private:
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   std::set<int> dead_ranks;
-  std::map<int,std::queue<HeldEvent*>> held_events;
+  std::map<int,std::queue<HeldEvent>> held_events;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
@@ -102,7 +102,6 @@ private:
   void serialize();
   int getFuncID(const task_ptr_t);
   const task_ptr_t getFunc(const int func_id) { return task_array[func_id]; }
-  void releaseHeldEvents(const int);
   static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
 public:
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
@@ -125,6 +124,7 @@ public:
   const std::set<int> getDeadRanks();
   const std::pair<const task_ptr_t * const, const int> getTaskArray() const { return std::pair<const task_ptr_t * const, const int>(task_array, number_of_tasks); };
   void holdEvent(HeldEvent&);
+  void releaseHeldEvents();
   void display() const;
 };
 

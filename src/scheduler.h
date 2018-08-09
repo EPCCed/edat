@@ -79,6 +79,7 @@ struct HeldEvent {
   int target;
   SpecificEvent * spec_evt;
   HeldEvent() = default;
+  HeldEvent(const HeldEvent&, const int target);
   HeldEvent(std::istream&, const std::streampos);
   void serialize(std::ostream&, const std::streampos);
   void fire(Messaging&);

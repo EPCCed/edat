@@ -21,6 +21,7 @@ static const char call[4] = {'u', 'o', 'k', '\0'};
 static const char response[4] = {'a', 'o', 'k', '\0'};
 static const char obit[4] = {'r', 'i', 'p', '\0'};
 static const char phoenix[4] = {'p', 'i', 'r', '\0'};
+static const char fireEvents[4] = { 'f', 'a', 'w', '\0' };
 
 // serialization object markers
 static const char tsk[4] = {'T', 'S', 'K', '\0'};
@@ -65,7 +66,7 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
     std::cout << "EDAT resilience initialised." << std::endl;
     std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait" << std::endl;
     std::cout << "Please do not use the following character strings as event IDs: ";
-    std::cout << std::string(call) << " " << std::string(response) << " " << std::string(obit) << " " << std::string(phoenix) << std::endl;
+    std::cout << std::string(call) << " " << std::string(response) << " " << std::string(obit) << " " << std::string(phoenix) << " " << std::string(fireEvents) << std::endl;
   }
 
   if (recovery) external_ledger->recover();
@@ -122,6 +123,8 @@ bool resilienceAddEvent(SpecificEvent& event) {
     const int revived_rank = *((int *) event.getData());
     external_ledger->registerPhoenix(revived_rank);
     return false;
+  } else if (!strcmp(c_event_id, fireEvents)) {
+    external_ledger->releaseHeldEvents();
   } else {
     #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("resilienceAddEvent");
@@ -309,30 +312,10 @@ PendingTaskDescriptor * EDAT_Thread_Ledger::getPendingTaskFromCurrentlyActiveTas
 void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
-  const std::set<int> dead_ranks = external_ledger->getDeadRanks();
-  HeldEvent held_event;
-
   while (!atd->firedEvents.empty()) {
-    held_event = atd->firedEvents.front();
-    if (dead_ranks.empty()) {
-      // there are no dead ranks, fire at will
-      held_event.fire(messaging);
-      atd->firedEvents.pop();
-    } else {
-      // at least one rank is down, compare event target and fire if alive, otherwise send to
-      // external_ledger
-      int target = held_event.target;
-      std::set<int>::iterator dr_iter = dead_ranks.find(target);
-      if (target == EDAT_ALL || dr_iter != dead_ranks.end()) {
-        // send to external_ledger
-        external_ledger->holdEvent(held_event);
-        atd->firedEvents.pop();
-      } else {
-        // a rank is down, but not this event's target
-        held_event.fire(messaging);
-        atd->firedEvents.pop();
-      }
-    }
+    HeldEvent held_event = atd->firedEvents.front();
+    external_ledger->holdEvent(held_event);
+    atd->firedEvents.pop();
   }
 
   return;
@@ -372,17 +355,16 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
     HeldEvent held_event;
     const taskID_t task_id = getCurrentlyActiveTask(thread_id);
     const int data_size = data_count * messaging.getTypeSize(data_type);
-    SpecificEvent * spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
+    held_event.spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
 
     if (data != NULL) {
       // do this so application developer can safely free after 'firing' an event
       char * data_copy = (char *) malloc(data_size);
       memcpy(data_copy, data, data_size);
-      spec_evt->setData(data_copy);
+      held_event.spec_evt->setData(data_copy);
     }
 
     held_event.target = target;
-    held_event.spec_evt = spec_evt;
 
     at_mutex.lock();
     active_tasks.at(task_id)->firedEvents.push(held_event);
@@ -485,10 +467,20 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 */
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name)
   : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
-    serialize();
+  for (int rank=0; rank<NUM_RANKS; rank++) {
+    std::queue<HeldEvent> held_q;
+    held_events.emplace(rank, held_q);
+  }
+  serialize();
 }
 
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
+
+  for (int rank=0; rank<NUM_RANKS; rank++) {
+    std::queue<HeldEvent> held_q;
+    held_events.emplace(rank, held_q);
+  }
+
   if (recovery) {
     char marker_buf[4], ledger_name_buf[24];
     bool found_eol;
@@ -581,13 +573,10 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
       } else if (!strcmp(marker_buf, hvt)) {
         // found a held event
         HeldEvent * held_event = new HeldEvent(file, file.tellp());
-        std::map<int,std::queue<HeldEvent*>>::iterator he_iter = held_events.find(held_event->target);
-        if (he_iter == held_events.end()) {
-          std::queue<HeldEvent*> held_q;
-          held_q.push(held_event);
-          held_events.emplace(held_event->target, held_q);
+        if (held_event->target == EDAT_ALL) {
+          raiseError("Found a held_event with EDAT_ALL as target...");
         } else {
-          he_iter->second.push(held_event);
+          held_events.at(held_event->target).push(*held_event);
         }
         file.read(marker_buf, marker_size);
         if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
@@ -842,20 +831,22 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   raiseError("Could not find task function");
 }
 
-void EDAT_Process_Ledger::releaseHeldEvents(const int rank) {
-  std::lock_guard<std::mutex> lock(held_events_mutex);
-  std::queue<HeldEvent*> held_q = held_events.at(rank);
-  HeldEvent * held_event;
-  while (!held_q.empty()) {
-    held_event = held_q.front();
-    held_q.pop();
+void EDAT_Process_Ledger::releaseHeldEvents() {
+  std::set<int>::iterator dr_iter;
 
-    held_event->fire(messaging);
-    commit(RELEASED, held_event->file_pos);
-    delete held_event;
+  std::lock_guard<std::mutex> he_lock(held_events_mutex);
+  for (int rank = 0; rank < NUM_RANKS; rank++) {
+
+    dr_iter = dead_ranks.find(rank);
+    if(dr_iter == dead_ranks.end()) {
+      while (!held_events.at(rank).empty()) {
+        HeldEvent held_event = held_events.at(rank).front();
+        held_event.fire(messaging);
+        commit(RELEASED, held_event.file_pos);
+        held_events.at(rank).pop();
+      }
+    }
   }
-  held_events.erase(rank);
-
   return;
 }
 
@@ -869,11 +860,11 @@ void EDAT_Process_Ledger::serialize() {
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  std::map<int,std::queue<HeldEvent*>>::iterator he_iter;
+  std::map<int,std::queue<HeldEvent>>::iterator he_iter;
   std::queue<SpecificEvent*> spec_q;
-  std::queue<HeldEvent*> held_q;
+  std::queue<HeldEvent> held_q;
   SpecificEvent * spec_event;
-  HeldEvent * held_event;
+  HeldEvent held_event;
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -921,7 +912,7 @@ void EDAT_Process_Ledger::serialize() {
       held_event = he_iter->second.front();
       he_iter->second.pop();
       held_q.push(held_event);
-      held_event->serialize(file, file.tellp());
+      held_event.serialize(file, file.tellp());
       file.write(eoo, marker_size);
     }
 
@@ -951,7 +942,7 @@ void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& m
     mp_monitor_mutex.unlock();
     mp_messaging.fireEvent(NULL, 0, EDAT_NONE, EDAT_ALL, false, call);
 
-    std::this_thread::sleep_for(std::chrono::seconds(mp_beat_period));
+    std::this_thread::sleep_for(std::chrono::milliseconds(mp_beat_period));
 
     mp_monitor_mutex.lock();
     mp_dead_ranks_mutex.lock();
@@ -988,6 +979,7 @@ void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& m
         }
       }
     } // if (mp_dead_ranks.empty())
+    mp_messaging.fireEvent(NULL, 0, EDAT_NOTYPE, EDAT_ALL, false, fireEvents);
   } // while (mp_monitor)
 
   return;
@@ -1176,6 +1168,7 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
 
 void EDAT_Process_Ledger::beginMonitoring() {
   if (RANK == RESILIENCE_MASTER) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     live_ranks = new bool[NUM_RANKS];
     monitor_thread = std::thread(monitorProcesses, std::ref(monitor_mutex), std::ref(monitor), NUM_RANKS, live_ranks, std::ref(messaging), beat_period, std::ref(dead_ranks_mutex), std::ref(dead_ranks));
   }
@@ -1201,18 +1194,12 @@ void EDAT_Process_Ledger::registerObit(const int rank) {
   dead_ranks.emplace(rank);
   dead_ranks_mutex.unlock();
 
-  std::queue<HeldEvent*> held_q;
-  held_events_mutex.lock();
-  held_events.emplace(rank, held_q);
-  held_events_mutex.unlock();
-
   commit(rank, 1);
   return;
 }
 
 void EDAT_Process_Ledger::registerPhoenix(const int rank) {
   std::lock_guard<std::mutex> lock(dead_ranks_mutex);
-  releaseHeldEvents(rank);
   dead_ranks.erase(rank);
   commit(rank, 0);
   return;
@@ -1243,8 +1230,16 @@ const std::set<int> EDAT_Process_Ledger::getDeadRanks() {
 
 void EDAT_Process_Ledger::holdEvent(HeldEvent& held_event) {
   std::lock_guard<std::mutex> lock(held_events_mutex);
-  held_events[held_event.target].push(&held_event);
-  commit(held_event);
+  if (held_event.target == EDAT_ALL) {
+    for (int rank = 0; rank < NUM_RANKS; rank++) {
+      HeldEvent he_copy = HeldEvent(held_event, rank);
+      held_events[rank].push(he_copy);
+      commit(he_copy);
+    }
+  } else {
+    held_events[held_event.target].push(held_event);
+    commit(held_event);
+  }
   return;
 }
 
