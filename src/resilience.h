@@ -12,7 +12,7 @@
 #include <fstream>
 
 #define RESILIENCE_MASTER 0
-#define DEFAULT_BEAT_PERIOD 5
+#define DEFAULT_BEAT_PERIOD 500
 
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
