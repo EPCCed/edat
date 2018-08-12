@@ -131,6 +131,7 @@ bool resilienceAddEvent(SpecificEvent& event) {
     #endif
     DependencyKey depkey = DependencyKey(event_id, source_id);
     external_ledger->addEvent(depkey, event);
+
     #if DO_METRICS
     metrics::METRICS->timerStop("resilienceAddEvent", timer_key);
     #endif
@@ -312,9 +313,14 @@ PendingTaskDescriptor * EDAT_Thread_Ledger::getPendingTaskFromCurrentlyActiveTas
 void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
+  const int my_rank = messaging.getRank();
   while (!atd->firedEvents.empty()) {
     HeldEvent held_event = atd->firedEvents.front();
-    external_ledger->holdEvent(held_event);
+    if ( held_event.target == my_rank ) {
+      held_event.fire(messaging);
+    } else {
+      external_ledger->holdEvent(held_event);
+    }
     atd->firedEvents.pop();
   }
 
@@ -482,6 +488,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
   }
 
   if (recovery) {
+    printf("Reinitialising rank %d ledger\n", RANK);
     char marker_buf[4], ledger_name_buf[24];
     bool found_eol;
     std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
@@ -578,13 +585,12 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         } else {
           held_events.at(held_event->target).push(*held_event);
         }
-        file.read(marker_buf, marker_size);
-        if (strcmp(marker_buf, eoo)) raiseError("EDAT_Process_Ledger event deserialization error, EOO not found");
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
         found_eol = true;
       } else {
         // something bad has happened
+        printf("ERROR: marker_buf=%s\n", marker_buf);
         raiseError("EDAT_Process_Ledger deserialization error, unable to parse marker");
       }
     } // while (!found_eol)
@@ -730,6 +736,7 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   file.read(marker_buf, marker_size);
   if (strcmp(marker_buf, eol)) raiseError("Error in HeldEvent commit, EOL not found");
 
+  file.seekp(bookmark);
   file.write(hvt, marker_size);
   held_event.serialize(file, file.tellp());
   file.write(eol, marker_size);
@@ -836,14 +843,17 @@ void EDAT_Process_Ledger::releaseHeldEvents() {
 
   std::lock_guard<std::mutex> he_lock(held_events_mutex);
   for (int rank = 0; rank < NUM_RANKS; rank++) {
-
-    dr_iter = dead_ranks.find(rank);
-    if(dr_iter == dead_ranks.end()) {
-      while (!held_events.at(rank).empty()) {
-        HeldEvent held_event = held_events.at(rank).front();
-        held_event.fire(messaging);
-        commit(RELEASED, held_event.file_pos);
-        held_events.at(rank).pop();
+    if (rank != RANK) {
+      dead_ranks_mutex.lock();
+      dr_iter = dead_ranks.find(rank);
+      dead_ranks_mutex.unlock();
+      if(dr_iter == dead_ranks.end()) {
+        while (!held_events.at(rank).empty()) {
+          HeldEvent * held_event = &(held_events.at(rank).front());
+          held_event->fire(messaging);
+          commit(RELEASED, held_event->file_pos);
+          held_events.at(rank).pop();
+        }
       }
     }
   }
@@ -937,9 +947,12 @@ void EDAT_Process_Ledger::monitorProcesses(std::mutex& mp_monitor_mutex, bool& m
   mp_monitor_mutex.lock();
   mp_monitor = true;
   while (mp_monitor) {
+
     for (rank = 0; rank < mp_NUM_RANKS; rank++) mp_live_ranks[rank] = false;
     mp_live_ranks[RESILIENCE_MASTER] = true;
+
     mp_monitor_mutex.unlock();
+
     mp_messaging.fireEvent(NULL, 0, EDAT_NONE, EDAT_ALL, false, call);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(mp_beat_period));
@@ -996,6 +1009,7 @@ void EDAT_Process_Ledger::recover() {
   PendingTaskDescriptor * exec_task, * sched_task;
   std::queue<SpecificEvent*> temp_q;
   SpecificEvent * spec_event;
+  std::queue<std::pair<LoggedTask*,PendingTaskDescriptor*>> exec_queue;
 
   std::lock_guard<std::mutex> lock(log_mutex);
 
@@ -1019,13 +1033,9 @@ void EDAT_Process_Ledger::recover() {
       logged_task->state = FAILED;
       commit(FAILED, logged_task->file_pos);
 
-      // add 'new' task to task log
+      // add 'new' task to queue to be run soon
       LoggedTask * lgt = new LoggedTask(*exec_task);
-      task_log.emplace(exec_task->task_id, lgt);
-      commit(exec_task->task_id, *lgt);
-
-      // run the task
-      scheduler.readyToRunTask(exec_task);
+      exec_queue.push(std::pair<LoggedTask*,PendingTaskDescriptor*>(lgt, exec_task));
     } else if (logged_task->state == SCHEDULED) {
       // task still missing events, add it to Scheduler::registeredTasks
       sched_task = new PendingTaskDescriptor();
@@ -1033,6 +1043,15 @@ void EDAT_Process_Ledger::recover() {
       sched_task->task_fn = getFunc(sched_task->func_id);
       scheduler.registerTask(sched_task);
     }
+  }
+
+  while (!exec_queue.empty()) {
+    LoggedTask * lgt = exec_queue.front().first;
+    PendingTaskDescriptor * exec_task = exec_queue.front().second;
+    task_log.emplace(exec_task->task_id, lgt);
+    commit(exec_task->task_id, *lgt);
+    scheduler.readyToRunTask(exec_task);
+    exec_queue.pop();
   }
 
   for (oe_iter = outstanding_events.begin(); oe_iter != outstanding_events.end(); ++oe_iter) {
@@ -1168,7 +1187,7 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
 
 void EDAT_Process_Ledger::beginMonitoring() {
   if (RANK == RESILIENCE_MASTER) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
     live_ranks = new bool[NUM_RANKS];
     monitor_thread = std::thread(monitorProcesses, std::ref(monitor_mutex), std::ref(monitor), NUM_RANKS, live_ranks, std::ref(messaging), beat_period, std::ref(dead_ranks_mutex), std::ref(dead_ranks));
   }
