@@ -64,10 +64,10 @@ int edatFinalise(void) {
     std::unique_lock<std::mutex> lk(*m);
     cv->wait(lk, [completed]{return *completed;});
   }
-  messaging->finalise();
   if (configuration->get("EDAT_RESILIENCE", false)) {
     resilienceFinalise();
   }
+  messaging->finalise();
   #if DO_METRICS
     metrics::METRICS->finalise();
   #endif
