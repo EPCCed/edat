@@ -186,7 +186,7 @@ struct PendingTaskDescriptor : TaskDescriptor {
 };
 
 struct ActiveTaskDescriptor : PendingTaskDescriptor {
-  std::queue<HeldEvent> firedEvents;
+  std::queue<HeldEvent*> firedEvents;
   ActiveTaskDescriptor(PendingTaskDescriptor&);
   virtual ~ActiveTaskDescriptor();
   virtual TaskDescriptorType getDescriptorType() {return ACTIVE;}

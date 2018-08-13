@@ -91,7 +91,7 @@ private:
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   std::set<int> dead_ranks;
-  std::map<int,std::queue<HeldEvent>> held_events;
+  std::map<int,std::queue<HeldEvent*>> held_events;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
@@ -123,7 +123,7 @@ public:
   void deleteLedgerFile();
   const std::set<int> getDeadRanks();
   const std::pair<const task_ptr_t * const, const int> getTaskArray() const { return std::pair<const task_ptr_t * const, const int>(task_array, number_of_tasks); };
-  void holdEvent(HeldEvent&);
+  void holdEvent(HeldEvent*);
   void releaseHeldEvents();
   void display() const;
 };

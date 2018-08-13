@@ -315,9 +315,9 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
   const int my_rank = messaging.getRank();
   while (!atd->firedEvents.empty()) {
-    HeldEvent held_event = atd->firedEvents.front();
-    if ( held_event.target == my_rank ) {
-      held_event.fire(messaging);
+    HeldEvent * held_event = atd->firedEvents.front();
+    if ( held_event->target == my_rank ) {
+      held_event->fire(messaging);
     } else {
       external_ledger->holdEvent(held_event);
     }
@@ -333,12 +333,13 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
 void EDAT_Thread_Ledger::purgeHeldEvents(const taskID_t task_id) {
   std::lock_guard<std::mutex> lock(at_mutex);
   ActiveTaskDescriptor * atd = active_tasks.at(task_id);
-  HeldEvent held_event;
+  HeldEvent * held_event;
 
   while (!atd->firedEvents.empty()) {
     held_event = atd->firedEvents.front();
-    free(held_event.spec_evt->getData());
-    delete held_event.spec_evt;
+    free(held_event->spec_evt->getData());
+    delete held_event->spec_evt;
+    delete held_event;
     atd->firedEvents.pop();
   }
 
@@ -358,19 +359,19 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
     messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
   } else {
     // event has been fired from a task and should be held
-    HeldEvent held_event;
+    HeldEvent * held_event = new HeldEvent();
     const taskID_t task_id = getCurrentlyActiveTask(thread_id);
     const int data_size = data_count * messaging.getTypeSize(data_type);
-    held_event.spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
+    held_event->spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
 
     if (data != NULL) {
       // do this so application developer can safely free after 'firing' an event
       char * data_copy = (char *) malloc(data_size);
       memcpy(data_copy, data, data_size);
-      held_event.spec_evt->setData(data_copy);
+      held_event->spec_evt->setData(data_copy);
     }
 
-    held_event.target = target;
+    held_event->target = target;
 
     at_mutex.lock();
     active_tasks.at(task_id)->firedEvents.push(held_event);
@@ -474,7 +475,7 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name)
   : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
   for (int rank=0; rank<NUM_RANKS; rank++) {
-    std::queue<HeldEvent> held_q;
+    std::queue<HeldEvent*> held_q;
     held_events.emplace(rank, held_q);
   }
   serialize();
@@ -483,7 +484,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
 
   for (int rank=0; rank<NUM_RANKS; rank++) {
-    std::queue<HeldEvent> held_q;
+    std::queue<HeldEvent*> held_q;
     held_events.emplace(rank, held_q);
   }
 
@@ -583,7 +584,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         if (held_event->target == EDAT_ALL) {
           raiseError("Found a held_event with EDAT_ALL as target...");
         } else {
-          held_events.at(held_event->target).push(*held_event);
+          held_events.at(held_event->target).push(held_event);
         }
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
@@ -849,9 +850,10 @@ void EDAT_Process_Ledger::releaseHeldEvents() {
       dead_ranks_mutex.unlock();
       if(dr_iter == dead_ranks.end()) {
         while (!held_events.at(rank).empty()) {
-          HeldEvent * held_event = &(held_events.at(rank).front());
+          HeldEvent * held_event = held_events.at(rank).front();
           held_event->fire(messaging);
           commit(RELEASED, held_event->file_pos);
+          delete held_event;
           held_events.at(rank).pop();
         }
       }
@@ -870,11 +872,11 @@ void EDAT_Process_Ledger::serialize() {
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  std::map<int,std::queue<HeldEvent>>::iterator he_iter;
+  std::map<int,std::queue<HeldEvent*>>::iterator he_iter;
   std::queue<SpecificEvent*> spec_q;
-  std::queue<HeldEvent> held_q;
+  std::queue<HeldEvent*> held_q;
   SpecificEvent * spec_event;
-  HeldEvent held_event;
+  HeldEvent * held_event;
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -922,7 +924,7 @@ void EDAT_Process_Ledger::serialize() {
       held_event = he_iter->second.front();
       he_iter->second.pop();
       held_q.push(held_event);
-      held_event.serialize(file, file.tellp());
+      held_event->serialize(file, file.tellp());
       file.write(eoo, marker_size);
     }
 
@@ -1247,17 +1249,18 @@ const std::set<int> EDAT_Process_Ledger::getDeadRanks() {
   return dead_ranks;
 }
 
-void EDAT_Process_Ledger::holdEvent(HeldEvent& held_event) {
+void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
   std::lock_guard<std::mutex> lock(held_events_mutex);
-  if (held_event.target == EDAT_ALL) {
+  if (held_event->target == EDAT_ALL) {
     for (int rank = 0; rank < NUM_RANKS; rank++) {
-      HeldEvent he_copy = HeldEvent(held_event, rank);
+      HeldEvent * he_copy = new HeldEvent(*held_event, rank);
       held_events[rank].push(he_copy);
-      commit(he_copy);
+      commit(*he_copy);
     }
+    delete held_event;
   } else {
-    held_events[held_event.target].push(held_event);
-    commit(held_event);
+    held_events[held_event->target].push(held_event);
+    commit(*held_event);
   }
   return;
 }
