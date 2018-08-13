@@ -584,7 +584,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         if (held_event->target == EDAT_ALL) {
           raiseError("Found a held_event with EDAT_ALL as target...");
         } else {
-          held_events.at(held_event->target).push(held_event);
+          if(held_event->state == HELD) held_events.at(held_event->target).push(held_event);
         }
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
