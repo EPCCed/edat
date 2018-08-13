@@ -125,6 +125,7 @@ bool resilienceAddEvent(SpecificEvent& event) {
     return false;
   } else if (!strcmp(c_event_id, fireEvents)) {
     external_ledger->releaseHeldEvents();
+    return false;
   } else {
     #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("resilienceAddEvent");

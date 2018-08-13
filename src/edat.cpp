@@ -279,6 +279,7 @@ void edatSyntheticFailure(const int level) {
       resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, beat_period);
       resilienceRestoreTaskToActive(thread_id, con_data.ptd);
       messaging->resetPolling();
+      messaging->setEligableForTermination();
     } else {
       std::cout << "Did not recognise failure level. Call edatSyntheticFailure(0) for a simulated thread failure. Call edatSyntheticFailure(1) for a simulated process failure." << std::endl;
     }
