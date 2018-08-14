@@ -40,6 +40,8 @@ public:
   virtual int getRank()=0;
   virtual int getNumRanks()=0;
   virtual bool isFinished()=0;
+  virtual void lockComms()=0;
+  virtual void unlockComms()=0;
   virtual void attachMainThread(std::condition_variable*, std::mutex*, bool*);
   virtual bool doesProgressThreadExist() { return progress_thread; }
 };

@@ -9,13 +9,14 @@
 #include "configuration.h"
 
 class MPI_P2P_Messaging : public Messaging {
-  bool protectMPI, mpiInitHere, terminated, eligable_for_termination, batchEvents;
+  bool protectMPI, mpiInitHere, terminated, eligable_for_termination, batchEvents, enableBridge;
   int my_rank, total_ranks, reply_from_master, empty_itertions, max_batched_events;
   double last_event_arrival, batch_timeout;
   int terminated_id, mode=0;
   int * termination_codes, *pingback_termination_codes;
   MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL,
     terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;
+  MPI_Comm communicator;
   std::map<MPI_Request, char*> outstandingSendRequests;
   std::mutex outstandingSendRequests_mutex, mpi_mutex;
   std::vector<SpecificEvent*> eventShortTermStore;
@@ -28,10 +29,12 @@ class MPI_P2P_Messaging : public Messaging {
   bool compareTerminationRanks();
   bool handleTerminationProtocolMessagesAsWorker();
   bool handleTerminationProtocol();
+  void initialise(MPI_Comm);
 protected:
   bool performSinglePoll(int*);
 public:
   MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
+  MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&, int);
   virtual void resetPolling();
   virtual void runPollForEvents();
   virtual void setEligableForTermination() { eligable_for_termination=true; };
@@ -40,5 +43,7 @@ public:
   virtual int getRank();
   virtual int getNumRanks();
   virtual bool isFinished();
+  virtual void lockComms();
+  virtual void unlockComms();
 };
 #endif

@@ -27,19 +27,19 @@ static bool edatActive;
 
 static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, bool, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
-static void doInitialisation(Configuration*);
+static void doInitialisation(Configuration*, bool, int);
 
 void edatInit() {
   configuration=new Configuration();
-  doInitialisation(configuration);
+  doInitialisation(configuration, false, 0);
 }
 
 void edatInitWithConfiguration(int numberEntries, char ** keys, char ** values) {
   configuration=new Configuration(numberEntries, keys, values);
-  doInitialisation(configuration);
+  doInitialisation(configuration, false, 0);
 }
 
-static void doInitialisation(Configuration * configuration) {
+static void doInitialisation(Configuration * configuration, bool comm_present, int communicator) {
   threadPool=new ThreadPool(*configuration);
   concurrencyControl=new ConcurrencyControl(threadPool);
   contextManager=new ContextManager(*configuration);
@@ -47,12 +47,21 @@ static void doInitialisation(Configuration * configuration) {
   #if DO_METRICS
     metrics::METRICS = new EDAT_Metrics(*configuration);
   #endif
-  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
+  if (comm_present) {
+    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration, communicator);
+  } else {
+    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
+  }
   threadPool->setMessaging(messaging);
   edatActive=true;
   #if DO_METRICS
     metrics::METRICS->edatTimerStart();
   #endif
+}
+
+void edatInitialiseWithCommunicator(int communicator) {
+  configuration=new Configuration();
+  doInitialisation(configuration, true, communicator);
 }
 
 void edatFinalise(void) {
@@ -194,6 +203,26 @@ void edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_
   va_end(valist);
 }
 
+void edatScheduleTask_f(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, int ** ranks, char ** event_ids,
+                        bool persistent, bool greedyConsumer) {
+  std::vector<std::pair<int, std::string>> dependencies;
+  int my_rank=messaging->getRank();
+
+  for (int i=0; i<num_dependencies; i++) {
+    int src=(*ranks)[i];
+    if (src == EDAT_SELF) src=my_rank;
+    char * event_id=event_ids[i];
+    if (src == EDAT_ALL) {
+      for (int j=0;j<messaging->getNumRanks();j++) {
+        dependencies.push_back(std::pair<int, std::string>(j, std::string(event_id)));
+      }
+    } else {
+      dependencies.push_back(std::pair<int, std::string>(src, std::string(event_id)));
+    }
+  }
+  scheduler->registerTask(task_fn, task_name == NULL ? "" : task_name, dependencies, persistent, greedyConsumer);
+}
+
 int edatDescheduleTask(const char * task_name) {
   return scheduler->descheduleTask(std::string(task_name)) ? 1 : 0;
 }
@@ -278,6 +307,14 @@ void edatUnlock(char* lockName) {
 int edatTestLock(char* lockName) {
   if (concurrencyControl->test_lock(std::string(lockName))) return 1;
   return 0;
+}
+
+void edatLockComms(void) {
+  messaging->lockComms();
+}
+
+void edatUnlockComms(void) {
+   messaging->unlockComms();
 }
 
 /**
