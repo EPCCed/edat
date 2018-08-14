@@ -590,9 +590,9 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     free(events_payload[j].metadata.event_id);
     if (pendingTaskDescription->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
-  delete events_payload;
+  delete[] events_payload;
   delete pendingTaskDescription;
-  free(pthreadRawData);
+  delete taskContext;
 }
 
 /**

@@ -203,7 +203,7 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
         }
       }
     }
-    delete returnIndicies;
+    delete[] returnIndicies;
   }
 }
 
