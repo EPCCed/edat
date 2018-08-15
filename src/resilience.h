@@ -13,7 +13,7 @@
 #include <fstream>
 
 #define RESILIENCE_MASTER 0
-#define DEFAULT_BEAT_PERIOD 500
+#define DEFAULT_COMM_TIMEOUT 5
 
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
@@ -25,7 +25,7 @@ struct ContinuityData {
   ContinuityData(const std::thread::id a_thread, const task_ptr_t * const a_task_array, const int a_num_tasks, PendingTaskDescriptor* task) : main_thread_id(a_thread), task_array(a_task_array), num_tasks(a_num_tasks), ptd(task) {};
 };
 
-void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const int);
+void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const unsigned int);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 bool resilienceAddEvent(SpecificEvent&);
 void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
@@ -82,9 +82,10 @@ private:
   Messaging& messaging;
   const int RANK;
   const int NUM_RANKS;
+  const unsigned int COMM_TIMEOUT;
+  const unsigned int REST_PERIOD = 10;
   const task_ptr_t * const task_array;
   const int number_of_tasks;
-  const int beat_period;
   const int max_event_id_size = 400;
   char * recv_conf_buffer;
   char * send_conf_buffer;
@@ -113,8 +114,8 @@ private:
   void confirmEventReceivedAtTarget(const int, const std::string);
   void fireHeldEvents(const int);
 public:
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
-  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string, bool);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const unsigned int, std::string);
+  EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const unsigned int, std::string, bool);
   ~EDAT_Process_Ledger();
   void recover();
   void addEvent(const DependencyKey, const SpecificEvent&);

@@ -40,8 +40,8 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
   if (configuration->get("EDAT_RESILIENCE", false)) {
-    const int beat_period = configuration->get("EDAT_BEAT_PERIOD", DEFAULT_BEAT_PERIOD);
-    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, beat_period);
+    const unsigned int COMM_TIMEOUT = configuration->get("EDAT_COMM_TIMEOUT", DEFAULT_COMM_TIMEOUT);
+    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, COMM_TIMEOUT);
   }
   messaging->resetPolling();
   edatActive=true;
@@ -265,7 +265,7 @@ void edatSyntheticFailure(const int level) {
       threadPool->syntheticFailureOfThread(thread_id);
       resilienceThreadFailed(thread_id);
     } else if (level == 1) {
-      const int beat_period = configuration->get("EDAT_BEAT_PERIOD", DEFAULT_BEAT_PERIOD);
+      const int COMM_TIMEOUT = configuration->get("EDAT_COMM_TIMEOUT", DEFAULT_COMM_TIMEOUT);
       std::cout << "I've got a bad feeling about rank " << messaging->getRank() << "..." << std::endl;
       messaging->syntheticFinalise();
       scheduler->reset();
@@ -276,7 +276,7 @@ void edatSyntheticFailure(const int level) {
       // reinitialise rank
       threadPool->reinit(wt);
       threadPool->setMessaging(messaging);
-      resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, beat_period);
+      resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, COMM_TIMEOUT);
       resilienceRestoreTaskToActive(thread_id, con_data.ptd);
       messaging->resetPolling();
       messaging->setEligableForTermination();

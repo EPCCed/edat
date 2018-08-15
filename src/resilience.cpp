@@ -39,7 +39,7 @@ static bool started = false;
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const int beat_period) {
+void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const unsigned int comm_timeout) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("resilienceInit");
   #endif
@@ -60,7 +60,7 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
     fclose(ftest);
     recovery = true;
   }
-  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, beat_period, ledger_name, recovery);
+  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, comm_timeout, ledger_name, recovery);
 
   if (!my_rank) {
     std::cout << "EDAT resilience initialised." << std::endl;
@@ -486,8 +486,8 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 /**
 * Constructor, generates file name for serialization.
 */
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name)
-  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const unsigned int a_timeout, std::string ledger_name)
+  : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), COMM_TIMEOUT(a_timeout), task_array(thetaskarray), number_of_tasks(num_tasks), fname(ledger_name) {
   for (int rank=0; rank<NUM_RANKS; rank++) {
     std::vector<HeldEvent*> held_v;
     std::multiset<std::string> str_ms;
@@ -497,7 +497,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
   serialize();
 }
 
-EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
+EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const unsigned int a_timeout, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), COMM_TIMEOUT(a_timeout), task_array(thetaskarray), number_of_tasks(num_tasks), fname(ledger_name) {
 
   for (int rank=0; rank<NUM_RANKS; rank++) {
     std::vector<HeldEvent*> held_v;
@@ -948,9 +948,9 @@ void EDAT_Process_Ledger::serialize() {
 }
 
 void EDAT_Process_Ledger::monitorProcesses() {
-  const int MAX_FAIL=500;
+  const unsigned int MAX_FAIL = (1000 * COMM_TIMEOUT) / REST_PERIOD;
   int rank, test_result=0;
-  int * fail_count = new int[NUM_RANKS];
+  unsigned int * fail_count = new unsigned int[NUM_RANKS];
   bool * unconfirmed_events = new bool[NUM_RANKS];
   std::string event_id;
   for (rank=0; rank<NUM_RANKS; rank++) fail_count[rank]=0;
@@ -963,7 +963,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
     // look for unconfirmed events and start receive if necessary
     held_events_mutex.lock();
     for (rank=0; rank<NUM_RANKS; rank++) {
-      if (!sent_event_ids.at(rank).empty()) {
+      if (rank != RANK && !sent_event_ids.at(rank).empty()) {
         if (!fail_count[rank]) {
           unconfirmed_events[rank] = true;
           MPI_Start(&recv_requests[rank]);
@@ -980,11 +980,11 @@ void EDAT_Process_Ledger::monitorProcesses() {
     }
 
     // have a nap
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(REST_PERIOD));
 
     // test for receipt of event confirmations
     for (rank=0; rank<NUM_RANKS; rank++) {
-      if (unconfirmed_events[rank]) {
+      if (rank !=RANK && unconfirmed_events[rank]) {
         MPI_Test(&recv_requests[rank], &test_result, MPI_STATUS_IGNORE);
         if (test_result) {
           // event confirmation has been received
@@ -1025,6 +1025,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
   MPI_Waitall(NUM_RANKS, recv_requests, MPI_STATUSES_IGNORE);
 
   delete[] unconfirmed_events;
+  delete[] fail_count;
 
   return;
 }
