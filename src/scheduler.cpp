@@ -138,9 +138,6 @@ void HeldEvent::serialize(std::ostream& file, const std::streampos object_begin)
 
 void HeldEvent::fire(Messaging& messaging) {
   messaging.fireEvent(spec_evt->getData(), spec_evt->getMessageLength(), spec_evt->getMessageType(), target, spec_evt->isPersistent(), spec_evt->getEventId().c_str());
-  state = RELEASED;
-  free(spec_evt->getData());
-  delete spec_evt;
   return;
 }
 
@@ -963,7 +960,7 @@ bool Scheduler::isFinished() {
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }
-  return outstandingEventsToHandle==0;
+  return (outstandingEventsToHandle==0 && resilienceIsFinished());
 }
 
 void Scheduler::reset() {

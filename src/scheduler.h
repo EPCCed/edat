@@ -60,7 +60,7 @@ class SpecificEvent {
   void setData(char* data) { this->data = data; }
   int getSourcePid() const { return source_pid; }
   void setSourcePid(int sourcePid) { source_pid = sourcePid; }
-  std::string getEventId() { return this->event_id; }
+  std::string getEventId() const { return this->event_id; }
   int getMessageLength() { return this->message_length; }
   int getMessageType() { return this->message_type; }
   int getRawDataLength() { return this->raw_data_length; }
@@ -71,7 +71,7 @@ class SpecificEvent {
   void serialize(std::ostream&, const std::streampos) const;
 };
 
-enum HeldEventState { HELD, RELEASED };
+enum HeldEventState { HELD, CONFIRMED };
 
 struct HeldEvent {
   std::streampos file_pos;

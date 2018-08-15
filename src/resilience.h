@@ -4,6 +4,7 @@
 #include "messaging.h"
 #include "scheduler.h"
 #include "threadpool.h"
+#include "mpi.h"
 #include <thread>
 #include <mutex>
 #include <map>
@@ -35,6 +36,7 @@ void resilienceThreadFailed(const std::thread::id);
 void resilienceFinalise(void);
 ContinuityData resilienceSyntheticFinalise(const std::thread::id);
 void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskDescriptor*);
+bool resilienceIsFinished(void);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -83,15 +85,20 @@ private:
   const task_ptr_t * const task_array;
   const int number_of_tasks;
   const int beat_period;
-  bool monitor;
-  bool * live_ranks;
+  const int max_event_id_size = 400;
+  char * recv_conf_buffer;
+  char * send_conf_buffer;
+  MPI_Request * recv_requests;
+  MPI_Request * send_requests;
+  bool monitor, finished=true;
   std::thread monitor_thread;
   std::string fname;
-  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex;
+  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex, sent_event_id_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   std::set<int> dead_ranks;
   std::map<int,std::queue<HeldEvent*>> held_events;
+  std::map<int,std::queue<std::string>> sent_event_ids;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
@@ -102,7 +109,9 @@ private:
   void serialize();
   int getFuncID(const task_ptr_t);
   const task_ptr_t getFunc(const int func_id) { return task_array[func_id]; }
-  static void monitorProcesses(std::mutex&, bool&, const int, bool*, Messaging&, const int, std::mutex&, std::set<int>&);
+  void monitorProcesses();
+  void confirmEventReceivedAtTarget(const int, const std::string);
+  void fireHeldEvents(const int);
 public:
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string);
   EDAT_Process_Ledger(Scheduler&, Messaging&, const int, const int, const task_ptr_t * const, const int, const int, std::string, bool);
@@ -115,17 +124,14 @@ public:
   void markTaskComplete(const taskID_t);
   void markTaskFailed(const taskID_t);
   void beginMonitoring();
-  void respondToMonitor();
-  void registerMonitorResponse(int);
   void registerObit(const int);
   void registerPhoenix(const int);
   void endMonitoring();
   void deleteLedgerFile();
-  const std::set<int> getDeadRanks();
   const std::pair<const task_ptr_t * const, const int> getTaskArray() const { return std::pair<const task_ptr_t * const, const int>(task_array, number_of_tasks); };
   void holdEvent(HeldEvent*);
-  void releaseHeldEvents();
-  void display() const;
+  bool isFinished() const;
+  void eventFiredFromMain(const int, const std::string, HeldEvent*);
 };
 
 #endif
