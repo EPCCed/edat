@@ -141,6 +141,14 @@ void HeldEvent::fire(Messaging& messaging) {
   return;
 }
 
+bool HeldEvent::matchEventId(const std::string search_id) {
+  if (!spec_evt->getEventId().compare(search_id)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 /**
 * Generates a unique identifier for each task, used by resilience to track
 * which tasks are active, and store data for restart
