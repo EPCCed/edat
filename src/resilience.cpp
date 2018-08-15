@@ -317,7 +317,6 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
       delete held_event->spec_evt;
       delete held_event;
     } else {
-      held_event->fire(messaging);
       external_ledger->holdEvent(held_event);
     }
     atd->firedEvents.pop();
@@ -354,24 +353,24 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
                             int data_count, int data_type, int target,
                             bool persistent, const char * event_id) {
   if (thread_id == main_thread_id) {
-    if (target != edatGetRank()) {
       // if event has been fired from main() it should pass straight through
-      HeldEvent * held_event = new HeldEvent();
-      const int data_size = data_count * messaging.getTypeSize(data_type);
-      held_event->spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
+      if (target != edatGetRank()) {
+        HeldEvent * held_event = new HeldEvent();
+        const int data_size = data_count * messaging.getTypeSize(data_type);
+        held_event->spec_evt = new SpecificEvent(messaging.getRank(), data_count, data_size, data_type, persistent, false, event_id, NULL);
 
-      if (data != NULL) {
-        // do this so application developer can safely free after 'firing' an event
-        char * data_copy = (char *) malloc(data_size);
-        memcpy(data_copy, data, data_size);
-        held_event->spec_evt->setData(data_copy);
+        if (data != NULL) {
+          // do this so application developer can safely free after 'firing' an event
+          char * data_copy = (char *) malloc(data_size);
+          memcpy(data_copy, data, data_size);
+          held_event->spec_evt->setData(data_copy);
+        }
+
+        held_event->target = target;
+
+        external_ledger->eventFiredFromMain(target, std::string(event_id), held_event);
       }
-
-      held_event->target = target;
-
-      external_ledger->eventFiredFromMain(target, std::string(event_id), held_event);
-    }
-    messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
+      messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
   } else {
     // event has been fired from a task and should be held
     HeldEvent * held_event = new HeldEvent();
@@ -490,10 +489,10 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name)
   : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
   for (int rank=0; rank<NUM_RANKS; rank++) {
-    std::queue<HeldEvent*> held_q;
-    std::queue<std::string> str_q;
-    held_events.emplace(rank, held_q);
-    sent_event_ids.emplace(rank,str_q);
+    std::vector<HeldEvent*> held_v;
+    std::multiset<std::string> str_ms;
+    held_events.emplace(rank, held_v);
+    sent_event_ids.emplace(rank,str_ms);
   }
   serialize();
 }
@@ -501,10 +500,10 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const int a_beat_period, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), task_array(thetaskarray), number_of_tasks(num_tasks), beat_period(a_beat_period), fname(ledger_name) {
 
   for (int rank=0; rank<NUM_RANKS; rank++) {
-    std::queue<HeldEvent*> held_q;
-    std::queue<std::string> str_q;
-    held_events.emplace(rank, held_q);
-    sent_event_ids.emplace(rank,str_q);
+    std::vector<HeldEvent*> held_v;
+    std::multiset<std::string> str_ms;
+    held_events.emplace(rank, held_v);
+    sent_event_ids.emplace(rank,str_ms);
   }
 
   if (recovery) {
@@ -603,8 +602,8 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
         if (held_event->target == EDAT_ALL) {
           raiseError("Found a held_event with EDAT_ALL as target...");
         } else {
-          if(held_event->state == HELD) held_events.at(held_event->target).push(held_event);
-          sent_event_ids.at(held_event->target).push(held_event->spec_evt->getEventId());
+          if(held_event->state == HELD) held_events.at(held_event->target).emplace_back(held_event);
+          sent_event_ids.at(held_event->target).emplace(held_event->spec_evt->getEventId());
         }
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
@@ -865,25 +864,14 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
 }
 
 void EDAT_Process_Ledger::fireHeldEvents(const int target) {
-  std::queue<HeldEvent*> held_q;
+  std::vector<HeldEvent*>::iterator he_iter;
 
   std::lock_guard<std::mutex> he_lock(held_events_mutex);
 
-  while (!held_events.at(target).empty()) {
-    HeldEvent * held_event = held_events.at(target).front();
+  for (he_iter = held_events.at(target).begin(); he_iter != held_events.at(target).end(); ++he_iter) {
+    HeldEvent * held_event = *he_iter;
+    sent_event_ids.at(target).emplace(held_event->spec_evt->getEventId());
     held_event->fire(messaging);
-    held_events.at(target).pop();
-
-    held_q.push(held_event);
-  }
-
-  std::lock_guard<std::mutex> se_lock(sent_event_id_mutex);
-  while (!held_q.empty()) {
-    HeldEvent * held_event = held_q.front();
-    held_q.pop();
-
-    held_events.at(target).push(held_event);
-    sent_event_ids.at(target).push(held_event->spec_evt->getEventId());
   }
 
   return;
@@ -899,11 +887,9 @@ void EDAT_Process_Ledger::serialize() {
   std::fstream file;
   std::map<DependencyKey,std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
-  std::map<int,std::queue<HeldEvent*>>::iterator he_iter;
+  std::map<int,std::vector<HeldEvent*>>::iterator he_iter;
   std::queue<SpecificEvent*> spec_q;
-  std::queue<HeldEvent*> held_q;
   SpecificEvent * spec_event;
-  HeldEvent * held_event;
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -946,19 +932,11 @@ void EDAT_Process_Ledger::serialize() {
   }
 
   for (he_iter = held_events.begin(); he_iter != held_events.end(); ++he_iter) {
-    while (!he_iter->second.empty()) {
+    for (std::vector<HeldEvent*>::iterator iter = he_iter->second.begin(); iter != he_iter->second.end(); ++iter) {
+      HeldEvent * held_event = *iter;
       file.write(hvt, marker_size);
-      held_event = he_iter->second.front();
-      he_iter->second.pop();
-      held_q.push(held_event);
       held_event->serialize(file, file.tellp());
       file.write(eoo, marker_size);
-    }
-
-    while (!held_q.empty()) {
-      held_event = held_q.front();
-      held_q.pop();
-      he_iter->second.push(held_event);
     }
   }
 
@@ -970,9 +948,12 @@ void EDAT_Process_Ledger::serialize() {
 }
 
 void EDAT_Process_Ledger::monitorProcesses() {
+  const int MAX_FAIL=500;
   int rank, test_result=0;
+  int * fail_count = new int[NUM_RANKS];
   bool * unconfirmed_events = new bool[NUM_RANKS];
   std::string event_id;
+  for (rank=0; rank<NUM_RANKS; rank++) fail_count[rank]=0;
 
   monitor_mutex.lock();
   monitor = true;
@@ -980,16 +961,18 @@ void EDAT_Process_Ledger::monitorProcesses() {
     monitor_mutex.unlock();
 
     // look for unconfirmed events and start receive if necessary
-    sent_event_id_mutex.lock();
+    held_events_mutex.lock();
     for (rank=0; rank<NUM_RANKS; rank++) {
       if (!sent_event_ids.at(rank).empty()) {
-        unconfirmed_events[rank] = true;
-        MPI_Start(&recv_requests[rank]);
+        if (!fail_count[rank]) {
+          unconfirmed_events[rank] = true;
+          MPI_Start(&recv_requests[rank]);
+        }
       } else {
         unconfirmed_events[rank] = false;
       }
     }
-    sent_event_id_mutex.unlock();
+    held_events_mutex.unlock();
 
     for (rank=0; rank<NUM_RANKS; rank++) {
       if (unconfirmed_events[rank]) break;
@@ -997,7 +980,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
     }
 
     // have a nap
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     // test for receipt of event confirmations
     for (rank=0; rank<NUM_RANKS; rank++) {
@@ -1005,31 +988,35 @@ void EDAT_Process_Ledger::monitorProcesses() {
         MPI_Test(&recv_requests[rank], &test_result, MPI_STATUS_IGNORE);
         if (test_result) {
           // event confirmation has been received
+          fail_count[rank]=0;
           event_id = std::string(&recv_conf_buffer[rank*max_event_id_size]);
           confirmEventReceivedAtTarget(rank, event_id);
         } else {
-          // event confirmation has not been received
-          dead_ranks_mutex.lock();
-          std::set<int>::iterator dr_iter = dead_ranks.find(rank);
-          if (dr_iter == dead_ranks.end()) {
-            dead_ranks_mutex.unlock();
-            // this is news...
-            std::cout << "RIP rank " << rank << std::endl;
-            registerObit(rank);
-            for (int target=0; target<NUM_RANKS; target++) {
-              if (target != RANK && target != rank) {
-                messaging.fireEvent(&rank, 1, EDAT_INT, target, false, obit);
+          fail_count[rank]++;
+          if (fail_count[rank] > MAX_FAIL) {
+            // event confirmation has not been received
+            dead_ranks_mutex.lock();
+            std::set<int>::iterator dr_iter = dead_ranks.find(rank);
+            if (dr_iter == dead_ranks.end()) {
+              dead_ranks_mutex.unlock();
+              // this is news...
+              std::cout << "RIP rank " << rank << std::endl;
+              registerObit(rank);
+              for (int target=0; target<NUM_RANKS; target++) {
+                if (target != RANK && target != rank) {
+                  messaging.fireEvent(&rank, 1, EDAT_INT, target, false, obit);
+                }
               }
+            } else {
+              // news came in while I was busy
+              dead_ranks_mutex.unlock();
             }
-          } else {
-            // news came in while I was busy
-            dead_ranks_mutex.unlock();
+            // cancel the active receive and purge the sent_event_ids
+            MPI_Cancel(&recv_requests[rank]);
+            held_events_mutex.lock();
+            sent_event_ids.at(rank).clear();
+            held_events_mutex.unlock();
           }
-          // cancel the active receive and purge the sent_event_ids
-          MPI_Cancel(&recv_requests[rank]);
-          sent_event_id_mutex.lock();
-          while(!sent_event_ids.at(rank).empty()) sent_event_ids.at(rank).pop();
-          sent_event_id_mutex.unlock();
         }
       }
     }
@@ -1043,21 +1030,39 @@ void EDAT_Process_Ledger::monitorProcesses() {
 }
 
 void EDAT_Process_Ledger::confirmEventReceivedAtTarget(const int rank, const std::string recv_evt_id) {
-  sent_event_id_mutex.lock();
-  std::string snd_evt_id = sent_event_ids.at(rank).front();
-  sent_event_ids.at(rank).pop();
-  sent_event_id_mutex.unlock();
+  std::multiset<std::string>::iterator seid_iter;
+  std::vector<HeldEvent*>::reverse_iterator he_iter;
+  bool found_match = false;
 
-  if (snd_evt_id.compare(recv_evt_id)) raiseError("Received event id does not match sent event id");
+  std::lock_guard<std::mutex> lock(held_events_mutex);
 
-  std::lock_guard<std::mutex> he_lock(held_events_mutex);
-  HeldEvent * held_event = held_events.at(rank).front();
-  held_event->state = CONFIRMED;
-  commit(CONFIRMED, held_event->file_pos);
-  free(held_event->spec_evt->getData());
-  delete held_event->spec_evt;
-  delete held_event;
-  held_events.at(rank).pop();
+  seid_iter = sent_event_ids.at(rank).find(recv_evt_id);
+  if (seid_iter == sent_event_ids.at(rank).end()) {
+    printf("[%d] Unmatched event_id = %s from %d\n", RANK, recv_evt_id.c_str(), rank);
+    raiseError("Received event id does not match any event sent from this rank\n");
+  }  else {
+    sent_event_ids.at(rank).erase(seid_iter);
+  }
+
+  for (he_iter = held_events.at(rank).rbegin(); he_iter != held_events.at(rank).rend(); ++he_iter) {
+    HeldEvent * held_event = *he_iter;
+    if (held_event->matchEventId(recv_evt_id)) {
+      found_match = true;
+      held_event->state = CONFIRMED;
+      commit(CONFIRMED, held_event->file_pos);
+      free(held_event->spec_evt->getData());
+      delete held_event->spec_evt;
+      delete held_event;
+      break;
+    }
+  }
+
+  if (found_match) {
+    held_events.at(rank).erase(--(he_iter.base()));
+  } else {
+    printf("[%d] Unmatched event_id = %s from %d\n", RANK, recv_evt_id.c_str(), rank);
+    raiseError("Received event id does not match any held event in ths rank");
+  }
 
   return;
 }
@@ -1167,9 +1172,11 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
   int source = event.getSourcePid();
   std::string event_id = event.getEventId();
 
-  MPI_Wait(&send_requests[source], MPI_STATUS_IGNORE);
-  memcpy(&send_conf_buffer[source*max_event_id_size], event_id.c_str(), event_id.size()+1);
-  MPI_Start(&send_requests[source]);
+  if (source != RANK) {
+    MPI_Wait(&send_requests[source], MPI_STATUS_IGNORE);
+    memcpy(&send_conf_buffer[source*max_event_id_size], event_id.c_str(), event_id.size()+1);
+    MPI_Start(&send_requests[source]);
+  }
 
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
   SpecificEvent * event_copy = new SpecificEvent(event);
@@ -1314,22 +1321,31 @@ void EDAT_Process_Ledger::deleteLedgerFile() {
 }
 
 void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
-  std::lock_guard<std::mutex> he_lock(held_events_mutex);
-  std::lock_guard<std::mutex> se_lock(sent_event_id_mutex);
+  std::lock_guard<std::mutex> lock(held_events_mutex);
   if (held_event->target == EDAT_ALL) {
     for (int rank = 0; rank < NUM_RANKS; rank++) {
-      HeldEvent * he_copy = new HeldEvent(*held_event, rank);
-      held_events[rank].push(he_copy);
-      sent_event_ids[rank].push(he_copy->spec_evt->getEventId());
-      commit(*he_copy);
+      if (rank != RANK) {
+        HeldEvent * he_copy = new HeldEvent(*held_event, rank);
+        held_events[rank].emplace_back(he_copy);
+        sent_event_ids[rank].emplace(he_copy->spec_evt->getEventId());
+        commit(*he_copy);
+        he_copy->fire(messaging);
+      } else {
+        HeldEvent * he_copy = new HeldEvent(*held_event, RANK);
+        he_copy->fire(messaging);
+        free(he_copy->spec_evt->getData());
+        delete he_copy->spec_evt;
+        delete he_copy;
+      }
     }
     free(held_event->spec_evt->getData());
     delete held_event->spec_evt;
     delete held_event;
   } else {
-    held_events[held_event->target].push(held_event);
-    sent_event_ids[held_event->target].push(held_event->spec_evt->getEventId());
+    held_events[held_event->target].emplace_back(held_event);
+    sent_event_ids[held_event->target].emplace(held_event->spec_evt->getEventId());
     commit(*held_event);
+    held_event->fire(messaging);
   }
   return;
 }
@@ -1339,11 +1355,10 @@ bool EDAT_Process_Ledger::isFinished() const {
 }
 
 void EDAT_Process_Ledger::eventFiredFromMain(const int target, const std::string event_id, HeldEvent* held_event) {
-  std::lock_guard<std::mutex> he_lock(held_events_mutex);
-  std::lock_guard<std::mutex> se_lock(sent_event_id_mutex);
+  std::lock_guard<std::mutex> lock(held_events_mutex);
 
-  held_events[target].push(held_event);
-  sent_event_ids[target].push(event_id);
+  held_events[target].emplace_back(held_event);
+  sent_event_ids[target].emplace(event_id);
   commit(*held_event);
 
   return;

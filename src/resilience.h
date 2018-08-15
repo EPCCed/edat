@@ -93,12 +93,12 @@ private:
   bool monitor, finished=true;
   std::thread monitor_thread;
   std::string fname;
-  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex, sent_event_id_mutex;
+  std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex;
   std::map<DependencyKey,std::queue<SpecificEvent*>> outstanding_events;
   std::map<taskID_t,LoggedTask*> task_log;
   std::set<int> dead_ranks;
-  std::map<int,std::queue<HeldEvent*>> held_events;
-  std::map<int,std::queue<std::string>> sent_event_ids;
+  std::map<int,std::vector<HeldEvent*>> held_events;
+  std::map<int,std::multiset<std::string>> sent_event_ids;
   void commit(const taskID_t, LoggedTask&);
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
