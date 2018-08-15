@@ -369,9 +369,9 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
 
       held_event->target = target;
 
-      messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
       external_ledger->eventFiredFromMain(target, std::string(event_id), held_event);
     }
+    messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
   } else {
     // event has been fired from a task and should be held
     HeldEvent * held_event = new HeldEvent();
@@ -997,7 +997,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
     }
 
     // have a nap
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // test for receipt of event confirmations
     for (rank=0; rank<NUM_RANKS; rank++) {
