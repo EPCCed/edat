@@ -964,8 +964,8 @@ void EDAT_Process_Ledger::monitorProcesses() {
     held_events_mutex.lock();
     for (rank=0; rank<NUM_RANKS; rank++) {
       if (rank != RANK && !sent_event_ids.at(rank).empty()) {
+        unconfirmed_events[rank] = true;
         if (!fail_count[rank]) {
-          unconfirmed_events[rank] = true;
           MPI_Start(&recv_requests[rank]);
         }
       } else {
@@ -984,7 +984,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
 
     // test for receipt of event confirmations
     for (rank=0; rank<NUM_RANKS; rank++) {
-      if (rank !=RANK && unconfirmed_events[rank]) {
+      if (unconfirmed_events[rank]) {
         MPI_Test(&recv_requests[rank], &test_result, MPI_STATUS_IGNORE);
         if (test_result) {
           // event confirmation has been received
@@ -1271,8 +1271,8 @@ void EDAT_Process_Ledger::beginMonitoring() {
   recv_requests = (MPI_Request*) malloc(NUM_RANKS*sizeof(MPI_Request));
   send_requests = (MPI_Request*) malloc(NUM_RANKS*sizeof(MPI_Request));
   for (int rank = 0; rank<NUM_RANKS; rank++) {
-    MPI_Recv_init(&recv_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, MPI_ANY_TAG, MPI_COMM_WORLD, &recv_requests[rank]);
-    MPI_Send_init(&send_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, 0, MPI_COMM_WORLD, &send_requests[rank]);
+    MPI_Recv_init(&recv_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, RESILIENCE_MPI_TAG, MPI_COMM_WORLD, &recv_requests[rank]);
+    MPI_Send_init(&send_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, RESILIENCE_MPI_TAG, MPI_COMM_WORLD, &send_requests[rank]);
   }
 
   monitor_thread = std::thread(&EDAT_Process_Ledger::monitorProcesses, this);
@@ -1304,14 +1304,14 @@ void EDAT_Process_Ledger::endMonitoring() {
   monitor_thread.join();
   finished = true;
 
-  delete[] recv_conf_buffer;
-  delete[] send_conf_buffer;
   for (int rank=0; rank<NUM_RANKS; rank++) {
     MPI_Request_free(&recv_requests[rank]);
     MPI_Request_free(&send_requests[rank]);
   }
   free(recv_requests);
   free(send_requests);
+  delete[] recv_conf_buffer;
+  delete[] send_conf_buffer;
 
   return;
 }
