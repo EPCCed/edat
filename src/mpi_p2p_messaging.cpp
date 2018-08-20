@@ -215,6 +215,47 @@ void MPI_P2P_Messaging::unlockComms() {
   mpi_mutex.unlock();
 }
 
+void MPI_P2P_Messaging::handleRemoteMessageArrival(MPI_Status message_status, MPI_Comm comm_to_use) {
+  char* buffer, *data_buffer;
+  int message_size;
+  #if DO_METRICS
+    unsigned long int timer_key_pm = metrics::METRICS->timerStart("pending_message");
+  #endif
+  terminated=false;
+  if (protectMPI) mpi_mutex.lock();
+  MPI_Get_count(&message_status, MPI_BYTE, &message_size);
+  buffer = (char*)malloc(message_size);
+  MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, comm_to_use, MPI_STATUS_IGNORE);
+  if (protectMPI) mpi_mutex.unlock();
+  int data_type = *((int*)buffer);
+  int source_pid = *((int*)&buffer[4]);
+  char persistent=*((char*)&buffer[12]);
+  int event_id_length = strlen(&buffer[13]);
+  int data_size = message_size - (13 + event_id_length + 1);
+  if (data_size > 0) {
+    data_buffer = (char*)malloc(data_size);
+    memcpy(data_buffer, &buffer[13 + event_id_length + 1], data_size);
+  } else {
+    data_buffer = NULL;
+  }
+  SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type,
+                                          persistent == 1 ? true : false, contextManager.isTypeAContext(data_type), std::string(&buffer[13]), data_buffer);
+  if (batchEvents) {
+    last_event_arrival=MPI_Wtime();
+    eventShortTermStore.push_back(event);
+    if (eventShortTermStore.size() >= max_batched_events) {
+      scheduler.registerEvents(eventShortTermStore);
+      eventShortTermStore.clear();
+    }
+  } else {
+    scheduler.registerEvent(event);
+  }
+  free(buffer);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("pending_message", timer_key_pm);
+  #endif
+}
+
 /**
 * The main polling functionality, this will go through and fire a local event, then every so often will check for sending of event progress (request handles.) It then
 * will check for any messages pending, if there is one then this is received and marshalled/decoded into an event before being registered with the scheduler.
@@ -225,9 +266,8 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   #if DO_METRICS
     unsigned long int timer_key_psp = metrics::METRICS->timerStart("performSinglePoll");
   #endif
-  int pending_message, message_size;
-  char* buffer, *data_buffer;
-  MPI_Status message_status;
+  int pending_message, global_pending_message;
+  MPI_Status message_status, message_status_global;
 
   fireASingleLocalEvent();
   if (*iteration_counter == SEND_PROGRESS_PERIOD) {
@@ -237,46 +277,17 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
     (*iteration_counter)++;
   }
   if (protectMPI) mpi_mutex.lock();
-  MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, enableBridge ? MPI_COMM_WORLD : communicator, &pending_message, &message_status);
-  if (protectMPI) mpi_mutex.unlock();
-  if (pending_message) {
-    #if DO_METRICS
-      unsigned long int timer_key_pm = metrics::METRICS->timerStart("pending_message");
-    #endif
-    terminated=false;
-    if (protectMPI) mpi_mutex.lock();
-    MPI_Get_count(&message_status, MPI_BYTE, &message_size);
-    buffer = (char*)malloc(message_size);
-    MPI_Recv(buffer, message_size, MPI_BYTE, message_status.MPI_SOURCE, MPI_TAG, enableBridge ? MPI_COMM_WORLD : communicator, MPI_STATUS_IGNORE);
-    if (protectMPI) mpi_mutex.unlock();
-    int data_type = *((int*)buffer);
-    int source_pid = *((int*)&buffer[4]);
-    char persistent=*((char*)&buffer[12]);
-    int event_id_length = strlen(&buffer[13]);
-    int data_size = message_size - (13 + event_id_length + 1);
-    if (data_size > 0) {
-      data_buffer = (char*)malloc(data_size);
-      memcpy(data_buffer, &buffer[13 + event_id_length + 1], data_size);
-    } else {
-      data_buffer = NULL;
-    }
-    SpecificEvent* event=new SpecificEvent(source_pid, data_size > 0 ? data_size / getTypeSize(data_type) : 0, data_size, data_type,
-                                           persistent == 1 ? true : false, contextManager.isTypeAContext(data_type), std::string(&buffer[13]), data_buffer);
-    if (batchEvents) {
-      last_event_arrival=MPI_Wtime();
-      eventShortTermStore.push_back(event);
-      if (eventShortTermStore.size() >= max_batched_events) {
-        scheduler.registerEvents(eventShortTermStore);
-        eventShortTermStore.clear();
-      }
-    } else {
-      scheduler.registerEvent(event);
-    }
-    free(buffer);
-    #if DO_METRICS
-      metrics::METRICS->timerStop("pending_message", timer_key_pm);
-    #endif
+  MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, communicator, &pending_message, &message_status);
+  if (enableBridge) {
+    MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &global_pending_message, &message_status_global);
   } else {
+    global_pending_message=0;
+  }
+  if (protectMPI) mpi_mutex.unlock();
+  if (pending_message) handleRemoteMessageArrival(message_status, communicator);
+  if (global_pending_message) handleRemoteMessageArrival(message_status_global, MPI_COMM_WORLD);
+
+  if (!pending_message && !global_pending_message) {
     if (batchEvents && !eventShortTermStore.empty() && MPI_Wtime() - last_event_arrival > batch_timeout) {
       scheduler.registerEvents(eventShortTermStore);
       eventShortTermStore.clear();

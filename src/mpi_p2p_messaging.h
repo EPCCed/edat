@@ -30,6 +30,7 @@ class MPI_P2P_Messaging : public Messaging {
   bool handleTerminationProtocolMessagesAsWorker();
   bool handleTerminationProtocol();
   void initialise(MPI_Comm);
+  void handleRemoteMessageArrival(MPI_Status, MPI_Comm);
 protected:
   bool performSinglePoll(int*);
 public:
