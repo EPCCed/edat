@@ -35,7 +35,7 @@ static const size_t marker_size = 4 * sizeof(char);
 * and a streamposition (a valid file pointer to the start of the object).
 */
 SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_begin) {
-  char marker_buf[4], byte;
+  char byte;
   int int_data[6];
   size_t id_length;
   std::streampos bookmark;
@@ -52,9 +52,6 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   this->aContext = int_data[5] ? true : false;
   this->data = (char *) malloc(this->raw_data_length);
   file.read(data, this->raw_data_length);
-
-  file.read(marker_buf, marker_size);
-  if (strcmp(marker_buf, eod)) raiseError("Data read error in SpecificEvent deserialization, EOD not found");
 
   id_length = 0;
   bookmark = file.tellg();
@@ -73,9 +70,6 @@ SpecificEvent::SpecificEvent(std::istream& file, const std::streampos object_beg
   file.read(memblock, id_length);
   this->event_id = std::string(memblock);
   delete[] memblock;
-
-  file.read(marker_buf, marker_size);
-  if (strcmp(marker_buf, eoo)) raiseError("SpecificEvent deserialization error, EOO not found");
 }
 
 /**
@@ -93,9 +87,7 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
 
   file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
   file.write(data, raw_data_length);
-  file.write(eod, marker_size);
   file.write(event_id.c_str(), event_id.size()+1);
-  file.write(eoo, marker_size);
 
   if (file.bad()) raiseError("SpecificEvent write error");
 

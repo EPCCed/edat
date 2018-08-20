@@ -793,23 +793,14 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& sp
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_mvEvtToTsk");
   #endif
   std::fstream file;
-  char marker_buf[4];
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
 
   file.seekp(spec_evt.getFilePos());
-  file.read(marker_buf, marker_size);
-  if (strcmp(marker_buf, evt)) {
-    std::cout << marker_buf << std::endl;
-    raiseError("Error in moveEventToTask commit, EVT not found");
-  }
+  file.seekp(marker_size, std::ios::cur);
 
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
-  spec_evt.serialize(file, file.tellp());
-
-  file.read(marker_buf, marker_size);
-  if (strcmp(marker_buf, eoo)) raiseError("Error in moveEventToTask commit, EOO not found");
 
   file.close();
 
@@ -1163,7 +1154,6 @@ void EDAT_Process_Ledger::addTask(const taskID_t task_id, PendingTaskDescriptor&
 * task to outstanding_events
 */
 void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEvent& event) {
-  log_mutex.lock();
 
   int source = event.getSourcePid();
   std::string event_id = event.getEventId();
@@ -1174,6 +1164,7 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
     MPI_Start(&send_requests[source]);
   }
 
+  log_mutex.lock();
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter = outstanding_events.find(depkey);
   SpecificEvent * event_copy = new SpecificEvent(event);
 
