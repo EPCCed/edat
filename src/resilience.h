@@ -14,7 +14,7 @@
 
 #define RESILIENCE_MASTER 0
 #define DEFAULT_COMM_TIMEOUT 5
-#define RESILIENCE_MPI_TAG 2404
+#define RESILIENCE_MPI_TAG 12404
 
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
