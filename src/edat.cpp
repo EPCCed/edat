@@ -272,7 +272,7 @@ void edatSyntheticFailure(const int level) {
       WorkerThread * wt = threadPool->reset();
       const ContinuityData con_data = resilienceSyntheticFinalise(thread_id);
       // knock-down complete, go to sleep
-      std::this_thread::sleep_for(std::chrono::seconds(3));
+      std::this_thread::sleep_for(std::chrono::seconds(2*COMM_TIMEOUT));
       // reinitialise rank
       threadPool->reinit(wt);
       threadPool->setMessaging(messaging);
