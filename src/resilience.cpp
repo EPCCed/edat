@@ -74,6 +74,8 @@ void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& a
   started = true;
   external_ledger->beginMonitoring();
 
+  if (recovery) amessaging.fireEvent(&my_rank, 1, EDAT_INT, EDAT_ALL, false, phoenix);
+
   #if DO_METRICS
   metrics::METRICS->timerStop("resilienceInit", timer_key);
   #endif
@@ -503,7 +505,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     std::vector<HeldEvent*> held_v;
     std::multiset<std::string> str_ms;
     held_events.emplace(rank, held_v);
-    sent_event_ids.emplace(rank,str_ms);
+    sent_event_ids.emplace(rank, str_ms);
   }
 
   if (recovery) {
@@ -603,7 +605,6 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
           raiseError("Found a held_event with EDAT_ALL as target...");
         } else {
           if(held_event->state == HELD) held_events.at(held_event->target).emplace_back(held_event);
-          sent_event_ids.at(held_event->target).emplace(held_event->spec_evt->getEventId());
         }
       } else if (!strcmp(marker_buf, eol)) {
         // found the end of the ledger
@@ -644,15 +645,9 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     dead_ranks_mutex.lock();
     dead_ranks.emplace(RANK);
     dead_ranks_mutex.unlock();
-
-  } // if (recovery)
-  // write new file
-  serialize();
-
-  if (recovery) {
-    int rank = RANK;
-    messaging.fireEvent(&rank, 1, EDAT_INT, EDAT_ALL, false, phoenix);
   }
+
+  serialize();
 }
 
 /**
