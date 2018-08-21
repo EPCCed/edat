@@ -44,6 +44,9 @@ public:
   virtual bool doesProgressThreadExist() { return progress_thread; }
   virtual int getTypeSize(int);
   virtual void syntheticFinalise() = 0;
+  virtual bool getProtectMPI() const = 0;
+  virtual void lockMPI() = 0;
+  virtual void unlockMPI() = 0;
 };
 
 #endif

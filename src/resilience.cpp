@@ -496,6 +496,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     held_events.emplace(rank, held_v);
     sent_event_ids.emplace(rank,str_ms);
   }
+  protectMPI = messaging.getProtectMPI();
   serialize();
 }
 
@@ -507,6 +508,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     held_events.emplace(rank, held_v);
     sent_event_ids.emplace(rank, str_ms);
   }
+  protectMPI = messaging.getProtectMPI();
 
   if (recovery) {
     std::cout << "Reinitialising rank " << RANK << " ledger" << std::endl;
@@ -847,6 +849,8 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
     if (task_array[func_id] == task_fn) return func_id;
   }
   raiseError("Could not find task function");
+  // shouldn't ever reach this return...
+  return 0;
 }
 
 void EDAT_Process_Ledger::fireHeldEvents(const int target) {
@@ -952,7 +956,9 @@ void EDAT_Process_Ledger::monitorProcesses() {
       if (rank != RANK && !sent_event_ids.at(rank).empty()) {
         unconfirmed_events[rank] = true;
         if (!fail_count[rank]) {
+          if (protectMPI) messaging.lockMPI();
           MPI_Start(&recv_requests[rank]);
+          if (protectMPI) messaging.unlockMPI();
         }
       } else {
         unconfirmed_events[rank] = false;
@@ -971,7 +977,9 @@ void EDAT_Process_Ledger::monitorProcesses() {
     // test for receipt of event confirmations
     for (rank=0; rank<NUM_RANKS; rank++) {
       if (unconfirmed_events[rank]) {
+        if (protectMPI) messaging.lockMPI();
         MPI_Test(&recv_requests[rank], &test_result, MPI_STATUS_IGNORE);
+        if (protectMPI) messaging.unlockMPI();
         if (test_result) {
           // event confirmation has been received
           fail_count[rank]=0;
@@ -998,7 +1006,9 @@ void EDAT_Process_Ledger::monitorProcesses() {
               dead_ranks_mutex.unlock();
             }
             // cancel the active receive and purge the sent_event_ids
+            if (protectMPI) messaging.lockMPI();
             MPI_Cancel(&recv_requests[rank]);
+            if (protectMPI) messaging.unlockMPI();
             held_events_mutex.lock();
             sent_event_ids.at(rank).clear();
             held_events_mutex.unlock();
@@ -1008,7 +1018,9 @@ void EDAT_Process_Ledger::monitorProcesses() {
     }
   } // while (monitor)
 
+  if (protectMPI) messaging.lockMPI();
   MPI_Waitall(NUM_RANKS, recv_requests, MPI_STATUSES_IGNORE);
+  if (protectMPI) messaging.unlockMPI();
 
   delete[] unconfirmed_events;
   delete[] fail_count;
@@ -1159,9 +1171,11 @@ void EDAT_Process_Ledger::addEvent(const DependencyKey depkey, const SpecificEve
   std::string event_id = event.getEventId();
 
   if (source != RANK) {
+    if(protectMPI) messaging.lockMPI();
     MPI_Wait(&send_requests[source], MPI_STATUS_IGNORE);
     memcpy(&send_conf_buffer[source*max_event_id_size], event_id.c_str(), event_id.size()+1);
     MPI_Start(&send_requests[source]);
+    if (protectMPI) messaging.unlockMPI();
   }
 
   log_mutex.lock();
@@ -1256,10 +1270,12 @@ void EDAT_Process_Ledger::beginMonitoring() {
   send_conf_buffer = new char[NUM_RANKS*max_event_id_size];
   recv_requests = (MPI_Request*) malloc(NUM_RANKS*sizeof(MPI_Request));
   send_requests = (MPI_Request*) malloc(NUM_RANKS*sizeof(MPI_Request));
+  if (protectMPI) messaging.lockMPI();
   for (int rank = 0; rank<NUM_RANKS; rank++) {
     MPI_Recv_init(&recv_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, RESILIENCE_MPI_TAG, MPI_COMM_WORLD, &recv_requests[rank]);
     MPI_Send_init(&send_conf_buffer[rank*max_event_id_size], max_event_id_size, MPI_CHAR, rank, RESILIENCE_MPI_TAG, MPI_COMM_WORLD, &send_requests[rank]);
   }
+  if (protectMPI) messaging.unlockMPI();
 
   monitor_thread = std::thread(&EDAT_Process_Ledger::monitorProcesses, this);
 
@@ -1290,10 +1306,12 @@ void EDAT_Process_Ledger::endMonitoring() {
   monitor_thread.join();
   finished = true;
 
+  if (protectMPI) messaging.lockMPI();
   for (int rank=0; rank<NUM_RANKS; rank++) {
     MPI_Request_free(&recv_requests[rank]);
     MPI_Request_free(&send_requests[rank]);
   }
+  if (protectMPI) messaging.unlockMPI();
   free(recv_requests);
   free(send_requests);
   delete[] recv_conf_buffer;

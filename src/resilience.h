@@ -92,7 +92,7 @@ private:
   char * send_conf_buffer;
   MPI_Request * recv_requests;
   MPI_Request * send_requests;
-  bool monitor, finished=true;
+  bool monitor, finished=true, protectMPI;
   std::thread monitor_thread;
   std::string fname;
   std::mutex log_mutex, file_mutex, monitor_mutex, dead_ranks_mutex, held_events_mutex;

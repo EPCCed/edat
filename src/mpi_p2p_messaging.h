@@ -41,5 +41,8 @@ public:
   virtual int getNumRanks();
   virtual bool isFinished();
   virtual void syntheticFinalise();
+  virtual bool getProtectMPI() const { return protectMPI; };
+  virtual void lockMPI() { mpi_mutex.lock(); };
+  virtual void unlockMPI() { mpi_mutex.unlock(); };
 };
 #endif
