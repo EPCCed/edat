@@ -994,7 +994,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
             if (dr_iter == dead_ranks.end()) {
               dead_ranks_mutex.unlock();
               // this is news...
-              std::cout << "RIP rank " << rank << std::endl;
+              std::cout << "[" << RANK << "] RIP rank " << rank << std::endl;
               registerObit(rank);
               for (int target=0; target<NUM_RANKS; target++) {
                 if (target != RANK && target != rank) {
@@ -1326,15 +1326,22 @@ void EDAT_Process_Ledger::deleteLedgerFile() {
 }
 
 void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
+  std::set<int>::iterator dr_iter;
+
   std::lock_guard<std::mutex> lock(held_events_mutex);
   if (held_event->target == EDAT_ALL) {
     for (int rank = 0; rank < NUM_RANKS; rank++) {
       if (rank != RANK) {
         HeldEvent * he_copy = new HeldEvent(*held_event, rank);
         held_events[rank].emplace_back(he_copy);
-        sent_event_ids[rank].emplace(he_copy->spec_evt->getEventId());
         commit(*he_copy);
-        he_copy->fire(messaging);
+        dead_ranks_mutex.lock();
+        dr_iter = dead_ranks.find(rank);
+        if (dr_iter == dead_ranks.end()) {
+          dead_ranks_mutex.unlock();
+          sent_event_ids[rank].emplace(he_copy->spec_evt->getEventId());
+          he_copy->fire(messaging);
+        } else dead_ranks_mutex.unlock();
       } else {
         HeldEvent * he_copy = new HeldEvent(*held_event, RANK);
         he_copy->fire(messaging);
@@ -1348,9 +1355,14 @@ void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
     delete held_event;
   } else {
     held_events[held_event->target].emplace_back(held_event);
-    sent_event_ids[held_event->target].emplace(held_event->spec_evt->getEventId());
     commit(*held_event);
-    held_event->fire(messaging);
+    dead_ranks_mutex.lock();
+    dr_iter = dead_ranks.find(held_event->target);
+    if (dr_iter == dead_ranks.end()) {
+      dead_ranks_mutex.unlock();
+      sent_event_ids[held_event->target].emplace(held_event->spec_evt->getEventId());
+      held_event->fire(messaging);
+    } else dead_ranks_mutex.unlock();
   }
   return;
 }
