@@ -490,23 +490,29 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
 */
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const unsigned int a_timeout, std::string ledger_name)
   : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), COMM_TIMEOUT(a_timeout), task_array(thetaskarray), number_of_tasks(num_tasks), fname(ledger_name) {
+
+  dead_ranks = new bool[NUM_RANKS];
   for (int rank=0; rank<NUM_RANKS; rank++) {
     std::vector<HeldEvent*> held_v;
     std::multiset<std::string> str_ms;
     held_events.emplace(rank, held_v);
     sent_event_ids.emplace(rank,str_ms);
+    dead_ranks[rank] = false;
   }
+
   protectMPI = messaging.getProtectMPI();
   serialize();
 }
 
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const unsigned int a_timeout, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), COMM_TIMEOUT(a_timeout), task_array(thetaskarray), number_of_tasks(num_tasks), fname(ledger_name) {
 
+  dead_ranks = new bool[NUM_RANKS];
   for (int rank=0; rank<NUM_RANKS; rank++) {
     std::vector<HeldEvent*> held_v;
     std::multiset<std::string> str_ms;
     held_events.emplace(rank, held_v);
     sent_event_ids.emplace(rank, str_ms);
+    dead_ranks[rank] = false;
   }
   protectMPI = messaging.getProtectMPI();
 
@@ -532,12 +538,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
     file.open(dead_ledger, std::ios::in | std::ios::binary | std::ios::ate);
     file.seekg(std::ios::beg);
 
-    int * ranks_are_dead = new int[NUM_RANKS];
-    file.read(reinterpret_cast<char *>(ranks_are_dead), NUM_RANKS*sizeof(int));
-    for (int rank=0; rank<NUM_RANKS; rank++) {
-      if (ranks_are_dead[rank]) dead_ranks.emplace(rank);
-    }
-    delete[] ranks_are_dead;
+    file.read(reinterpret_cast<char *>(dead_ranks), NUM_RANKS*sizeof(bool));
 
     found_eol = false;
     while (!found_eol) {
@@ -645,7 +646,7 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
 
     // this rank had to be recovered, so it should be in the dead_ranks set (for now)
     dead_ranks_mutex.lock();
-    dead_ranks.emplace(RANK);
+    dead_ranks[RANK] = true;
     dead_ranks_mutex.unlock();
   }
 
@@ -658,6 +659,8 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
 EDAT_Process_Ledger::~EDAT_Process_Ledger() {
   std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator oe_iter;
   std::map<taskID_t,LoggedTask*>::iterator tl_iter;
+
+  delete[] dead_ranks;
 
   while(!outstanding_events.empty()) {
     oe_iter = outstanding_events.begin();
@@ -771,7 +774,7 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   return;
 }
 
-void EDAT_Process_Ledger::commit(const int rank, const int rank_is_dead) {
+void EDAT_Process_Ledger::commit(const int rank, const bool rank_is_dead) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_deadRank");
   #endif
@@ -779,8 +782,8 @@ void EDAT_Process_Ledger::commit(const int rank, const int rank_is_dead) {
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
 
-  file.seekp(rank*sizeof(int), std::ios::beg);
-  file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
+  file.seekp(rank*sizeof(bool), std::ios::beg);
+  file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(bool));
 
   file.close();
 
@@ -884,16 +887,7 @@ void EDAT_Process_Ledger::serialize() {
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::out | std::ios::binary | std::ios::trunc);
 
-  int rank_is_dead;
-  for (int rank = 0; rank < NUM_RANKS; rank++) {
-    if (dead_ranks.find(rank) == dead_ranks.end()) {
-      rank_is_dead = 0;
-      file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
-    } else {
-      rank_is_dead = 1;
-      file.write(reinterpret_cast<const char *>(&rank_is_dead), sizeof(int));
-    }
-  }
+  file.write(reinterpret_cast<const char *>(dead_ranks), NUM_RANKS*sizeof(bool));
 
   for (tl_iter = task_log.begin(); tl_iter != task_log.end(); ++tl_iter) {
     file.write(tsk, marker_size);
@@ -990,8 +984,7 @@ void EDAT_Process_Ledger::monitorProcesses() {
           if (fail_count[rank] > MAX_FAIL) {
             // event confirmation has not been received
             dead_ranks_mutex.lock();
-            std::set<int>::iterator dr_iter = dead_ranks.find(rank);
-            if (dr_iter == dead_ranks.end()) {
+            if (!dead_ranks[rank]) {
               dead_ranks_mutex.unlock();
               // this is news...
               std::cout << "[" << RANK << "] RIP rank " << rank << std::endl;
@@ -1284,7 +1277,7 @@ void EDAT_Process_Ledger::beginMonitoring() {
 
 void EDAT_Process_Ledger::registerObit(const int rank) {
   dead_ranks_mutex.lock();
-  dead_ranks.emplace(rank);
+  dead_ranks[rank] = true;
   dead_ranks_mutex.unlock();
 
   commit(rank, 1);
@@ -1293,7 +1286,7 @@ void EDAT_Process_Ledger::registerObit(const int rank) {
 
 void EDAT_Process_Ledger::registerPhoenix(const int rank) {
   std::lock_guard<std::mutex> lock(dead_ranks_mutex);
-  dead_ranks.erase(rank);
+  dead_ranks[rank] = false;
   commit(rank, 0);
   fireHeldEvents(rank);
   return;
@@ -1326,8 +1319,6 @@ void EDAT_Process_Ledger::deleteLedgerFile() {
 }
 
 void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
-  std::set<int>::iterator dr_iter;
-
   std::lock_guard<std::mutex> lock(held_events_mutex);
   if (held_event->target == EDAT_ALL) {
     for (int rank = 0; rank < NUM_RANKS; rank++) {
@@ -1336,8 +1327,7 @@ void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
         held_events[rank].emplace_back(he_copy);
         commit(*he_copy);
         dead_ranks_mutex.lock();
-        dr_iter = dead_ranks.find(rank);
-        if (dr_iter == dead_ranks.end()) {
+        if (!dead_ranks[rank]) {
           dead_ranks_mutex.unlock();
           sent_event_ids[rank].emplace(he_copy->spec_evt->getEventId());
           he_copy->fire(messaging);
@@ -1357,8 +1347,7 @@ void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
     held_events[held_event->target].emplace_back(held_event);
     commit(*held_event);
     dead_ranks_mutex.lock();
-    dr_iter = dead_ranks.find(held_event->target);
-    if (dr_iter == dead_ranks.end()) {
+    if (!dead_ranks[held_event->target]) {
       dead_ranks_mutex.unlock();
       sent_event_ids[held_event->target].emplace(held_event->spec_evt->getEventId());
       held_event->fire(messaging);
