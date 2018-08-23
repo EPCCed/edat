@@ -224,7 +224,7 @@ int main(int argc, char ** argv) {
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           edatFireEvent(comm_buffer_down, EDAT_DTYPE, RADIUS*width, bottom_nbr, "init_buffer");
-          edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "left_buffer");
+          edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "init_buffer");
         } else {
           // problem
           printf("ERROR: Rank %d could not map its neighbours\n", my_ID);
