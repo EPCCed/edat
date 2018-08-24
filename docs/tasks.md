@@ -25,7 +25,7 @@ number_elements | int | The number of elements (of type _data_type_) in the payl
 source | int | The rank of the process that sent this event
 event_id | char * | The Event IDentifier (EID)
 
-All transitory tasks that have been scheduled must be executed before the code can terminate. Note that you should *not* free the event payload data provided to the task function as this will be done automatically by the EDAT runtime upon task completion.
+All transitory tasks that have been scheduled must be executed before the code can terminate. Note that you should *not* free the event structure or payload data provided to the task function as this will be done automatically by the EDAT runtime upon task completion.
 
 ```c
 #include "edat.h"
