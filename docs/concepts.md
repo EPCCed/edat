@@ -54,6 +54,8 @@ void task3(EDAT_Event * events, int num_events) {
 }
 ```
 
+To compile this you will typically execute something like `gcc -o example example.c -Iedatdir/include -Ledatdir -ledat` and then to run `mpiexec -np 2 ./example` (the MPI process launcher is used to run multiple processes.) You must tell gcc the location of the EDAT directory via the _-L_ and _-I_ arguments, to run the code you will also likely need to add the EDAT directory to your _LD_LIBRARY_PATH_ i.e. `export LD_LIBRARY_PATH:edatdir:$LD_LIBRARY_PATH
+
 ## When will my code terminate?
 
 Four conditions must be met for your code to terminate (i.e. for the main thread to progress beyond the _edatFinalise_ call:
