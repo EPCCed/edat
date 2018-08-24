@@ -1,4 +1,4 @@
-CC       = mpicxx
+CC       = gcc
 # compiling flags here
 CFLAGS   =
 
@@ -61,7 +61,7 @@ example13: src/example_13.o
 	$(CC) -o example_13 src/example_13.o $(LFLAGS)
 
 jacobi: src/jacobi.o
-	$(CC) -o jacobi src/jacobi.o $(LFLAGS)
+	$(CC) -o jacobi src/jacobi.o $(LFLAGS) -lm
 
 .PHONEY: clean
 clean:

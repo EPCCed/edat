@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+
 int edatGetNumWorkers(void);
 int edatGetWorker(void);
 int edatGetNumActiveWorkers(void);

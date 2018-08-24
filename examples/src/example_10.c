@@ -10,7 +10,7 @@
 static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  edatInit();
   if (edatGetRank() == 0) {
     edatSchedulePersistentTask(my_task, 2, EDAT_ANY, "my_task", EDAT_SELF, "persistent-evt");
     int j=98;
