@@ -2,7 +2,7 @@
 
 The idea of Event Driven Asynchronous Tasks (EDAT) is to provide the programmer with a realistic distributed memory view of their machine, but still allow them to write task based codes. 
 
-[](https://github.com/EPCCed/edat/edit/master/docs/edat_processes.png)
+[](https://github.com/EPCCed/edat/raw/master/docs/edat_processes.png)
 
 There are a number of important concepts relating to this which you should understand to be able to write code using EDAT effectively.
 
