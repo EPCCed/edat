@@ -6,6 +6,7 @@ In this documents folder we have a number of separate file which discuss differe
 * <a href="https://github.com/EPCCed/edat/blob/master/docs/tasks.md">Task scheduling</a> which discusses the scheduling and management of tasks
 * <a href="https://github.com/EPCCed/edat/blob/master/docs/events.md">Event firing</a> which describes how to fire events
 * <a href="https://github.com/EPCCed/edat/blob/master/docs/in_task_consumption.md">In task consumption</a> of events which allows the programmer to start a task and then consume additional events as it runs
+* <a href="https://github.com/EPCCed/edat/blob/master/docs/protecting_shared_data.md">Protecting shared data</a> of multiple tasks running on workers of a process
 * <a href="https://github.com/EPCCed/edat/blob/master/docs/environment_variables.md">Environment variables</a> which specifies all the configuration options which can be exported via environment variables or in user code
 
 # Initialisation of EDAT
