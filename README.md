@@ -4,7 +4,7 @@ This library provides support for Event Driven Asychronous Tasks, task based pro
 
 Please note that this is code is of a research nature and primarily of use to explore the notion of task based programming over distributed memory architectures.
 
-The <a href="https://github.com/EPCCed/edat/tree/master/docs">docs folder</a> contains documentation and the <a href="https://github.com/EPCCed/edat/tree/master/examples">examples folder</a> a number of examples. We suggest starting with the <a href="https://github.com/EPCCed/edat/blob/master/docs/getting_started.md">getting started</a> document which links to all other documentation.
+The <a href="https://github.com/EPCCed/edat/tree/master/docs">docs folder</a> contains documentation and the <a href="https://github.com/EPCCed/edat/tree/master/examples">examples folder</a> a number of examples. 
 
 ## Installation
 
