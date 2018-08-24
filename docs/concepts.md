@@ -1,6 +1,10 @@
 # Important Concepts
 
-The idea of Event Driven Asynchronous Tasks (EDAT) is to provide the programmer with a realistic distributed memory view of their machine, but still allow them to write task based codes. There are a number of important concepts relating to this which you should understand to be able to write code using EDAT effectively.
+The idea of Event Driven Asynchronous Tasks (EDAT) is to provide the programmer with a realistic distributed memory view of their machine, but still allow them to write task based codes. 
+
+[](https://github.com/EPCCed/edat/edit/master/docs/edat_processes.png)
+
+There are a number of important concepts relating to this which you should understand to be able to write code using EDAT effectively.
 
 ## Tasks
 Tasks are some collection of instructions that will operate together to form some logical part of the code. In EDAT tasks are split up via functions (i.e. a function is a task) and scheduled to run. When scheduling a task the programmer provides a list of dependencies that must be met before that task can then be executed by a worker thread. In EDAT dependencies are events, which originate from some process and are labelled with an Event IDentifier (EID.)
