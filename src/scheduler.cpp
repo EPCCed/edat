@@ -89,7 +89,23 @@ void SpecificEvent::serialize(std::ostream& file, const std::streampos object_be
   file.write(data, raw_data_length);
   file.write(event_id.c_str(), event_id.size()+1);
 
-  if (file.bad()) raiseError("SpecificEvent write error");
+  return;
+}
+
+/**
+* Serializes a SpecificEvent to the supplied ostream at the supplied stream position.
+* All the member ints and bools are serialized first as an int[], then the data as
+* a char[], the end of the data is marked by EOD\0, then the event_id is serialised, and
+* the end of the SpecificEvent marked by EOO\0
+*/
+void SpecificEvent::serialize(std::ostream& file) const {
+  int int_data[6] = {source_pid, message_length, raw_data_length, message_type, 0, 0};
+  if (persistent) int_data[4] = 1;
+  if (aContext) int_data[5] = 1;
+
+  file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
+  file.write(data, raw_data_length);
+  file.write(event_id.c_str(), event_id.size()+1);
 
   return;
 }
@@ -98,7 +114,7 @@ HeldEvent::HeldEvent(const HeldEvent& src, int new_target) {
   this->file_pos = -1;
   this->target = new_target;
   this->state = HELD;
-  this->spec_evt = new SpecificEvent(*(src.spec_evt));
+  this->spec_evt = new SpecificEvent(*(src.spec_evt), true);
 }
 
 HeldEvent::HeldEvent(std::istream& file, const std::streampos object_begin) {
@@ -122,7 +138,18 @@ void HeldEvent::serialize(std::ostream& file, const std::streampos object_begin)
 
   file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
   file.write(reinterpret_cast<const char *>(&target), sizeof(int));
-  spec_evt->serialize(file, file.tellp());
+  spec_evt->serialize(file);
+  file.write(eoo, marker_size);
+
+  return;
+}
+
+void HeldEvent::serialize(std::ostream& file) {
+  file_pos = file.tellp();
+
+  file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
+  file.write(reinterpret_cast<const char *>(&target), sizeof(int));
+  spec_evt->serialize(file);
   file.write(eoo, marker_size);
 
   return;
@@ -270,7 +297,7 @@ void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
         while (!aEiter->second.empty()) {
           // create copies of each specific event and push them to the new queue
           // also take note of the original
-          spec_evt = new SpecificEvent(*(aEiter->second.front()));
+          spec_evt = new SpecificEvent(*(aEiter->second.front()), false);
           event_queue.push(spec_evt);
           temp_queue[i] = aEiter->second.front();
           aEiter->second.pop();
@@ -282,7 +309,7 @@ void PendingTaskDescriptor::deepCopy(PendingTaskDescriptor& src) {
         }
         arrivedEvents.emplace(aEiter->first,event_queue);
       } else {
-        spec_evt = new SpecificEvent(*(aEiter->second.front()));
+        spec_evt = new SpecificEvent(*(aEiter->second.front()), false);
         arrivedEvents[aEiter->first].push(spec_evt);
       }
       while (!event_queue.empty()) event_queue.pop();
@@ -316,7 +343,6 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   // map<DependencyKey, int> originalDependencies : EOM, EOO
   std::map<DependencyKey, int*>::const_iterator od_iter;
   std::vector<DependencyKey>::const_iterator tdo_iter;
-  std::streampos bookmark;
 
   int int_data[5] = {func_id, numArrivedEvents, 0, 0, 0};
   if(freeData) int_data[2] = 1;
@@ -332,23 +358,69 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
 
   // map<DependencyKey, int> outstandingDependencies
   for (od_iter = outstandingDependencies.begin(); od_iter != outstandingDependencies.end(); ++od_iter) {
-    bookmark = file.tellp();
-    od_iter->first.serialize(file, bookmark);
+    od_iter->first.serialize(file);
     file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
   }
   file.write(eom, marker_size);
 
   // vector<DependencyKey> taskDependencyOrder
   for(tdo_iter = taskDependencyOrder.begin(); tdo_iter != taskDependencyOrder.end(); ++tdo_iter) {
-    bookmark = file.tellp();
-    tdo_iter->serialize(file, bookmark);
+    tdo_iter->serialize(file);
   }
   file.write(eov, marker_size);
 
   // map<DependencyKey, int> originalDependencies
   for(od_iter = originalDependencies.begin(); od_iter != originalDependencies.end(); ++od_iter) {
-    bookmark = file.tellp();
-    od_iter->first.serialize(file, bookmark);
+    od_iter->first.serialize(file);
+    file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
+  }
+  file.write(eom, marker_size);
+
+  file.write(eoo, marker_size);
+
+  return;
+}
+
+/*
+* Serialization function. Writes PTD to file at given streampos, and leaves put
+* pointer at end of object.
+*/
+void PendingTaskDescriptor::serialize(std::ostream& file) {
+  // serialization schema:
+  // taskID_t task_id, int[5] {func_id, numArrivedEvents, freeData, persistent,
+  // resilient}, char[] task_name : \0,
+  // map<DependencyKey, int> outstandingDependencies : EOM,
+  // vector<DependencyKey> taskDependencyOrder : EOV,
+  // map<DependencyKey, int> originalDependencies : EOM, EOO
+  std::map<DependencyKey, int*>::const_iterator od_iter;
+  std::vector<DependencyKey>::const_iterator tdo_iter;
+
+  int int_data[5] = {func_id, numArrivedEvents, 0, 0, 0};
+  if(freeData) int_data[2] = 1;
+  if(persistent) int_data[3] = 1;
+  if(resilient) int_data[4] = 1;
+
+  // int func_id, numArrivedEvents, freeData, persistent, resilient
+  file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
+  file.write(reinterpret_cast<const char *>(int_data), sizeof(int_data));
+  file.write(task_name.c_str(), task_name.size()+1);
+
+  // map<DependencyKey, int> outstandingDependencies
+  for (od_iter = outstandingDependencies.begin(); od_iter != outstandingDependencies.end(); ++od_iter) {
+    od_iter->first.serialize(file);
+    file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
+  }
+  file.write(eom, marker_size);
+
+  // vector<DependencyKey> taskDependencyOrder
+  for(tdo_iter = taskDependencyOrder.begin(); tdo_iter != taskDependencyOrder.end(); ++tdo_iter) {
+    tdo_iter->serialize(file);
+  }
+  file.write(eov, marker_size);
+
+  // map<DependencyKey, int> originalDependencies
+  for(od_iter = originalDependencies.begin(); od_iter != originalDependencies.end(); ++od_iter) {
+    od_iter->first.serialize(file);
     file.write(reinterpret_cast<const char *>(od_iter->second), sizeof(int));
   }
   file.write(eom, marker_size);
@@ -846,6 +918,8 @@ std::pair<TaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(Specif
 */
 void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescriptor, DependencyKey eventDep,
                                                     std::map<DependencyKey, int*>::iterator it, SpecificEvent * event) {
+  bool resilience = false;
+  if (configuration.get("EDAT_RESILIENCE",false)) resilience = true;
   taskDescriptor->numArrivedEvents++;
   (*(it->second))--;
   if (*(it->second) <= 0) {
@@ -856,6 +930,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   if (event->isPersistent()) {
     // If its persistent event then copy the event
     specificEVTToAdd=new SpecificEvent(*event);
+    if (resilience) resilienceAddEvent(*specificEVTToAdd);
   } else {
     specificEVTToAdd=event;
   }
@@ -867,10 +942,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
-  if (configuration.get("EDAT_RESILIENCE",false)) {
-    resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
-    if (event->isPersistent()) resilienceAddEvent(*event);
-  }
+  if (resilience) resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
 }
 
 /**
@@ -932,8 +1004,9 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   std::set<int> eventsThatAreContexts;
   const std::thread::id thread_id = std::this_thread::get_id();
+  const bool resilient = taskContainer->resilient;
 
-  if (taskContainer->resilient) {
+  if (resilient) {
     resilienceTaskRunning(thread_id, *taskContainer);
   }
 
@@ -944,7 +1017,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
     if (taskContainer->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
 
-  if (taskContainer->resilient) {
+  if (resilient) {
     resilienceTaskCompleted(thread_id, taskContainer->task_id);
   }
 

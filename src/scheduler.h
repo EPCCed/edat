@@ -54,6 +54,24 @@ class SpecificEvent {
     this->file_pos = source.file_pos;
   }
 
+  SpecificEvent(const SpecificEvent& source, bool deep) {
+    // Copy constructor which just takes a pointer to data if boolean flag is false
+    this->source_pid = source.source_pid;
+    this->message_type = source.message_type;
+    this->event_id =  source.event_id;
+    this->message_length = source.message_length;
+    this->raw_data_length=source.raw_data_length;
+    this->aContext=source.aContext;
+    if (source.data != NULL && deep) {
+      this->data = (char*) malloc(this->raw_data_length);
+      memcpy(this->data, source.data, this->raw_data_length);
+    } else {
+      this->data = source.data;
+    }
+    this->persistent = source.persistent;
+    this->file_pos = source.file_pos;
+  }
+
   SpecificEvent(std::istream&, const std::streampos);
 
   char* getData() const { return data; }
@@ -69,6 +87,7 @@ class SpecificEvent {
   std::streampos getFilePos() const { return this->file_pos; }
   void setFilePos(std::streampos bookmark) { this->file_pos = bookmark; }
   void serialize(std::ostream&, const std::streampos) const;
+  void serialize(std::ostream&) const;
 };
 
 enum HeldEventState { HELD, CONFIRMED };
@@ -82,6 +101,7 @@ struct HeldEvent {
   HeldEvent(const HeldEvent&, const int target);
   HeldEvent(std::istream&, const std::streampos);
   void serialize(std::ostream&, const std::streampos);
+  void serialize(std::ostream&);
   void fire(Messaging&);
   bool matchEventId(const std::string);
 };
@@ -155,6 +175,18 @@ public:
     return;
   }
 
+  void serialize(std::ostream& file) const {
+    // serialization schema:
+    // int i, string s (as a char[]), EOO\0
+    const char eoo[4] = {'E', 'O', 'O', '\0'};
+
+    file.write(reinterpret_cast<const char *>(&i), sizeof(i));
+    file.write(s.c_str(), s.size()+1);
+    file.write(eoo, sizeof(eoo));
+
+    return;
+  }
+
 };
 
 enum TaskDescriptorType { PENDING, PAUSED, ACTIVE };
@@ -182,6 +214,7 @@ struct PendingTaskDescriptor : TaskDescriptor {
   PendingTaskDescriptor(std::istream&, const std::streampos);
   void deepCopy(PendingTaskDescriptor&);
   void serialize(std::ostream&, const std::streampos);
+  void serialize(std::ostream&);
   virtual TaskDescriptorType getDescriptorType() {return PENDING;}
   virtual ~PendingTaskDescriptor() = default;
 };

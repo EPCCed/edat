@@ -50,6 +50,7 @@ struct LoggedTask {
   LoggedTask(std::istream&, const std::streampos);
   ~LoggedTask();
   void serialize(std::ostream&, const std::streampos);
+  void serialize(std::ostream&);
 };
 
 class EDAT_Thread_Ledger {
