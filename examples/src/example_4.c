@@ -13,7 +13,7 @@ int main() {
   edatInit();
   int myval=(edatGetRank() + 100)* 10;
   if (edatGetRank() == 0) {
-    edatScheduleTask(my_task, 2, 0, "a", 1, "b");
+    edatSubmitTask(my_task, 2, 0, "a", 1, "b");
     edatFireEvent(&myval, EDAT_INT, 1, 0, "a");
   } else if (edatGetRank() == 1) {
     edatFireEvent(&myval, EDAT_INT, 1, 0, "b");

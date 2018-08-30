@@ -218,9 +218,9 @@ void Scheduler::consumeEventsByPersistentTasks() {
 }
 
 /**
-* Deschedules a task (removes it from the task list) based upon its name
+* Removes a task (removes it from the task list) based upon its name
 */
-bool Scheduler::descheduleTask(std::string taskName) {
+bool Scheduler::removeTask(std::string taskName) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
   if (task_iterator != registeredTasks.end()) {
@@ -232,9 +232,9 @@ bool Scheduler::descheduleTask(std::string taskName) {
 }
 
 /**
-* Determines whether a task is scheduled or not (based upon its name)
+* Determines whether a task is submitted or not (based upon its name)
 */
-bool Scheduler::isTaskScheduled(std::string taskName) {
+bool Scheduler::edatIsTaskSubmitted(std::string taskName) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
   return task_iterator != registeredTasks.end();
@@ -388,7 +388,7 @@ void Scheduler::registerEvents(std::vector<SpecificEvent*> events) {
 
 /**
 * Registers an event and will search through the registered and paused tasks to figure out if this can be consumed directly (which might then cause the
-* task to execute/resume) or whether it needs to be stored as there is no scheduled task that can consume it currently.
+* task to execute/resume) or whether it needs to be stored as there is no registered task that can consume it currently.
 */
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
@@ -454,7 +454,7 @@ void Scheduler::registerEvent(SpecificEvent * event) {
 /**
 * Finds a task that depends on a specific event and updates the outstanding dependencies of that task to no longer be waiting for this
 * and place this event in the arrived dependencies of that task. IT will return either the task itself (and index, as the task might be
-* runnable hence we need to remove it) or NULL and -1 if no task was found. There is a priority given to scheduled tasks and then after this
+* runnable hence we need to remove it) or NULL and -1 if no task was found. There is a priority given to registered tasks and then after this
 * tasks that are paused and waiting for dependencies to resume.
 */
 std::pair<TaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(SpecificEvent * event) {

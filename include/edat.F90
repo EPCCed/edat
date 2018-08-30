@@ -85,8 +85,8 @@ module edat
       character(c_char) :: event_id
     end subroutine edatFirePersistentEvent_c
 
-    subroutine edatScheduleTask_c(task, task_name, number_dependencies, ranks, event_ids, &
-      persistent, greedy) bind(C, name="edatScheduleTask_f")
+    subroutine edatSubmitTask_c(task, task_name, number_dependencies, ranks, event_ids, &
+      persistent, greedy) bind(C, name="edatSubmitTask_f")
 
       use iso_c_binding, only : c_int, c_ptr, c_funptr, c_bool
 
@@ -96,19 +96,19 @@ module edat
       integer(c_int) :: ranks(:)
       type(c_ptr), value :: event_ids
       logical(c_bool), value :: persistent, greedy
-    end subroutine edatScheduleTask_c
+    end subroutine edatSubmitTask_c
 
-    integer function edatIsTaskScheduled_c(task_name) bind(C, name="edatIsTaskScheduled")
+    integer function edatIsTaskSubmitted_c(task_name) bind(C, name="edatIsTaskSubmitted")
       use iso_c_binding, only : c_ptr
 
       type(c_ptr), value :: task_name
-    end function edatIsTaskScheduled_c
+    end function edatIsTaskSubmitted_c
 
-    integer function edatDescheduleTask_c(task_name) bind(C, name="edatDescheduleTask")
+    integer function edatRemoveTask_c(task_name) bind(C, name="edatRemoveTask")
       use iso_c_binding, only : c_ptr
 
       type(c_ptr), value :: task_name
-    end function edatDescheduleTask_c
+    end function edatRemoveTask_c
 
     subroutine edatLock_c(lock_name) bind(C, name="edatLock")
       use iso_c_binding, only : c_ptr
@@ -150,9 +150,9 @@ module edat
 
   public EDAT_NOTYPE, EDAT_NONE, EDAT_INT, EDAT_FLOAT, EDAT_DOUBLE, EDAT_BYTE, EDAT_ADDRESS, EDAT_LONG, EDAT_ALL, &
     EDAT_ANY, EDAT_SELF, EDAT_Event, EDAT_Metadata, edatInit, edatInitWithConfiguration, edatFinalise, &
-    edatGetRank, edatGetNumRanks, edatFireEvent, edatScheduleTask, edatScheduleNamedTask, edatSchedulePersistentTask, &
-    edatSchedulePersistentNamedTask, edatSchedulePersistentGreedyTask, edatSchedulePersistentNamedGreedyTask, &
-    edatDescheduleTask, edatIsTaskScheduled, edatLock, edatUnlock, edatTestLock, getEvents, &
+    edatGetRank, edatGetNumRanks, edatFireEvent, edatSubmitTask, edatSubmitNamedTask, edatSubmitPersistentTask, &
+    edatSubmitPersistentNamedTask, edatSubmitPersistentGreedyTask, edatSubmitPersistentNamedGreedyTask, &
+    edatRemoveTask, edatIsTaskSubmitted, edatLock, edatUnlock, edatTestLock, getEvents, &
     edatInitialiseWithCommunicator, edatLockComms, edatUnlockComms
 contains
 
@@ -258,7 +258,7 @@ contains
     edatGetNumRanks=edatGetNumRanks_c()
   end function edatGetNumRanks
 
-  logical function edatIsTaskScheduled(task_name)
+  logical function edatIsTaskSubmitted(task_name)
     character(len=*), intent(in) :: task_name
 
     character(len=c_char), dimension(:), pointer :: task_name_processed
@@ -274,11 +274,11 @@ contains
     end do
     task_name_processed(j)=C_NULL_CHAR
 
-    edatIsTaskScheduled=merge(.true., .false., edatIsTaskScheduled_c(c_loc(task_name_processed)) == 1)
+    edatIsTaskSubmitted=merge(.true., .false., edatIsTaskSubmitted_c(c_loc(task_name_processed)) == 1)
     deallocate(task_name_processed)
-  end function edatIsTaskScheduled
+  end function edatIsTaskSubmitted
 
-  logical function edatDescheduleTask(task_name)
+  logical function edatRemoveTask(task_name)
     character(len=*), intent(in) :: task_name
 
     character(len=c_char), dimension(:), pointer :: task_name_processed
@@ -294,9 +294,9 @@ contains
     end do
     task_name_processed(j)=C_NULL_CHAR
 
-    edatDescheduleTask=merge(.true., .false., edatDescheduleTask_c(c_loc(task_name_processed)) == 1)
+    edatRemoveTask=merge(.true., .false., edatRemoveTask_c(c_loc(task_name_processed)) == 1)
     deallocate(task_name_processed)
-  end function edatDescheduleTask
+  end function edatRemoveTask
 
   subroutine edatLock(lock_name)
     character(len=*), intent(in) :: lock_name
@@ -358,7 +358,7 @@ contains
     deallocate(lock_name_processed)
   end function edatTestLock
 
-  subroutine edatScheduleTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, eC_rank, eC_id, eD_rank, eD_id, &
+  subroutine edatSubmitTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, eC_rank, eC_id, eD_rank, eD_id, &
     eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     integer, intent(in) :: number_dependencies
@@ -437,11 +437,11 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), false_flag , false_flag)
+    call edatSubmitTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), false_flag , false_flag)
     deallocate(each_eid, ranks, event_ids)
-  end subroutine edatScheduleTask
+  end subroutine edatSubmitTask
 
-  subroutine edatScheduleNamedTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
+  subroutine edatSubmitNamedTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
       eB_id, eC_rank, eC_id, eD_rank, eD_id, eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     character(len=*), intent(in) :: task_name
@@ -530,12 +530,12 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
+    call edatSubmitTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
       c_loc(event_ids), false_flag , false_flag)
     deallocate(each_eid, ranks, event_ids, task_name_processed)
-  end subroutine edatScheduleNamedTask
+  end subroutine edatSubmitNamedTask
 
-  subroutine edatSchedulePersistentTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, &
+  subroutine edatSubmitPersistentTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, &
     eC_rank, eC_id, eD_rank, eD_id, eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     integer, intent(in) :: number_dependencies
@@ -614,11 +614,11 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), true_flag , false_flag)
+    call edatSubmitTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), true_flag , false_flag)
     deallocate(each_eid, ranks, event_ids)
-  end subroutine edatSchedulePersistentTask
+  end subroutine edatSubmitPersistentTask
 
-  subroutine edatSchedulePersistentNamedTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
+  subroutine edatSubmitPersistentNamedTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
       eB_id, eC_rank, eC_id, eD_rank, eD_id, eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     character(len=*), intent(in) :: task_name
@@ -707,12 +707,12 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
+    call edatSubmitTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
       c_loc(event_ids), true_flag , false_flag)
     deallocate(each_eid, ranks, event_ids, task_name_processed)
-  end subroutine edatSchedulePersistentNamedTask
+  end subroutine edatSubmitPersistentNamedTask
 
-  subroutine edatSchedulePersistentGreedyTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, &
+  subroutine edatSubmitPersistentGreedyTask(task, number_dependencies, eA_rank, eA_id, eB_rank, eB_id, &
       eC_rank, eC_id, eD_rank, eD_id, eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     integer, intent(in) :: number_dependencies
@@ -791,11 +791,11 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), true_flag , true_flag)
+    call edatSubmitTask_c(c_funloc(task), C_NULL_PTR, number_dependencies, ranks, c_loc(event_ids), true_flag , true_flag)
     deallocate(each_eid, ranks, event_ids)
-  end subroutine edatSchedulePersistentGreedyTask
+  end subroutine edatSubmitPersistentGreedyTask
 
-  subroutine edatSchedulePersistentNamedGreedyTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
+  subroutine edatSubmitPersistentNamedGreedyTask(task, task_name, number_dependencies, eA_rank, eA_id, eB_rank, &
       eB_id, eC_rank, eC_id, eD_rank, eD_id, eE_rank, eE_id, eF_rank, eF_id, eG_rank, eG_id, eH_rank, eH_id)
     procedure(edatTask) :: task
     character(len=*), intent(in) :: task_name
@@ -884,10 +884,10 @@ contains
       each_eid(j,i)=C_NULL_CHAR
       event_ids(i)=c_loc(each_eid(1,i))
     end do
-    call edatScheduleTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
+    call edatSubmitTask_c(c_funloc(task), c_loc(task_name_processed), number_dependencies, ranks, &
       c_loc(event_ids), true_flag , true_flag)
     deallocate(each_eid, ranks, event_ids, task_name_processed)
-  end subroutine edatSchedulePersistentNamedGreedyTask
+  end subroutine edatSubmitPersistentNamedGreedyTask
 
   subroutine edatFireEvent_nodata(data_type, data_count, target_rank, event_id)
     integer, intent(in) :: data_type, data_count, target_rank

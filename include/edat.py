@@ -114,27 +114,27 @@ def edatGetNumThreads():
 def edatGetThread():
   return _edatlib_.edatGetThread()
 
-def edatScheduleTask(fn, num_events, *args):
+def edatSubmitTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  _edatlib_.edatScheduleTask(task_fn, num_events, *args)
+  _edatlib_.edatSubmitTask(task_fn, num_events, *args)
 
-def edatScheduleNamedTask(fn, task_name, num_events, *args):
+def edatSubmitNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  _edatlib_.edatScheduleNamedTask(task_fn, task_name, num_events, *args)
+  _edatlib_.edatSubmitNamedTask(task_fn, task_name, num_events, *args)
 
-def edatSchedulePersistentTask(fn, num_events, *args):
+def edatSubmitPersistentTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  _edatlib_.edatSchedulePersistentTask(task_fn, num_events, *args)
+  _edatlib_.edatSubmitPersistentTask(task_fn, num_events, *args)
 
-def edatSchedulePersistentNamedTask(fn, task_name, num_events, *args):
+def edatSubmitPersistentNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  _edatlib_.edatSchedulePersistentTask(task_fn, task_name, num_events, *args)
+  _edatlib_.edatSubmitPersistentTask(task_fn, task_name, num_events, *args)
 
-def edatIsTaskScheduled(task_name):
-  return _edatlib_.edatIsTaskScheduled(task_name)
+def edatIsTaskSubmitted(task_name):
+  return _edatlib_.edatIsTaskSubmitted(task_name)
 
-def edatDescheduleTask(task_name):
-  _edatlib_.edatDescheduleTask(task_name)
+def edatRemoveTask(task_name):
+  _edatlib_.edatRemoveTask(task_name)
 
 def edatFireEvent(data, data_type, data_count, target, event_id):
   _edatlib_.edatFireEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)

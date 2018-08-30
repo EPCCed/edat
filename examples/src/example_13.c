@@ -12,8 +12,8 @@ static void task(EDAT_Event*, int);
 
 int main() {
   edatInit();
-  edatScheduleTask(task, 1, EDAT_SELF, "task_num");
-  edatScheduleTask(task, 1, EDAT_SELF, "task_num");
+  edatSubmitTask(task, 1, EDAT_SELF, "task_num");
+  edatSubmitTask(task, 1, EDAT_SELF, "task_num");
   int t=0;
   edatFireEvent(&t, 1, EDAT_INT, EDAT_SELF, "task_num");
   t=1;

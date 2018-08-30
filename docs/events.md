@@ -29,7 +29,7 @@ void my_task(EDAT_Event*, int);
 int main(int argc, char * argv[]) {
   edatInit(&argc, &argv, NULL);
   if (edatGetRank() == 0) {
-    edatScheduleTask(my_task, 1, EDAT_ALL, "my_event");
+    edatSubmitTask(my_task, 1, EDAT_ALL, "my_event");
   }
   int d=10;
   edatFireEvent(&d, EDAT_INT, 1, 0, "my_event");
@@ -46,7 +46,7 @@ void my_task(EDAT_Event * events, int num_events) {
 }
 ```
 
-This example implements a reduction on process 0, where values from each process are summed up and displayed. Process 0 schedules the task (function name _my_task_) with an event dependency which is to recieve events from all processes with the identifier _my_event_. Each process then fires an event to process 0 with the integer payload data of _10_. Note that as soon as the _edatFireEvent_ call returns then the programmer can reuse the _d_ variable no problem. The _my_task_ task will then be mapped to an idle worker thread for execution once a corresponding event from all processes has been received and it will add up the integer values from each and display the sum.
+This example implements a reduction on process 0, where values from each process are summed up and displayed. Process 0 submits the task (function name _my_task_) with an event dependency which is to recieve events from all processes with the identifier _my_event_. Each process then fires an event to process 0 with the integer payload data of _10_. Note that as soon as the _edatFireEvent_ call returns then the programmer can reuse the _d_ variable no problem. The _my_task_ task will then be mapped to an idle worker thread for execution once a corresponding event from all processes has been received and it will add up the integer values from each and display the sum.
 
 # Persistent events
 

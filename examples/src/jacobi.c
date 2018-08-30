@@ -24,7 +24,7 @@ void haloExtract(double*, int*, int*, double*);
 double localNorm(double*, int*, int*);
 
 // EDAT tasks
-void iterScheduleTask(EDAT_Event*, int);
+void iterTask(EDAT_Event*, int);
 void initialNormTask(EDAT_Event*, int);
 void globalNormTask(EDAT_Event*, int);
 void normUpdateTask(EDAT_Event*, int);
@@ -76,7 +76,7 @@ int main(int argc, char * argv[])
 	edatFireEvent(&local_norm, EDAT_DOUBLE, 1, MASTER, "iN_local_norm");
 
 	// everybody tasks
-	edatSchedulePersistentTask(iterScheduleTask, 10, MASTER, "iterate",
+	edatSubmitPersistentTask(iterTask, 10, MASTER, "iterate",
 		EDAT_SELF, "neighbours", EDAT_SELF, "local_dims", EDAT_SELF, "mem_dims",
 		EDAT_SELF, "u_k_addr", EDAT_SELF, "u_kp1_addr", EDAT_SELF, "global_norm_addr",
 		EDAT_SELF, "initial_norm_addr", EDAT_SELF, "norm_addr",
@@ -95,11 +95,11 @@ int main(int argc, char * argv[])
 
 	// master tasks
 	if (my_rank == MASTER) {
-		edatScheduleTask(initialNormTask, 2, EDAT_SELF, "iN_initial_norm_addr",
+		edatSubmitTask(initialNormTask, 2, EDAT_SELF, "iN_initial_norm_addr",
 			EDAT_ALL, "iN_local_norm");
-		edatSchedulePersistentTask(globalNormTask, 2, EDAT_SELF, "gN_global_norm_addr",
+		edatSubmitPersistentTask(globalNormTask, 2, EDAT_SELF, "gN_global_norm_addr",
 			EDAT_ALL, "local_norm");
-		edatSchedulePersistentTask(normUpdateTask, 5, EDAT_SELF, "nU_initial_norm_addr",
+		edatSubmitPersistentTask(normUpdateTask, 5, EDAT_SELF, "nU_initial_norm_addr",
 			EDAT_SELF, "new_global", EDAT_SELF, "nU_norm_addr",
 			EDAT_SELF, "nU_convergence_accuracy", EDAT_SELF, "iter");
 
@@ -310,9 +310,9 @@ double localNorm(double * u_k, int * local_dims, int * mem_dims) {
 	return local_norm;
 }
 
-void iterScheduleTask(EDAT_Event * events, int num_events) {
+void iterTask(EDAT_Event * events, int num_events) {
 	/* until the iteration limit is reached this task will carry out the
-	 * computational step and schedule all necessary tasks for the next iteration
+	 * computational step and submit all necessary tasks for the next iteration
 	 * this task requires an event fired by normUpdateTask when the new norm
 	 * is greater than the convergence_accuracy
 	 */
@@ -345,8 +345,8 @@ void iterScheduleTask(EDAT_Event * events, int num_events) {
 
 	if (iter < MAX_ITERATIONS) {
 		// jacobi computational step -> halo swap -> calculate norm
-		// schedule a local norm calculation for after the halo swap
-		edatScheduleTask(localNormTask, 7, EDAT_SELF, "lnorm_u_k_addr",
+		// submits a local norm calculation for after the halo swap
+		edatSubmitTask(localNormTask, 7, EDAT_SELF, "lnorm_u_k_addr",
 			EDAT_SELF, "lnorm_local_dims", EDAT_SELF, "lnorm_mem_dims",
 			EDAT_SELF, "north", EDAT_SELF, "east", EDAT_SELF, "south", EDAT_SELF, "west");
 		edatFireEvent(local_dims, EDAT_INT, 2, EDAT_SELF, "lnorm_local_dims");
@@ -373,7 +373,7 @@ void iterScheduleTask(EDAT_Event * events, int num_events) {
 				edatFireEvent(local_dims, EDAT_INT, 2, EDAT_SELF, "halo_local_dims");
 				edatFireEvent(mem_dims, EDAT_INT, 2, EDAT_SELF, "halo_mem_dims");
 				edatFireEvent(&u_k, EDAT_ADDRESS, 1, EDAT_SELF, "halo_u_k_addr");
-				edatScheduleTask(boundaryUpdateTask, 6, neighbour, "boundary", EDAT_SELF, "halo_neighbour", EDAT_SELF, "direction", EDAT_SELF, "halo_local_dims", EDAT_SELF, "halo_mem_dims", EDAT_SELF, "halo_u_k_addr");
+				edatSubmitTask(boundaryUpdateTask, 6, neighbour, "boundary", EDAT_SELF, "halo_neighbour", EDAT_SELF, "direction", EDAT_SELF, "halo_local_dims", EDAT_SELF, "halo_mem_dims", EDAT_SELF, "halo_u_k_addr");
 			} else {
 				edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, compass[i]);
 			}

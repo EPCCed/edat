@@ -17,7 +17,7 @@ int edatGetWorker(void);
 int edatGetNumActiveWorkers(void);
 void edatRestart(void);
 void edatPauseMainThread(void);
-void edatScheduleTask_f(void (*)(EDAT_Event*, int), const char*, int, int**, char**, bool, bool);
+void edatSubmitTask_f(void (*)(EDAT_Event*, int), const char*, int, int**, char**, bool, bool);
 void edatLockComms(void);
 void edatUnlockComms(void);
 void edatInitialiseWithCommunicator(int);

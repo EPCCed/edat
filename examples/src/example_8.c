@@ -12,7 +12,7 @@ static void my_task(EDAT_Event*, int);
 int main() {
   edatInit();
   if (edatGetRank() == 0) {
-    edatScheduleTask(my_task, 3, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
+    edatSubmitTask(my_task, 3, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
     edatFireEvent(NULL, EDAT_NOTYPE, 0,  EDAT_SELF, "evt");
     edatFireEvent(NULL, EDAT_NOTYPE, 0,  EDAT_SELF, "evt");
     edatFireEvent(NULL, EDAT_NOTYPE, 0,  EDAT_SELF, "evt");

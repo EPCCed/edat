@@ -22,7 +22,7 @@ int main(int argc, char * argv[]) {
   edatInitWithConfiguration(3, keys, values);
   if (edatGetRank() == 0) {
     usleep(1000); // Put this in to test with scheduling the tasks when the events are already there
-    edatSchedulePersistentGreedyTask(my_task, 1, EDAT_ANY, "my_task");
+    edatSubmitPersistentGreedyTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
     for (int i=0;i<10;i++) {
       edatFireEvent(&i, EDAT_INT, 1, 0, "my_task");

@@ -16,8 +16,8 @@ int main() {
   edatInit();
   if (edatGetRank() == 0) {
 	  id =0;
-    edatSchedulePersistentTask(my_task, 8, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
-	  edatSchedulePersistentTask(task2, 1, EDAT_SELF, "fire");
+    edatSubmitPersistentTask(my_task, 8, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
+	  edatSubmitPersistentTask(task2, 1, EDAT_SELF, "fire");
 
 	  for (int i=0;i<8;i++) {
 		  edatFireEvent(&i, EDAT_INT, 1,  EDAT_SELF, "fire");

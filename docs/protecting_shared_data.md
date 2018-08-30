@@ -13,7 +13,7 @@ int * shared_data;
 int main() {
   edatInit();
   if (edatGetRank()==0) {
-    edatSchedulePersistentTask(my_task, 2, EDAT_SELF, "data", 1, "values");
+    edatSubmitPersistentTask(my_task, 2, EDAT_SELF, "data", 1, "values");
     shared_data=(int*) malloc(sizeof(int) * 10);
     edatFireEvent(shared_data, EDAT_ADDRESS, 1, EDAT_SELF, "data");
   } else if (edatGetRank()==1) {
@@ -30,7 +30,7 @@ void my_task(EDAT_Event * events, int num_events) {
 
 ```
 
-The code snippet illustrates this, where there are two processes, and process zero schedules a persistent task. Process zero then allocates _shared_data_ and fires the address of this (_EDAT_ADDRESS_) to itself. The task is only executed by a worker on process zero when both this _data_ event and a _values_ event are received. But crucially regardless of whether any other _values_ events are received by process zero whilst this task is running, another instance of the task will not run until the task fires the _data_ event to itself. This way of consuming and re-firing events are a way in which the programmer can protect critical sections of code.
+The code snippet illustrates this, where there are two processes, and process zero submits a persistent task. Process zero then allocates _shared_data_ and fires the address of this (_EDAT_ADDRESS_) to itself. The task is only executed by a worker on process zero when both this _data_ event and a _values_ event are received. But crucially regardless of whether any other _values_ events are received by process zero whilst this task is running, another instance of the task will not run until the task fires the _data_ event to itself. This way of consuming and re-firing events are a way in which the programmer can protect critical sections of code.
 
 For a finer grained approach it would also be possible to use the _edatWait_ call, where a tasks waits for an event and then when it leaves the critical section fires this event to itself.
 

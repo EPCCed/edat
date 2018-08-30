@@ -139,55 +139,55 @@ int main(int argc, char ** argv) {
   }
 
   if (my_ID == ROOT_PROCESS) {
-    edatScheduleTask(complete_run, 2, EDAT_ALL, "runtime", EDAT_ALL, "localnorm");
+    edatSubmitTask(complete_run, 2, EDAT_ALL, "runtime", EDAT_ALL, "localnorm");
   }
 
   if (my_IDy < Num_procsy-1) {
-    edatSchedulePersistentTask(halo_swap_from_up, 2, top_nbr, "buffer", EDAT_SELF, "gethalo_up");
-    edatSchedulePersistentTask(halo_swap_to_up, 1, EDAT_SELF, "haloswap_up");
+    edatSubmitPersistentTask(halo_swap_from_up, 2, top_nbr, "buffer", EDAT_SELF, "gethalo_up");
+    edatSubmitPersistentTask(halo_swap_to_up, 1, EDAT_SELF, "haloswap_up");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_up");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_up");
   }
 
   if (my_IDy > 0) {
-    edatSchedulePersistentTask(halo_swap_from_down, 2, bottom_nbr, "buffer", EDAT_SELF, "gethalo_down");
-    edatSchedulePersistentTask(halo_swap_to_down, 1, EDAT_SELF, "haloswap_down");
+    edatSubmitPersistentTask(halo_swap_from_down, 2, bottom_nbr, "buffer", EDAT_SELF, "gethalo_down");
+    edatSubmitPersistentTask(halo_swap_to_down, 1, EDAT_SELF, "haloswap_down");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_down");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_down");
   }
 
   if (my_IDx > 0) {
-    edatSchedulePersistentTask(halo_swap_from_left, 2, left_nbr, "buffer", EDAT_SELF, "gethalo_left");
-    edatSchedulePersistentTask(halo_swap_to_left, 1, EDAT_SELF, "haloswap_left");
+    edatSubmitPersistentTask(halo_swap_from_left, 2, left_nbr, "buffer", EDAT_SELF, "gethalo_left");
+    edatSubmitPersistentTask(halo_swap_to_left, 1, EDAT_SELF, "haloswap_left");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_left");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_left");
   }
 
   if (my_IDx < Num_procsx-1) {
-    edatSchedulePersistentTask(halo_swap_from_right, 2, right_nbr, "buffer", EDAT_SELF, "gethalo_right");
-    edatSchedulePersistentTask(halo_swap_to_right, 1, EDAT_SELF, "haloswap_right");
+    edatSubmitPersistentTask(halo_swap_from_right, 2, right_nbr, "buffer", EDAT_SELF, "gethalo_right");
+    edatSubmitPersistentTask(halo_swap_to_right, 1, EDAT_SELF, "haloswap_right");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "haloswap_right");
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "gethalo_right");
   }
 
   switch(num_neighbours) {
   case 0:
-    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time");
+    edatSubmitPersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time");
     break;
   case 1:
-    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+    edatSubmitPersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
                                EDAT_SELF, "halosend");
     break;
   case 2:
-    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+    edatSubmitPersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
                                EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;
   case 3:
-    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+    edatSubmitPersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
                                EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;
   case 4:
-    edatSchedulePersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
+    edatSubmitPersistentTask(compute_kernel, 2+(num_neighbours*2), EDAT_SELF, "iterations", EDAT_SELF, "start_time", EDAT_SELF, "halorecv",
                                EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend", EDAT_SELF, "halorecv", EDAT_SELF, "halosend",
                                EDAT_SELF, "halorecv", EDAT_SELF, "halosend");
     break;

@@ -152,8 +152,8 @@ public:
     void lockMutexForFinalisationTest();
     void unlockMutexForFinalisationTest();
     void readyToRunTask(PendingTaskDescriptor*);
-    bool isTaskScheduled(std::string);
-    bool descheduleTask(std::string);
+    bool edatIsTaskSubmitted(std::string);
+    bool removeTask(std::string);
     std::pair<int, EDAT_Event*> retrieveAnyMatchingEvents(std::vector<std::pair<int, std::string>>);
 };
 

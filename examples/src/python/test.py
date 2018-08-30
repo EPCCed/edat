@@ -9,7 +9,7 @@ params = {'EDAT_REPORT_WORKER_MAPPING':'true'}
 edatInit(params, libraryPath="../../../libedat.so")
 print("Hello: "+str(edatGetRank()))
 if edatGetRank() == 0:
-  edatScheduleTask(my_function, 2, 1, "test", 1, "hello")
+  edatSubmitTask(my_function, 2, 1, "test", 1, "hello")
   print("Scheduled")
 else:
   data=22
