@@ -26,18 +26,18 @@ struct ContinuityData {
   ContinuityData(const std::thread::id a_thread, const task_ptr_t * const a_task_array, const int a_num_tasks, PendingTaskDescriptor* task) : main_thread_id(a_thread), task_array(a_task_array), num_tasks(a_num_tasks), ptd(task) {};
 };
 
-void resilienceInit(Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const unsigned int);
+void resilienceInit(int, Scheduler&, ThreadPool&, Messaging&, const std::thread::id, const task_ptr_t * const, const int, const unsigned int);
 void resilienceTaskScheduled(PendingTaskDescriptor&);
 bool resilienceAddEvent(SpecificEvent&);
 void resilienceMoveEventToTask(const DependencyKey, const taskID_t);
 void resilienceEventFired(void*, int, int, int, bool, const char *);
-void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&);
-void resilienceTaskCompleted(const std::thread::id, const taskID_t);
-void resilienceThreadFailed(const std::thread::id);
-void resilienceFinalise(void);
+void resilienceTaskRunning(const std::thread::id, PendingTaskDescriptor&, int);
+void resilienceTaskCompleted(const std::thread::id, const taskID_t, int);
+void resilienceThreadFailed(const std::thread::id, int);
+void resilienceFinalise(int);
 ContinuityData resilienceSyntheticFinalise(const std::thread::id);
 void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskDescriptor*);
-bool resilienceIsFinished(void);
+bool resilienceIsFinished(int);
 
 enum TaskState { SCHEDULED, RUNNING, COMPLETE, FAILED };
 
@@ -55,6 +55,7 @@ struct LoggedTask {
 
 class EDAT_Thread_Ledger {
 private:
+  const int resilienceLevel;
   Scheduler& scheduler;
   ThreadPool& threadpool;
   Messaging& messaging;
@@ -67,8 +68,8 @@ private:
   void releaseHeldEvents(const taskID_t);
   void purgeHeldEvents(const taskID_t);
 public:
-  EDAT_Thread_Ledger(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id)
-    : scheduler(ascheduler), threadpool(athreadpool), messaging(amessaging), main_thread_id(thread_id) {};
+  EDAT_Thread_Ledger(int aResilienceLevel, Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id)
+    : resilienceLevel(aResilienceLevel), scheduler(ascheduler), threadpool(athreadpool), messaging(amessaging), main_thread_id(thread_id) {};
   taskID_t getCurrentlyActiveTask(const std::thread::id);
   PendingTaskDescriptor* getPendingTaskFromCurrentlyActiveTask(const std::thread::id);
   void holdFiredEvent(const std::thread::id, void*, int, int, int, bool, const char*);

@@ -39,42 +39,46 @@ static bool started = false;
 * failed process. It includes storage for tasks which are scheduled, but have
 * not run.
 */
-void resilienceInit(Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const unsigned int comm_timeout) {
+void resilienceInit(int resilienceLevel, Scheduler& ascheduler, ThreadPool& athreadpool, Messaging& amessaging, const std::thread::id thread_id, const task_ptr_t * const task_array, const int num_tasks, const unsigned int comm_timeout) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("resilienceInit");
   #endif
 
   int my_rank = amessaging.getRank();
-  int num_ranks = amessaging.getNumRanks();
-  char ledger_name_buffer[20];
-  sprintf(ledger_name_buffer, "edat_ledger_%d", my_rank);
-  std::string ledger_name = std::string(ledger_name_buffer);
-  FILE * ftest;
-  bool recovery;
 
-  internal_ledger = new EDAT_Thread_Ledger(ascheduler, athreadpool, amessaging, thread_id);
-  ftest = fopen(ledger_name_buffer, "r");
-  if (ftest == NULL) {
-    recovery = false;
-  } else {
-    fclose(ftest);
-    recovery = true;
+  if (resilienceLevel > 0) {
+      internal_ledger = new EDAT_Thread_Ledger(resilienceLevel, ascheduler, athreadpool, amessaging, thread_id);
+
+      if (resilienceLevel == 2) {
+        int num_ranks = amessaging.getNumRanks();
+        char ledger_name_buffer[20];
+        sprintf(ledger_name_buffer, "edat_ledger_%d", my_rank);
+        std::string ledger_name = std::string(ledger_name_buffer);
+        FILE * ftest;
+        bool recovery;
+
+        ftest = fopen(ledger_name_buffer, "r");
+        if (ftest == NULL) {
+          recovery = false;
+        } else {
+          fclose(ftest);
+          recovery = true;
+        }
+        external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, comm_timeout, ledger_name, recovery);
+
+        if (recovery) external_ledger->recover();
+        external_ledger->beginMonitoring();
+        if (recovery) amessaging.fireEvent(&my_rank, 1, EDAT_INT, EDAT_ALL, false, phoenix);
+      }
+
+      started = true;
+      if (!my_rank) {
+        std::cout << "EDAT resilience initialised." << std::endl;
+        std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait, contexts" << std::endl;
+        std::cout << "Please do not use the following character strings as event IDs: ";
+        std::cout << std::string(obit) << " " << std::string(phoenix) << std::endl;
+      }
   }
-  external_ledger = new EDAT_Process_Ledger(ascheduler, amessaging, my_rank, num_ranks, task_array, num_tasks, comm_timeout, ledger_name, recovery);
-
-  if (!my_rank) {
-    std::cout << "EDAT resilience initialised." << std::endl;
-    std::cout << "Unsupported: EDAT_MAIN_THREAD_WORKER, edatFirePersistentEvent, edatFireEventWithReflux, edatWait, contexts" << std::endl;
-    std::cout << "Please do not use the following character strings as event IDs: ";
-    std::cout << std::string(obit) << " " << std::string(phoenix) << std::endl;
-  }
-
-  if (recovery) external_ledger->recover();
-
-  started = true;
-  external_ledger->beginMonitoring();
-
-  if (recovery) amessaging.fireEvent(&my_rank, 1, EDAT_INT, EDAT_ALL, false, phoenix);
 
   #if DO_METRICS
   metrics::METRICS->timerStop("resilienceInit", timer_key);
@@ -153,18 +157,18 @@ void resilienceEventFired(void * data, int data_count, int data_type,
 * Marks task as active in both ledgers. In internal_ledger this triggers
 * creation of storage for events which are fired.
 */
-void resilienceTaskRunning(const std::thread::id thread_id, PendingTaskDescriptor& ptd) {
+void resilienceTaskRunning(const std::thread::id thread_id, PendingTaskDescriptor& ptd, int resilienceLevel) {
   internal_ledger->taskActiveOnThread(thread_id, ptd);
-  external_ledger->markTaskRunning(ptd.task_id);
+  if (resilienceLevel == 2) external_ledger->markTaskRunning(ptd.task_id);
   return;
 }
 
 /**
 * Marks task as completed in both ledgers.
 */
-void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t task_id) {
+void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t task_id, int resilienceLevel) {
   internal_ledger->taskComplete(thread_id, task_id);
-  external_ledger->markTaskComplete(task_id);
+  if (resilienceLevel == 2) external_ledger->markTaskComplete(task_id);
   return;
 }
 
@@ -172,10 +176,10 @@ void resilienceTaskCompleted(const std::thread::id thread_id, const taskID_t tas
 * Marks thread as failed in external_ledger, and triggers recovery process
 * from internal_ledger.
 */
-void resilienceThreadFailed(const std::thread::id thread_id) {
+void resilienceThreadFailed(const std::thread::id thread_id, int resilienceLevel) {
   const taskID_t task_id = internal_ledger->getCurrentlyActiveTask(thread_id);
   internal_ledger->threadFailure(thread_id, task_id);
-  external_ledger->markTaskFailed(task_id);
+  if (resilienceLevel == 2) external_ledger->markTaskFailed(task_id);
 
   return;
 }
@@ -183,11 +187,16 @@ void resilienceThreadFailed(const std::thread::id thread_id) {
 /**
 * Clears ledgers from memory.
 */
-void resilienceFinalise(void) {
-  external_ledger->endMonitoring();
-  external_ledger->deleteLedgerFile();
-  delete internal_ledger;
-  delete external_ledger;
+void resilienceFinalise(int resilienceLevel) {
+  if (resilienceLevel > 0) {
+    delete internal_ledger;
+    if (resilienceLevel == 2) {
+      external_ledger->endMonitoring();
+      external_ledger->deleteLedgerFile();
+      delete external_ledger;
+    }
+  }
+  return;
 }
 
 ContinuityData resilienceSyntheticFinalise(const std::thread::id thread_id) {
@@ -206,8 +215,8 @@ void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskD
   return;
 }
 
-bool resilienceIsFinished(void) {
-  if (started) {
+bool resilienceIsFinished(int resilienceLevel) {
+  if (started && resilienceLevel == 2) {
     return external_ledger->isFinished();
   } else {
     return true;
@@ -329,7 +338,7 @@ void EDAT_Thread_Ledger::releaseHeldEvents(const taskID_t task_id) {
   const int my_rank = messaging.getRank();
   while (!atd->firedEvents.empty()) {
     HeldEvent * held_event = atd->firedEvents.front();
-    if (held_event->target == my_rank) {
+    if (resilienceLevel == 1 || held_event->target == my_rank) {
       held_event->fire(messaging);
       free(held_event->spec_evt->getData());
       delete held_event->spec_evt;
@@ -386,7 +395,7 @@ void EDAT_Thread_Ledger::holdFiredEvent(const std::thread::id thread_id, void * 
 
         held_event->target = target;
 
-        external_ledger->eventFiredFromMain(target, std::string(event_id), held_event);
+        if (resilienceLevel == 2) external_ledger->eventFiredFromMain(target, std::string(event_id), held_event);
       }
       messaging.fireEvent(data, data_count, data_type, target, persistent, event_id);
   } else {
@@ -489,7 +498,7 @@ void EDAT_Thread_Ledger::threadFailure(const std::thread::id thread_id, const ta
     active_tasks.erase(task_id);
     at_mutex.unlock();
 
-    external_ledger->addTask(ptd->task_id, *ptd);
+    if (resilienceLevel == 2) external_ledger->addTask(ptd->task_id, *ptd);
     scheduler.readyToRunTask(ptd);
 
     std::cout << "[" << my_rank << "] Task " << task_id << " rescheduled with new task ID: "

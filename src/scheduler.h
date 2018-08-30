@@ -206,8 +206,8 @@ struct TaskDescriptor {
 
 struct PendingTaskDescriptor : TaskDescriptor {
   std::map<DependencyKey, int*> originalDependencies;
-  bool freeData=true, persistent=false, resilient=false;
-  int func_id = -1;
+  bool freeData=true, persistent=false;
+  int func_id = -1, resilient = 0;
   std::string task_name;
   void (*task_fn)(EDAT_Event*, int);
   PendingTaskDescriptor() = default;
@@ -235,6 +235,7 @@ struct PausedTaskDescriptor : TaskDescriptor {
 
 class Scheduler {
     int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
+    int resilienceLevel;
     std::vector<PendingTaskDescriptor*> registeredTasks;
     std::vector<PausedTaskDescriptor*> pausedTasks;
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
@@ -250,7 +251,10 @@ class Scheduler {
     static void generateEventPayload(SpecificEvent*, EDAT_Event*);
     void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
-    Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) { outstandingEventsToHandle = 0; }
+    Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) {
+      outstandingEventsToHandle = 0;
+      resilienceLevel = aconfig.get("EDAT_RESILIENCE", 0);
+    }
     void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
     void registerTask(PendingTaskDescriptor*);
     EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);

@@ -39,9 +39,10 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   #endif
   messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
   threadPool->setMessaging(messaging);
-  if (configuration->get("EDAT_RESILIENCE", false)) {
+  int resilienceLevel = configuration->get("EDAT_RESILIENCE", 0);
+  if (resilienceLevel) {
     const unsigned int COMM_TIMEOUT = configuration->get("EDAT_COMM_TIMEOUT", DEFAULT_COMM_TIMEOUT);
-    resilienceInit(*scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, COMM_TIMEOUT);
+    resilienceInit(resilienceLevel, *scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, COMM_TIMEOUT);
   }
   messaging->resetPolling();
   edatActive=true;
@@ -64,9 +65,8 @@ int edatFinalise(void) {
     std::unique_lock<std::mutex> lk(*m);
     cv->wait(lk, [completed]{return *completed;});
   }
-  if (configuration->get("EDAT_RESILIENCE", false)) {
-    resilienceFinalise();
-  }
+  int resilienceLevel = configuration->get("EDAT_RESILIENCE", 0);
+  resilienceFinalise(resilienceLevel);
   messaging->finalise();
   #if DO_METRICS
     metrics::METRICS->finalise();
@@ -181,7 +181,7 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
     unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
   if (target == EDAT_SELF) target=messaging->getRank();
-  if (configuration->get("EDAT_RESILIENCE", false)) {
+  if (configuration->get("EDAT_RESILIENCE", 0)) {
     resilienceEventFired(data, data_count, data_type, target, false, event_id);
   } else {
     messaging->fireEvent(data, data_count, data_type, target, false, event_id);
@@ -258,12 +258,13 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
 * Testing function, initiates simulated failure of a task
 */
 void edatSyntheticFailure(const int level) {
-  if (configuration->get("EDAT_RESILIENCE", false)) {
+  int resilienceLevel = configuration->get("EDAT_RESILIENCE", 0);
+  if (resilienceLevel) {
     const std::thread::id thread_id = std::this_thread::get_id();
     if (level == 0) {
       std::cout << "Oh no! This task has failed! How terrible, and completely unexpected." << std::endl;
       threadPool->syntheticFailureOfThread(thread_id);
-      resilienceThreadFailed(thread_id);
+      resilienceThreadFailed(thread_id, resilienceLevel);
     } else if (level == 1) {
       const int COMM_TIMEOUT = configuration->get("EDAT_COMM_TIMEOUT", DEFAULT_COMM_TIMEOUT);
       std::cout << "I've got a bad feeling about rank " << messaging->getRank() << "..." << std::endl;
@@ -276,7 +277,7 @@ void edatSyntheticFailure(const int level) {
       // reinitialise rank
       threadPool->reinit(wt);
       threadPool->setMessaging(messaging);
-      resilienceInit(*scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, COMM_TIMEOUT);
+      resilienceInit(resilienceLevel, *scheduler, *threadPool, *messaging, con_data.main_thread_id, con_data.task_array, con_data.num_tasks, COMM_TIMEOUT);
       resilienceRestoreTaskToActive(thread_id, con_data.ptd);
       messaging->resetPolling();
       messaging->setEligableForTermination();

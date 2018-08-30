@@ -207,7 +207,7 @@ PendingTaskDescriptor::PendingTaskDescriptor(std::istream& file, const std::stre
   this->numArrivedEvents = int_data[1];
   if(int_data[2]) this->freeData = true;
   if(int_data[3]) this->persistent = true;
-  if(int_data[4]) this->resilient = true;
+  this->resilient = int_data[4];
 
   task_name_length = 0;
   bookmark = file.tellg();
@@ -344,10 +344,9 @@ void PendingTaskDescriptor::serialize(std::ostream& file, const std::streampos o
   std::map<DependencyKey, int*>::const_iterator od_iter;
   std::vector<DependencyKey>::const_iterator tdo_iter;
 
-  int int_data[5] = {func_id, numArrivedEvents, 0, 0, 0};
+  int int_data[5] = {func_id, numArrivedEvents, 0, 0, resilient};
   if(freeData) int_data[2] = 1;
   if(persistent) int_data[3] = 1;
-  if(resilient) int_data[4] = 1;
 
   file.seekp(object_begin);
 
@@ -395,10 +394,9 @@ void PendingTaskDescriptor::serialize(std::ostream& file) {
   std::map<DependencyKey, int*>::const_iterator od_iter;
   std::vector<DependencyKey>::const_iterator tdo_iter;
 
-  int int_data[5] = {func_id, numArrivedEvents, 0, 0, 0};
+  int int_data[5] = {func_id, numArrivedEvents, 0, 0, resilient};
   if(freeData) int_data[2] = 1;
   if(persistent) int_data[3] = 1;
-  if(resilient) int_data[4] = 1;
 
   // int func_id, numArrivedEvents, freeData, persistent, resilient
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
@@ -568,7 +566,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     }
   }
 
-  if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
+  if (resilienceLevel == 2) resilienceTaskScheduled(*pendingTask);
 
   if (pendingTask->outstandingDependencies.empty()) {
     PendingTaskDescriptor* exec_Task;
@@ -581,7 +579,7 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
       pendingTask->numArrivedEvents=0;
       pendingTask->generateTaskID();
       registeredTasks.push_back(pendingTask);
-      if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
+      if (resilienceLevel == 2) resilienceTaskScheduled(*pendingTask);
     } else {
       exec_Task=pendingTask;
     }
@@ -795,7 +793,7 @@ bool Scheduler::checkProgressPersistentTasks() {
         pendingTask->arrivedEvents.clear();
         pendingTask->numArrivedEvents=0;
         pendingTask->generateTaskID();
-        if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
+        if (resilienceLevel == 2) resilienceTaskScheduled(*pendingTask);
         readyToRunTask(exec_Task);
         progress=true;
       }
@@ -810,7 +808,7 @@ bool Scheduler::checkProgressPersistentTasks() {
 */
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
-  if (configuration.get("EDAT_RESILIENCE",false)) {
+  if (resilienceLevel == 2) {
     if (!resilienceAddEvent(*event)) return;
   }
   std::pair<TaskDescriptor*, int> pendingEntry=findTaskMatchingEventAndUpdate(event);
@@ -832,7 +830,7 @@ void Scheduler::registerEvent(SpecificEvent * event) {
           pendingTask->arrivedEvents.clear();
           pendingTask->numArrivedEvents=0;
           pendingTask->generateTaskID();
-          if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*pendingTask);
+          if (resilienceLevel == 2) resilienceTaskScheduled(*pendingTask);
         }
         outstandTaskEvt_lock.unlock();
         readyToRunTask(exec_Task);
@@ -918,8 +916,6 @@ std::pair<TaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(Specif
 */
 void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescriptor, DependencyKey eventDep,
                                                     std::map<DependencyKey, int*>::iterator it, SpecificEvent * event) {
-  bool resilience = false;
-  if (configuration.get("EDAT_RESILIENCE",false)) resilience = true;
   taskDescriptor->numArrivedEvents++;
   (*(it->second))--;
   if (*(it->second) <= 0) {
@@ -930,7 +926,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   if (event->isPersistent()) {
     // If its persistent event then copy the event
     specificEVTToAdd=new SpecificEvent(*event);
-    if (resilience) resilienceAddEvent(*specificEVTToAdd);
+    if (resilienceLevel == 2) resilienceAddEvent(*specificEVTToAdd);
   } else {
     specificEVTToAdd=event;
   }
@@ -942,7 +938,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
   } else {
     arrivedEventsIT->second.push(specificEVTToAdd);
   }
-  if (resilience) resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
+  if (resilienceLevel == 2) resilienceMoveEventToTask(eventDep, taskDescriptor->task_id);
 }
 
 /**
@@ -950,7 +946,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  if (configuration.get("EDAT_RESILIENCE", false)) taskDescriptor->resilient = true;
+  taskDescriptor->resilient = resilienceLevel;
   threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
 }
 
@@ -1004,10 +1000,10 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
   std::set<int> eventsThatAreContexts;
   const std::thread::id thread_id = std::this_thread::get_id();
-  const bool resilient = taskContainer->resilient;
+  const int resilient = taskContainer->resilient;
 
   if (resilient) {
-    resilienceTaskRunning(thread_id, *taskContainer);
+    resilienceTaskRunning(thread_id, *taskContainer, resilient);
   }
 
   EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
@@ -1018,7 +1014,7 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   }
 
   if (resilient) {
-    resilienceTaskCompleted(thread_id, taskContainer->task_id);
+    resilienceTaskCompleted(thread_id, taskContainer->task_id, resilient);
   }
 
   delete[] events_payload;
@@ -1033,7 +1029,7 @@ bool Scheduler::isFinished() {
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }
-  return (outstandingEventsToHandle==0 && resilienceIsFinished());
+  return (outstandingEventsToHandle==0 && resilienceIsFinished(resilienceLevel));
 }
 
 void Scheduler::reset() {

@@ -151,7 +151,7 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
     taskDescriptor->taskDependencyOrder.push_back(DependencyKey(event->getEventId(), event->getSourcePid()));
 
     outstandingRefluxTasks.insert(std::pair<MPI_Request, PendingTaskDescriptor*>(request, taskDescriptor));
-    if (configuration.get("EDAT_RESILIENCE", false)) resilienceTaskScheduled(*taskDescriptor);
+    if (configuration.get("EDAT_RESILIENCE", 0) == 2) resilienceTaskScheduled(*taskDescriptor);
   }
 }
 
