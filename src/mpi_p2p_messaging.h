@@ -18,7 +18,7 @@ class MPI_P2P_Messaging : public Messaging {
     terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;
   MPI_Comm communicator;
   std::map<MPI_Request, char*> outstandingSendRequests;
-  std::mutex outstandingSendRequests_mutex, mpi_mutex;
+  std::mutex outstandingSendRequests_mutex, mpi_mutex, dataArrival_mutex;
   std::vector<SpecificEvent*> eventShortTermStore;
   void initMPI();
   void checkSendRequestsForProgress();
@@ -36,6 +36,8 @@ protected:
 public:
   MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&);
   MPI_P2P_Messaging(Scheduler&, ThreadPool&, ContextManager&, Configuration&, int);
+  virtual void lockMutexForFinalisationTest();
+  virtual void unlockMutexForFinalisationTest();
   virtual void resetPolling();
   virtual void runPollForEvents();
   virtual void setEligableForTermination() { eligable_for_termination=true; };

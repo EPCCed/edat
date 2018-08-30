@@ -552,6 +552,9 @@ EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, st
   return events_payload;
 }
 
+/**
+* Generates the EDAT_Event payload (that is provided to the user function) from the specific event object passed in
+*/
 void Scheduler::generateEventPayload(SpecificEvent * specEvent, EDAT_Event * event) {
   if (specEvent->isAContext()) {
     // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
@@ -596,10 +599,23 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
 }
 
 /**
+* Locks the mutex for testing for finalisation (whether the scheduler is completed, no tasks or events outstanding)
+*/
+void Scheduler::lockMutexForFinalisationTest() {
+  taskAndEvent_mutex.lock();
+}
+
+/**
+* Unlocks the mutex for testing for finalisation
+*/
+void Scheduler::unlockMutexForFinalisationTest() {
+  taskAndEvent_mutex.unlock();
+}
+
+/**
 * Determines whether the scheduler is finished or not
 */
 bool Scheduler::isFinished() {
-  std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }

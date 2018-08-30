@@ -31,6 +31,8 @@ protected:
   virtual int getTypeSize(int);
   virtual void startProgressThread();
 public:
+  virtual void lockMutexForFinalisationTest() = 0;
+  virtual void unlockMutexForFinalisationTest() = 0;
   virtual void resetPolling();
   virtual void runPollForEvents() = 0;
   virtual void setEligableForTermination() = 0;

@@ -34,6 +34,10 @@ MPI_P2P_Messaging::MPI_P2P_Messaging(Scheduler & a_scheduler, ThreadPool & a_thr
   initialise(MPI_Comm_f2c(mpi_communicator));
 }
 
+/**
+* Initialises the MPI transport layer with a specific communicator that all EDAT processes belong to. If MPI is already initialised this is fine,
+* we just go with that if it is in serialised or thread multiple mode, otherwise we initialise MPI here too.
+*/
 void MPI_P2P_Messaging::initialise(MPI_Comm comm) {
   int is_mpi_init, provided;
   MPI_Initialized(&is_mpi_init);
@@ -144,10 +148,35 @@ void MPI_P2P_Messaging::sendSingleEvent(void * data, int data_count, int data_ty
 }
 
 /**
+* Locks the mutexes for testing for finalisation, this ensures whilst the finalisation test is going on there is no state change
+*/
+void MPI_P2P_Messaging::lockMutexForFinalisationTest() {
+  dataArrival_mutex.lock();
+  outstandingSendRequests_mutex.lock();
+}
+
+/**
+* Unlocks the mutexes for finalisation testing
+*/
+void MPI_P2P_Messaging::unlockMutexForFinalisationTest() {
+  dataArrival_mutex.unlock();
+  outstandingSendRequests_mutex.unlock();
+}
+
+/**
 * Determines whether the messaging is finished or not locally
 */
 bool MPI_P2P_Messaging::isFinished() {
-  std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
+  int pending_message, global_pending_message;
+  if (protectMPI) mpi_mutex.lock();
+  MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, communicator, &pending_message, MPI_STATUS_IGNORE);
+  if (enableBridge) {
+    MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &global_pending_message, MPI_STATUS_IGNORE);
+  } else {
+    global_pending_message=0;
+  }
+  if (protectMPI) mpi_mutex.unlock();
+  if (pending_message || global_pending_message) return false;
   return outstandingSendRequests.empty() && eventShortTermStore.empty();
 }
 
@@ -207,14 +236,25 @@ void MPI_P2P_Messaging::checkSendRequestsForProgress() {
   }
 }
 
+/**
+* Locks MPI communications, this is needed if MPI is running in serialised mode (rather than multiple) which can be selected
+* for performance as the implementation of MPI thread multiple is often poor
+*/
 void MPI_P2P_Messaging::lockComms() {
   mpi_mutex.lock();
 }
 
+/**
+* Unlocks MPI communications
+*/
 void MPI_P2P_Messaging::unlockComms() {
   mpi_mutex.unlock();
 }
 
+/**
+* Handles the arrival of some message (driven by the MPI status which we likely got from a probe and the appropriate
+* communicator)
+*/
 void MPI_P2P_Messaging::handleRemoteMessageArrival(MPI_Status message_status, MPI_Comm comm_to_use) {
   char* buffer, *data_buffer;
   int message_size;
@@ -276,6 +316,7 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   } else {
     (*iteration_counter)++;
   }
+  std::unique_lock<std::mutex> dataArrivalLock(dataArrival_mutex);
   if (protectMPI) mpi_mutex.lock();
   MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, communicator, &pending_message, &message_status);
   if (enableBridge) {
@@ -286,6 +327,7 @@ bool MPI_P2P_Messaging::performSinglePoll(int * iteration_counter) {
   if (protectMPI) mpi_mutex.unlock();
   if (pending_message) handleRemoteMessageArrival(message_status, communicator);
   if (global_pending_message) handleRemoteMessageArrival(message_status_global, MPI_COMM_WORLD);
+  dataArrivalLock.unlock();
 
   if (!pending_message && !global_pending_message) {
     if (batchEvents && !eventShortTermStore.empty() && MPI_Wtime() - last_event_arrival > batch_timeout) {

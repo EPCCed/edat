@@ -149,6 +149,8 @@ public:
     void registerEvent(SpecificEvent*);
     void registerEvents(std::vector<SpecificEvent*>);
     bool isFinished();
+    void lockMutexForFinalisationTest();
+    void unlockMutexForFinalisationTest();
     void readyToRunTask(PendingTaskDescriptor*);
     bool isTaskScheduled(std::string);
     bool descheduleTask(std::string);

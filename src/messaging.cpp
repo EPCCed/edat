@@ -84,14 +84,22 @@ void Messaging::finalise() {
 }
 
 /**
-* Checks for overall local termination based upon whether the main thread is sleeping and whether the messaging system, schedule and thread pool is finished
+* Checks for overall local termination based upon whether the main thread is sleeping and whether the messaging system, schedule and thread pool is finished. This is
+* slightly complicated by the fact that we need to ensure all these three components (messaging layer, scheduler and thread pool) are consistent with each other,
+* there is a danger that the state of one of these might change during the finalisation test. This is why we lock all three components for finalisation testing
+* before carrying it out.
 */
 bool Messaging::checkForLocalTermination() {
   std::lock_guard<std::mutex> lock(cdtAccessMtx);
   if (mainThreadConditionVariable != NULL) {
-    if (isFinished() && scheduler.isFinished() && threadPool.isThreadPoolFinished()) {
-      return true;
-    }
+    lockMutexForFinalisationTest();
+    scheduler.lockMutexForFinalisationTest();
+    threadPool.lockMutexForFinalisationTest();
+    bool finished=isFinished() && scheduler.isFinished() && threadPool.isThreadPoolFinished();
+    threadPool.unlockMutexForFinalisationTest();
+    scheduler.unlockMutexForFinalisationTest();
+    unlockMutexForFinalisationTest();
+    if (finished) return true;
   }
   return false;
 }

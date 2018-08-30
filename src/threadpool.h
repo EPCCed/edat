@@ -59,6 +59,8 @@ class ThreadPool {
   static void threadReportCoreIdFunction(void *);
  public:
   ThreadPool(Configuration&);
+  void lockMutexForFinalisationTest();
+  void unlockMutexForFinalisationTest();
   void startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
