@@ -141,6 +141,8 @@ void ThreadPool::pauseThread(PausedTaskDescriptor * pausedTaskDescriptor, std::u
       // If there are no idle threads then create a new one to be the new active thread
       workers[threadIndex].activeThread=new ThreadPackage();
       workers[threadIndex].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, threadIndex), workers[threadIndex].core_id);
+
+      workers[threadIndex].activeThread->resume();
     } else {
       // If there is an idle thread then we are going to reactivate it
       ThreadPackage * reactivated=workers[threadIndex].idleThreads.front();
@@ -410,6 +412,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       delete myThreadPackage;
       return;
     }
+
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
       #if DO_METRICS
         unsigned long int timer_key = metrics::METRICS->timerStart("Task");
@@ -422,7 +425,6 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
     bool pollQueue=true, restartPoll=false;
     while (pollQueue) {
       std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
-
       if (!threadQueue.empty()) {
         PendingThreadContainer pc=threadQueue.front();
         threadQueue.pop();

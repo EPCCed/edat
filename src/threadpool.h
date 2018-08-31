@@ -16,7 +16,11 @@ class ThreadPoolCommand {
   void *data;
  public:
   void setCallFunction(void (*callFunction)(void *)) { this->callFunction = callFunction; }
-  void issueFunctionCall() { this->callFunction(data); }
+  void issueFunctionCall() {
+    void (*myCall)(void *)=this->callFunction;
+    this->callFunction=NULL;
+    myCall(data);
+  }
   void (*getCallFunction())(void *) { return callFunction; }
   void setData(void *data) { this->data = data; }
   void *getData() { return this->data; }
