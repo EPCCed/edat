@@ -107,7 +107,7 @@ private:
   void commit(SpecificEvent&);
   void commit(HeldEvent&);
   void commit(const int, const bool);
-  void commit(const taskID_t, const SpecificEvent&);
+  void commit(const taskID_t, const std::streampos);
   void commit(const TaskState&, const std::streampos);
   void commit(const HeldEventState&, const std::streampos);
   void serialize();

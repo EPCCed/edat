@@ -711,7 +711,7 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
   std::fstream file;
 
   std::lock_guard<std::mutex> lock(file_mutex);
-  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in | std::ios::ate);
   file.seekp(-marker_size, std::ios::end);
 
   file.write(tsk, marker_size);
@@ -725,7 +725,6 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
   #if DO_METRICS
   metrics::METRICS->timerStop("commit_addTask", timer_key);
   #endif
-
   return;
 }
 
@@ -737,13 +736,13 @@ void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
   const taskID_t no_task_id = 0;
 
   std::lock_guard<std::mutex> lock(file_mutex);
-  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in | std::ios::ate);
   file.seekp(-marker_size, std::ios::end);
 
   file.write(evt, marker_size);
   spec_evt.setFilePos(file.tellp());
   file.write(reinterpret_cast<const char *>(&no_task_id), sizeof(taskID_t));
-  spec_evt.serialize(file, file.tellp());
+  spec_evt.serialize(file);
   file.write(eoo, marker_size);
   file.write(eol, marker_size);
 
@@ -762,11 +761,11 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   std::fstream file;
 
   std::lock_guard<std::mutex> lock(file_mutex);
-  file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
+  file.open(fname, std::ios::binary | std::ios::out | std::ios::in | std::ios::ate);
   file.seekp(-marker_size, std::ios::end);
 
   file.write(hvt, marker_size);
-  held_event.serialize(file, file.tellp());
+  held_event.serialize(file);
   file.write(eol, marker_size);
 
   file.close();
@@ -796,7 +795,7 @@ void EDAT_Process_Ledger::commit(const int rank, const bool rank_is_dead) {
   return;
 }
 
-void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& spec_evt) {
+void EDAT_Process_Ledger::commit(const taskID_t task_id, const std::streampos file_pos) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_mvEvtToTsk");
   #endif
@@ -804,11 +803,8 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const SpecificEvent& sp
 
   std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
-
-  file.seekp(spec_evt.getFilePos());
-
+  file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
-
   file.close();
 
   #if DO_METRICS
@@ -1217,7 +1213,7 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
   }
 
   log_mutex.unlock();
-  commit(task_id, *event);
+  commit(task_id, event->getFilePos());
   return;
 }
 
