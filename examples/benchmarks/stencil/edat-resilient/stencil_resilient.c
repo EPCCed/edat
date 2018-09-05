@@ -305,9 +305,15 @@ int main(int argc, char ** argv) {
   int total_length_out = width * height;
   iter=0;
   edatFireEvent(&iter, EDAT_INT, 1, EDAT_SELF, "iterations");
-  edatFireEvent(in, EDAT_DTYPE, total_length_in, EDAT_SELF, "init_in");
   edatFireEvent(out, EDAT_DTYPE, total_length_out, EDAT_SELF, "out");
   edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "start_time");
+
+  if (num_neighbours) {
+    edatFireEvent(in, EDAT_DTYPE, total_length_in, EDAT_SELF, "init_in");
+  } else {
+    edatFireEvent(in, EDAT_DTYPE, total_length_in, EDAT_SELF, "in");
+  }
+
 
   prk_free(in);
   prk_free(out);
