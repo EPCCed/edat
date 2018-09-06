@@ -716,7 +716,7 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
 
   file.write(tsk, marker_size);
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
-  lgt.serialize(file, file.tellp());
+  lgt.serialize(file);
   file.write(eoo, marker_size);
   file.write(eol, marker_size);
 
@@ -781,7 +781,6 @@ void EDAT_Process_Ledger::commit(const int rank, const bool rank_is_dead) {
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_deadRank");
   #endif
   std::fstream file;
-  std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
 
   file.seekp(rank*sizeof(bool), std::ios::beg);
@@ -801,7 +800,6 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const std::streampos fi
   #endif
   std::fstream file;
 
-  std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
   file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&task_id), sizeof(taskID_t));
@@ -818,7 +816,6 @@ void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos fi
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_taskState");
   #endif
   std::fstream file;
-  std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
   file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&state), sizeof(TaskState));
@@ -834,7 +831,6 @@ void EDAT_Process_Ledger::commit(const HeldEventState& state, const std::streamp
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_hvtState");
   #endif
   std::fstream file;
-  std::lock_guard<std::mutex> lock(file_mutex);
   file.open(fname, std::ios::binary | std::ios::out | std::ios::in);
   file.seekp(file_pos);
   file.write(reinterpret_cast<const char *>(&state), sizeof(HeldEventState));
