@@ -23,7 +23,7 @@ If you are dynamically linking then you will need to ensure your LD_LIBRARY_PATH
 You will need to add the *edat/include* directory to your search path and include *edat.h*. When building your code you need to link against the edat library (e.g. *-L/home/username/edat -ledat*). The examples provide illustrations of doing this.
 
 An an example you can look at the following simple example (this is the same as <a href="https://github.com/EPCCed/edat/blob/master/examples/src/example_1.c">example_1</a>.)
-```
+```c
 #include "edat.h"
 #include <stdio.h>
 
@@ -31,7 +31,7 @@ void my_task(EDAT_Event*, int);
 void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  edatInit();
   if (edatGetRank() == 0) {
     edatSubmitTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
@@ -65,7 +65,7 @@ Once this event has been sent from process 1 to 0, process 0 will run its submit
 
 In this example process 0 will then fire an event with EID *my_task2* but no payload data to process 1 which causes the execution of that task on a worker of process 1 and the code in the *my_task2* function.
 
-**But how many workers does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as worker to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/environment_variables.md">this documentation</a>.
+**But how many workers does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as worker to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/configuration.md">the configuration documentation</a>.
 
 ## Finding out more
 
