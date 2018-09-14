@@ -23,7 +23,7 @@ If you are dynamically linking then you will need to ensure your LD_LIBRARY_PATH
 You will need to add the *edat/include* directory to your search path and include *edat.h*. When building your code you need to link against the edat library (e.g. *-L/home/username/edat -ledat*). The examples provide illustrations of doing this.
 
 An an example you can look at the following simple example (this is the same as <a href="https://github.com/EPCCed/edat/blob/master/examples/src/example_1.c">example_1</a>.)
-```
+```c
 #include "edat.h"
 #include <stdio.h>
 
