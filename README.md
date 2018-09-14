@@ -65,7 +65,7 @@ Once this event has been sent from process 1 to 0, process 0 will run its submit
 
 In this example process 0 will then fire an event with EID *my_task2* but no payload data to process 1 which causes the execution of that task on a worker of process 1 and the code in the *my_task2* function.
 
-**But how many workers does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as worker to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/environment_variables.md">this documentation</a>.
+**But how many workers does each process have?** By default this is set as the number of logical cores of your machine, but this is configurable by both environment variables and from within code. There are other options that can be used to control other aspects such as worker to core placement. For more information on this see <a href="https://github.com/EPCCed/edat/blob/master/docs/configuration.md">the configuration documentation</a>.
 
 ## Finding out more
 
