@@ -3,3 +3,12 @@ EDAT comes with Python bindings which means that users can call EDAT from their 
 
 ## Initialising EDAT via Python
 The same `edatInit` call is used to initialise EDAT and there are two possible, optional, parameters that can be supplied. Firstly a dictionary of configuration options can be provided by the user, for instance `edatInit(configuration={'EDAT_REPORT_WORKER_MAPPING':'true'})` (it is of-course fine to omit the _configuration_ naming if you stick to parameter ordering.) The second possible parameter is the location of the EDAT library (libedat.so), by default it will use your local directory as the location of the library but this can be set explicitly via the _libraryPath_ option, for instance `edatInit(libraryPath="../../../libedat.so")`
+
+```python
+from edat import *
+
+params = {'EDAT_REPORT_WORKER_MAPPING':'true'}
+edatInit(params, libraryPath="../../../libedat.so")
+print("Hello: "+str(edatGetRank()))
+edatFinalise()
+```
