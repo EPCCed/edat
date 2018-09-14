@@ -23,11 +23,16 @@ The example here illustrates the setting of a configuration options in code and 
 
 ## Environment variables
 
-A number of environment variables can be set which will provide specific configuration options to EDAT. These are all exported via the terminal e.g.
+Alternatively the user can set environment variables to provide specific configuration options to EDAT. These are all exported via the terminal e.g.
 
 ```
 export VARIABLE_NAME=VALUE
 ```
+
+Environment variables have a lower precidence than (i.e. will be overridden by) code level options.
+
+## Configuration options
+In all cases the variable name and value is idenfical whether it is provided as an environment variable or code level option. For purposes of presentation we provide usage examples with environment variables.
 
 ### EDAT_NUM_WORKERS
 
