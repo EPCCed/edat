@@ -20,3 +20,8 @@ A process can call _edatGetRank_ to retrieve its rank, the API call is `int edat
 
 # Getting the total number of processes
 A process can call _edatGetNumRanks_ to retrieve the total number of processes executing, the API call is `int edatGetNumRanks(void)`.
+
+# Other language bindings
+EDAT is natively callable from C and C++. We have developed bindings for some other languages to enable calling EDAT from a more wide range of codes.
+
+* <a href="https://github.com/EPCCed/edat/blob/master/docs/python.md">Python bindings</a> describe using EDAT in Python codes
