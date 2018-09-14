@@ -12,7 +12,7 @@
 static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  edatInit();
   if (edatGetRank() == 0) {
     edatSubmitTask(my_task, 0);
     EDAT_Event * events = edatWait(2, 1, "hello", EDAT_SELF, "fireback");

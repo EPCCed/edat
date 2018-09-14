@@ -45,7 +45,7 @@ int main(int argc, char * argv[])
 	double *ptr_to_initial=&initial_norm, *ptr_to_global=&global_norm;
 	struct timespec start, stop;
 
-	edatInit(&argc, &argv, NULL);
+	edatInit();
 
 	if (argc != 4) {
 		fprintf(stderr, "You must provide three command line arguments, the global size in X, the global size in Y and convergence accuracy\n");
