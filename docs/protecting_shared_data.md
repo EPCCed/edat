@@ -4,7 +4,7 @@ As multiple workers execute in the same memory space of a single process it is p
 # Using events as mutexes
 More of a question of style rather than specific API call, but it is possible to use events are a mutex.
 
-```
+```c
 #include <stdlib.h>
 #include "edat.h" 
 
@@ -39,7 +39,7 @@ EDAT also provides explicit locking calls where the programmer can interact with
 
 Crucially locks are at a worker level rather than task level, what we mean by this is that when a task completes all currently acquired locks by that task are automatically released regardless of whether the programmer calls _edatUnlock_ or not. Additionally if the programmer calls _edatWait_ then all acquired locks by that task are automatically released and will then be reacquired when the task is mapped to a worker for execution. The programmer should be a bit careful with this later behaviour, as it might be that a task is mapped to a worker and ready to continue execution but waits excessively to reaquire its locks due to the other running tasks holding them.
 
-```
+```c
 int my_task(EDAT_Event * events, int num_events) {
   edatLock("my_lock");
   edatLock("second_lock");
