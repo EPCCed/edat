@@ -1,4 +1,27 @@
-# Environment variables
+# Configuration
+EDAT supports the configuration of a variety of settings in order to tune the library for the user's requirements. There are two ways of configuring EDAT - either through setting environment variables or code level configuration options at EDAT initialisation. The latter, code level configuration options, has a higher precidence than environment variables.
+
+## Code level options
+
+When you initialse EDAT, instead of `edatInit`, you can instead call `edatInitWithConfiguration`. The signature of this API call is `void edatInitWithConfiguration(int, char**, char**)` where the first argument is the number of options, the second argument is a pointer to strings of option keys and the third argument is a pointer to strings of values.
+
+```c
+#include "edat.h"
+
+int main() {
+  char * k[1];  
+  char * v[1];
+  k[0]="EDAT_REPORT_WORKER_MAPPING";
+  v[0]="true";
+  edatInitWithConfiguration(1, k, v);
+  edatFinalise();
+  return 0;
+}
+```
+
+The example here illustrates the setting of a configuration options in code and this will display the mapping of workers to cores, if the programmer changes `true` to `false` and recompiles then this will be no longer reported.
+
+## Environment variables
 
 A number of environment variables can be set which will provide specific configuration options to EDAT. These are all exported via the terminal e.g.
 
