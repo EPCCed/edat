@@ -5,7 +5,7 @@ In addition to tasks being submitted with a number of dependencies and then cons
 # Waiting for events
 `EDAT_Event* edatWait(int number_of_events, <int event source, char * event identifier>)` is the API call for waiting for a number of events and the same as scheduling tasks each event a pair must be provided - the source process of the event and the event identifier (a string.) The task will not continue beyond this point until all event depenendencies have been met. If events have not yet arrived to meet these dependencies then the task will be paused and context switched from the worker, the worker then being free to execute other tasks. Once the task is reactivated with the events it will continue beyond this call and all the local state will be available to it.
 
-```
+```c
 void my_task(EDAT_Event * events, int num_events) {
   int total_num_events=num_events;
   
@@ -21,7 +21,7 @@ As with task scheduling, the events are held in the _EDAT_Event_ array in the sa
 # Non-blocking event consumption
 In addition to blocking for events to be made available, the _edatRetrieveAny_ call (`EDAT_Event* edatRetrieveAny(int * number_retrieved, int number_of_events, <int event source, char * event identifier>`) will check for the provided events and return any that are available. Crucially this call does not block, so irrespective of the number of matching dependencies available, execution will continue straight away and there is no task pausing. The `int * number_retrieved` argument returns the number of events retrieved, which may be zero.
 
-```
+```c
 void my_task(EDAT_Event * events, int num_events) {
   int num_retrieved=0;
   EDAT_Event * new_events;
