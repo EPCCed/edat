@@ -22,7 +22,7 @@ Events are send from one process to another (it can be the same process) and are
 
 This section contains an example code where process 0 submits a task to EDAT with no dependencies (_task1_) which will be mapped to a worker for immediate execution. Process 1 submits two tasks (_task2_ and _task3_), _task2_ has one dependency - namely an event with identifier _event1_ from process 0, before it is eligable for execution by a worker. The other task submitted by process 1 (_task3_) has two dependencies - an event with identifier _event2_ from process 0 and a second event with identifier _event3_ from process 1. As the tasks execute, _task1_ on process 0 will fire the event _event1_ and _event2_ (the later with some payload data) to process 1 and _task2_ on process 1 fires the event _event3_ to itself. This last event, _event3_ in combination with _event2_ from process 0 meet the dependencies of _task3_ which will make it eligable for execution.
 
-```
+```c
 #include "edat.h"
 #include <stdio.h>
 
