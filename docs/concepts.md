@@ -61,8 +61,8 @@ To compile this you will typically execute something like `gcc -o example exampl
 Four conditions must be met for your code to terminate (i.e. for the main thread to progress beyond the _edatFinalise_ call:
 * The main thread must have called _edatFinalise_
 * All workers on all processes must be idle
-* No tasks are outstanding (transitory tasks, persistent tasks do not count - see <a href="https://github.com/EPCCed/edat/blob/master/docs/tasks.md">Task scheduling</a>)
-* There are no outstanding events (transitory events, persistent events do not count - see <a href="https://github.com/EPCCed/edat/blob/master/docs/events.md">Event firing</a>)
+* No tasks are outstanding (transitory tasks, persistent tasks do not count - see <a href="https://github.com/EPCCed/edat/blob/master/docs/tasks.md">task submission</a>)
+* There are no outstanding events (transitory events, persistent events do not count - see <a href="https://github.com/EPCCed/edat/blob/master/docs/events.md">event firing</a>)
 
 ## Misc concepts
 
