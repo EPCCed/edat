@@ -31,7 +31,7 @@ void my_task(EDAT_Event*, int);
 void my_task2(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  edatInit();
   if (edatGetRank() == 0) {
     edatSubmitTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
