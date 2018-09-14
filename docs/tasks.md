@@ -34,7 +34,7 @@ All transitory tasks that have been submitted must be executed before the code c
 void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL);
+  edatInit();
   edatSubmitTask(my_task, 1, EDAT_ANY, "my_task");
   if (edatGetRank() == 0) {
     int d=33;
