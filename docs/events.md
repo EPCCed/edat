@@ -8,7 +8,8 @@ A number of data types are predefined by EDAT
 
 EDAT type | Description
 --------- | -----------
-EDAT_NOTYPE | No type, often used when no payload data is sent
+EDAT_NOTYPE | No type, often used when no payload data is sent (same as EDAT_NONE)
+EDAT_NONE | No type, often used when no payload data is sent (same as EDAT_NOTYPE)
 EDAT_INT | Sending of integer value(s)
 EDAT_LONG  | Sending of long integer value(s)
 EDAT_FLOAT | Sending of single precision floating point value(s)
