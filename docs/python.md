@@ -12,3 +12,23 @@ edatInit(params, libraryPath="../../../libedat.so")
 print("Hello: "+str(edatGetRank()))
 edatFinalise()
 ```
+## Accessing event data
+When a task executes and you want to interact with the input events, the metadata can be accessed as usual. For the data itself you can access it directly via the _data_ member but we suggest the _get_data_ method which will package the data up into the appropriate type and return this seamlessly, cutting down on the boilerplate required in your code.
+
+```python
+from edat import *
+
+def my_task(events, num_events):
+  print(events[0].get_data())
+
+edatInit(libraryPath="../../../libedat.so")
+if edatGetRank() == 0:
+  edatSubmitTask(my_task, 2, 1, "test", 1, "hello")
+else:
+  data=22
+  edatFireEvent(data, EDAT_INT, 1, 0, "test")
+  edatFireEvent(None, EDAT_NOTYPE, 0, 0, "hello")
+edatFinalise()
+```
+
+In this example the task running on a worker of process 0 will display the data associated with the input event. This task is fired twice, firstly with some integer data and secondly without any payload data. Hence in the first case the integer _22_ will be displayed and the second instane of the task displays _None_.
