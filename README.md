@@ -69,4 +69,4 @@ In this example process 0 will then fire an event with EID *my_task2* but no pay
 
 ## Finding out more
 
-We have documentation in the docs directory. As I say this code is of a research nature so there are some aspects of the API which will be less frequently used but these are included for specific experiments or with certain applications in mind. 
+We have documentation in the <a href="https://github.com/EPCCed/edat/tree/master/docs">docs folder</a> and there are also bindings for Python and Fortran. This code is of a research nature so there are some aspects of the API which will be less frequently used but these are included for specific experiments or with certain applications in mind. 
