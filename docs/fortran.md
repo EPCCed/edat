@@ -32,6 +32,8 @@ float_data | real(kind=4), pointer, dimension(:)
 double_data | real(kind=8), pointer, dimension(:)
 long_data | integer(kind=8), pointer, dimension(:)
 
+__Note:__ You must declare your EDAT task subrouties as recursive or compile the code with recursive subroutines enabled. This is so that Fortran uses distinct stack spaces for each invocation (as different instances of the same task may be running concurrently) rather than just using a single stack space which is often the default behaviour.
+
 ```f90
 program test_edat
   use edat
@@ -58,3 +60,19 @@ contains
   end subroutine myTask
 end program
 ```
+A full EDAT Fortran program is illustrated above. The task will display the integer payload data (in this case the value _12_ and _F_ indicating that the _float_data_ pointer member is not associated.) 
+
+## Configuring EDAT in code
+It is also possible to provide configuration options to EDAT from Fortran code when initialising it, this is done via the _edatInitWithConfiguration()_ API call.
+
+```f90
+character (len=65), Allocatable :: keys(:), values(:)
+
+allocate(keys(1), values(1))
+keys(1)="EDAT_REPORT_WORKER_MAPPING"
+values(1)="true"
+
+call edatInitWithConfiguration(1, keys, values)
+deallocate(keys, values)
+```
+This is illustrated in the code snippet above, where key and value character arrays are allocated and the options passed to EDAT on initialisation.
