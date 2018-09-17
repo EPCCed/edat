@@ -25,3 +25,4 @@ A process can call _edatGetNumRanks_ to retrieve the total number of processes e
 EDAT is natively callable from C and C++. We have developed bindings for some other languages to enable calling EDAT from a more wide range of codes.
 
 * <a href="https://github.com/EPCCed/edat/blob/master/docs/python.md">Python bindings</a> describes using EDAT in Python codes
+* <a href="https://github.com/EPCCed/edat/blob/master/docs/fortran.md">Fortran bindings</a> describes using EDAT in Fortran codes
