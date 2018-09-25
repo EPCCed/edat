@@ -12,15 +12,15 @@ static void task2(EDAT_Event*, int);
 
 int id;
 
-int main(int argc, char * argv[]) {
+int main() {
   const task_ptr_t task_array[2] = {my_task, task2};
   int print_id = 0;
-  edatInit(&argc, &argv, NULL, task_array, 2);
+  edatInit(task_array, 2);
   if (edatGetRank() == 0) {
     print_id = 1;
 	  id =0;
-    edatSchedulePersistentTask(my_task, 8, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
-	  edatSchedulePersistentTask(task2, 1, EDAT_SELF, "fire");
+    edatSubmitPersistentTask(my_task, 8, EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt", EDAT_SELF, "evt");
+	  edatSubmitPersistentTask(task2, 1, EDAT_SELF, "fire");
 
 	  for (int i=0;i<8;i++) {
 		  edatFireEvent(&i, EDAT_INT, 1,  EDAT_SELF, "fire");

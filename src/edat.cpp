@@ -11,6 +11,7 @@
 #include "messaging.h"
 #include "mpi_p2p_messaging.h"
 #include "contextmanager.h"
+#include "concurrency_ctrl.h"
 #include "metrics.h"
 #include "resilience.h"
 
@@ -23,21 +24,37 @@ static Scheduler * scheduler;
 static Messaging * messaging;
 static ContextManager * contextManager;
 static Configuration * configuration;
+static ConcurrencyControl * concurrencyControl;
 
 static bool edatActive;
 
-static void scheduleProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, va_list);
+static void submitProvidedTask(void (*)(EDAT_Event*, int), std::string, bool, int, bool, va_list);
 static std::vector<std::pair<int, std::string>> generateDependencyVector(int, va_list);
+static void doInitialisation(Configuration*, bool, int, const task_ptr_t * const, const int);
 
-int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, const task_ptr_t * const task_array, const int number_of_tasks) {
-  configuration=new Configuration(edat_config);
+void edatInit(const task_ptr_t * const task_array, const int number_of_tasks) {
+  configuration=new Configuration();
+  doInitialisation(configuration, false, 0, task_array, number_of_tasks);
+}
+
+void edatInitWithConfiguration(int numberEntries, char ** keys, char ** values, const task_ptr_t * const task_array, const int number_of_tasks) {
+  configuration=new Configuration(numberEntries, keys, values);
+  doInitialisation(configuration, false, 0, task_array, number_of_tasks);
+}
+
+static void doInitialisation(Configuration * configuration, bool comm_present, int communicator, const task_ptr_t * const task_array, const int number_of_tasks) {
   threadPool=new ThreadPool(*configuration);
+  concurrencyControl=new ConcurrencyControl(threadPool);
   contextManager=new ContextManager(*configuration);
-  scheduler=new Scheduler(*threadPool, *configuration);
+  scheduler=new Scheduler(*threadPool, *configuration, *concurrencyControl);
   #if DO_METRICS
     metrics::METRICS = new EDAT_Metrics(*configuration);
   #endif
-  messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
+  if (comm_present) {
+    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration, communicator);
+  } else {
+    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
+  }
   threadPool->setMessaging(messaging);
   int resilienceLevel = configuration->get("EDAT_RESILIENCE", 0);
   if (resilienceLevel) {
@@ -49,10 +66,14 @@ int edatInit(int* argc, char*** argv, edat_struct_configuration* edat_config, co
   #if DO_METRICS
     metrics::METRICS->edatTimerStart();
   #endif
-  return 0;
 }
 
-int edatFinalise(void) {
+void edatInitialiseWithCommunicator(int communicator, const task_ptr_t * const task_array, const int number_of_tasks) {
+  configuration=new Configuration();
+  doInitialisation(configuration, true, communicator, task_array, number_of_tasks);
+}
+
+void edatFinalise(void) {
   if (edatActive) {
     // Puts the thread to sleep and will wake it up when there are no more events and tasks.
     std::mutex * m = new std::mutex();
@@ -72,10 +93,9 @@ int edatFinalise(void) {
     metrics::METRICS->finalise();
   #endif
   edatActive=false;
-  return 0;
 }
 
-int edatPauseMainThread(void) {
+void edatPauseMainThread(void) {
 #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("PauseMainThread");
 #endif
@@ -94,14 +114,12 @@ int edatPauseMainThread(void) {
   cv->wait(lk, [completed]{return *completed;});
 
   edatActive=false;
-  return 0;
 }
 
-int edatRestart() {
+void edatRestart() {
   messaging->resetPolling();
   threadPool->resetPolling();
   edatActive=true;
-  return 0;
 }
 
 int edatGetRank(void) {
@@ -124,59 +142,107 @@ int edatGetNumActiveWorkers(void) {
   return threadPool->getNumberActiveWorkers();
 }
 
-int edatSchedulePersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+void edatSubmitPersistentTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    unsigned long int timer_key = metrics::METRICS->timerStart("SchedulePersistentTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("SubmitPersistentTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, "", true, num_dependencies, valist);
+  submitProvidedTask(task_fn, "", true, num_dependencies, false, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("SchedulePersistentTask", timer_key);
+    metrics::METRICS->timerStop("SubmitPersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatSchedulePersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
-  va_list valist;
-  va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, std::string(task_name), true, num_dependencies, valist);
-  va_end(valist);
-  return 0;
-}
-
-int edatScheduleTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+void edatSubmitPersistentGreedyTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
   #if DO_METRICS
-    unsigned long int timer_key = metrics::METRICS->timerStart("ScheduleTask");
+    unsigned long int timer_key = metrics::METRICS->timerStart("SubmitPersistentTask");
   #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, "", false, num_dependencies, valist);
+  submitProvidedTask(task_fn, "", true, num_dependencies, true, valist);
   va_end(valist);
   #if DO_METRICS
-    metrics::METRICS->timerStop("ScheduleTask", timer_key);
+    metrics::METRICS->timerStop("SubmitPersistentTask", timer_key);
   #endif
-  return 0;
 }
 
-int edatScheduleNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+void edatSubmitPersistentNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SubmitPersistentTask");
+  #endif
   va_list valist;
   va_start(valist, num_dependencies);
-  scheduleProvidedTask(task_fn, std::string(task_name), false, num_dependencies, valist);
+  submitProvidedTask(task_fn, std::string(task_name), true, num_dependencies, false, valist);
   va_end(valist);
-  return 0;
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SubmitPersistentTask", timer_key);
+  #endif
 }
 
-int edatDescheduleTask(const char * task_name) {
-  return scheduler->descheduleTask(std::string(task_name)) ? 1 : 0;
+void edatSubmitPersistentNamedGreedyTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SubmitPersistentTask");
+  #endif
+  va_list valist;
+  va_start(valist, num_dependencies);
+  submitProvidedTask(task_fn, std::string(task_name), true, num_dependencies, true, valist);
+  va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SubmitPersistentTask", timer_key);
+  #endif
 }
 
-int edatIsTaskScheduled(const char * task_name) {
-  return scheduler->isTaskScheduled(std::string(task_name)) ? 1 : 0;
+void edatSubmitTask(void (*task_fn)(EDAT_Event*, int), int num_dependencies, ...) {
+  #if DO_METRICS
+    unsigned long int timer_key = metrics::METRICS->timerStart("SubmitTask");
+  #endif
+  va_list valist;
+  va_start(valist, num_dependencies);
+  submitProvidedTask(task_fn, "", false, num_dependencies, false, valist);
+  va_end(valist);
+  #if DO_METRICS
+    metrics::METRICS->timerStop("SubmitTask", timer_key);
+  #endif
 }
 
-int edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+void edatSubmitNamedTask(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, ...) {
+  va_list valist;
+  va_start(valist, num_dependencies);
+  submitProvidedTask(task_fn, std::string(task_name), false, num_dependencies, false, valist);
+  va_end(valist);
+}
+
+void edatSubmitTask_f(void (*task_fn)(EDAT_Event*, int), const char * task_name, int num_dependencies, int ** ranks, char ** event_ids,
+                        bool persistent, bool greedyConsumer) {
+  std::vector<std::pair<int, std::string>> dependencies;
+  int my_rank=messaging->getRank();
+
+  for (int i=0; i<num_dependencies; i++) {
+    int src=(*ranks)[i];
+    if (src == EDAT_SELF) src=my_rank;
+    char * event_id=event_ids[i];
+    if (src == EDAT_ALL) {
+      for (int j=0;j<messaging->getNumRanks();j++) {
+        dependencies.push_back(std::pair<int, std::string>(j, std::string(event_id)));
+      }
+    } else {
+      dependencies.push_back(std::pair<int, std::string>(src, std::string(event_id)));
+    }
+  }
+  scheduler->registerTask(task_fn, task_name == NULL ? "" : task_name, dependencies, persistent, greedyConsumer);
+}
+
+int edatRemoveTask(const char * task_name) {
+  return scheduler->removeTask(std::string(task_name)) ? 1 : 0;
+}
+
+int edatIsTaskSubmitted(const char * task_name) {
+  return scheduler->edatIsTaskSubmitted(std::string(task_name)) ? 1 : 0;
+}
+
+void edatFireEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("FireEvent");
   #endif
@@ -189,10 +255,9 @@ int edatFireEvent(void* data, int data_type, int data_count, int target, const c
   #if DO_METRICS
     metrics::METRICS->timerStop("FireEvent", timer_key);
   #endif
-  return 0;
 }
 
-int edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
+void edatFirePersistentEvent(void* data, int data_type, int data_count, int target, const char * event_id) {
   #if DO_METRICS
     unsigned long int timer_key = metrics::METRICS->timerStart("FirePersistentEvent");
   #endif
@@ -201,14 +266,6 @@ int edatFirePersistentEvent(void* data, int data_type, int data_count, int targe
   #if DO_METRICS
     metrics::METRICS->timerStop("FirePersistentEvent", timer_key);
   #endif
-  return 0;
-}
-
-int edatFireEventWithReflux(void* data, int data_type, int data_count, int target, const char * event_id,
-                            void (*reflux_task_fn)(EDAT_Event*, int)) {
-  if (target == EDAT_SELF) target=messaging->getRank();
-  messaging->fireEvent(data, data_count, data_type, target, false, event_id, reflux_task_fn);
-  return 0;
 }
 
 /**
@@ -254,6 +311,27 @@ EDAT_Event* edatRetrieveAny(int* retrievedNumber, int num_dependencies, ...) {
   return foundEvents.second;
 }
 
+void edatLock(char* lockName) {
+  concurrencyControl->lock(std::string(lockName));
+}
+
+void edatUnlock(char* lockName) {
+  concurrencyControl->unlock(std::string(lockName));
+}
+
+int edatTestLock(char* lockName) {
+  if (concurrencyControl->test_lock(std::string(lockName))) return 1;
+  return 0;
+}
+
+void edatLockComms(void) {
+  messaging->lockComms();
+}
+
+void edatUnlockComms(void) {
+   messaging->unlockComms();
+}
+
 /**
 * Testing function, initiates simulated failure of a task
 */
@@ -296,8 +374,8 @@ void edatSyntheticFailure(const int level) {
 * Will schedule a specific task, this is common functionality for all the different call permutations in the API. It will extract out the dependencies
 * and package these up before calling into the scheduler
 */
-static void scheduleProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, bool persistent, int num_dependencies, va_list valist) {
-  scheduler->registerTask(task_fn, task_name, generateDependencyVector(num_dependencies, valist), persistent);
+static void submitProvidedTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, bool persistent, int num_dependencies, bool greedyConsumer, va_list valist) {
+  scheduler->registerTask(task_fn, task_name, generateDependencyVector(num_dependencies, valist), persistent, greedyConsumer);
 }
 
 /**

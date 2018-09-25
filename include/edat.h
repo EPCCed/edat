@@ -32,31 +32,30 @@ struct edat_struct_event {
   EDAT_Metadata metadata;
 };
 
-struct edat_struct_configuration {
-  char **key, **value;
-  int num_entries;
-};
-
 typedef struct edat_struct_event EDAT_Event;
-
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
-int edatInit(int *, char ***, struct edat_struct_configuration*, const task_ptr_t * const, const int);
-int edatFinalise(void);
+void edatInit(const task_ptr_t * const, const int);
+void edatInitWithConfiguration(int, char **, char **);
+void edatFinalise(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
-int edatScheduleTask(void (*)(EDAT_Event*, int), int, ...);
-int edatScheduleNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
-int edatSchedulePersistentTask(void (*)(EDAT_Event*, int), int, ...);
-int edatSchedulePersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
-int edatIsTaskScheduled(const char*);
-int edatDescheduleTask(const char*);
-int edatFireEvent(void*, int, int, int, const char *);
-int edatFirePersistentEvent(void*, int, int, int, const char *);
-int edatFireEventWithReflux(void*, int, int, int, const char *, void (*)(EDAT_Event*, int));
+void edatSubmitTask(void (*)(EDAT_Event*, int), int, ...);
+void edatSubmitNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+void edatSubmitPersistentTask(void (*)(EDAT_Event*, int), int, ...);
+void edatSubmitPersistentGreedyTask(void (*)(EDAT_Event*, int), int, ...);
+void edatSubmitPersistentNamedTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+void edatSubmitPersistentNamedGreedyTask(void (*)(EDAT_Event*, int), const char*, int, ...);
+int edatIsTaskSubmitted(const char*);
+int edatRemoveTask(const char*);
+void edatFireEvent(void*, int, int, int, const char *);
+void edatFirePersistentEvent(void*, int, int, int, const char *);
 int edatFindEvent(EDAT_Event*, int, int, const char*);
 int edatDefineContext(size_t);
 void* edatCreateContext(int);
+void edatLock(char*);
+void edatUnlock(char*);
+int edatTestLock(char*);
 EDAT_Event* edatWait(int, ...);
 void edatSyntheticFailure(const int);
 EDAT_Event* edatRetrieveAny(int*, int, ...);

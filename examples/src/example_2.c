@@ -1,6 +1,6 @@
 /*
-* A simple example where all ranks schedule a task that will be eligable for execution when they receive an event from any rank with the identifier "my_task". Then rank 0
-* fires an event with a single integer payload data to all ranks which will cause the scheduled task on each rank to be eligable for running and mapped to
+* A simple example where all ranks submit a task that will be eligable for execution when they receive an event from any rank with the identifier "my_task". Then rank 0
+* fires an event with a single integer payload data to all ranks which will cause the outstanding task on each rank to be eligable for running and mapped to
 * a worker for execution.
 */
 
@@ -9,10 +9,10 @@
 
 static void my_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
+int main() {
   const task_ptr_t task_array[1] = {my_task};
-  edatInit(&argc, &argv, NULL, task_array, 1);
-  edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
+  edatInit(task_array, 1);
+  edatSubmitTask(my_task, 1, EDAT_ANY, "my_task");
   if (edatGetRank() == 0) {
     int d=33;
     edatFireEvent(&d, EDAT_INT, 1, EDAT_ALL, "my_task");

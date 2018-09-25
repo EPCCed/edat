@@ -10,11 +10,17 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+
 int edatGetNumWorkers(void);
 int edatGetWorker(void);
 int edatGetNumActiveWorkers(void);
-int edatRestart(void);
-int edatPauseMainThread(void);
+void edatRestart(void);
+void edatPauseMainThread(void);
+void edatSubmitTask_f(void (*)(EDAT_Event*, int), const char*, int, int**, char**, bool, bool);
+void edatLockComms(void);
+void edatUnlockComms(void);
+void edatInitialiseWithCommunicator(int);
 
 #ifdef __cplusplus
 }

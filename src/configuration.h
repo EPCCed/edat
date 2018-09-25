@@ -14,6 +14,7 @@ public:
   bool get(const char*, bool);
   unsigned int get(const char*, unsigned int);
   int get(const char*, int);
+  double get(const char*, double);
 
   /**
   * Retrieves the value in a provided map if the configuration item with the provided key (case-insensitive) is found, if so
@@ -30,8 +31,8 @@ public:
     }
     return defaultValue;
   }
-
-  Configuration(edat_struct_configuration*);
+  Configuration() : Configuration(0, NULL, NULL) { }
+  Configuration(int, char**, char**);
 };
 
 #endif

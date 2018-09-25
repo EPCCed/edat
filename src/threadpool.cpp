@@ -148,6 +148,7 @@ void ThreadPool::pauseThread(PausedTaskDescriptor * pausedTaskDescriptor, std::u
       // If there are no idle threads then create a new one to be the new active thread
       workers[threadIndex].activeThread=new ThreadPackage();
       workers[threadIndex].activeThread->attachThread(new std::thread(&ThreadPool::threadEntryProcedure, this, threadIndex), workers[threadIndex].core_id);
+      workers[threadIndex].activeThread->resume();
     } else {
       // If there is an idle thread then we are going to reactivate it
       ThreadPackage * reactivated=workers[threadIndex].idleThreads.front();
@@ -241,10 +242,23 @@ int ThreadPool::findIndexFromThreadId(std::thread::id threadIDToFind) {
 }
 
 /**
+* Locks the mutex for testing for finalisation (whether there are no busy workers)
+*/
+void ThreadPool::lockMutexForFinalisationTest() {
+  thread_start_mutex.lock();
+}
+
+/**
+* Unlocks the mutex for testing for finalisation
+*/
+void ThreadPool::unlockMutexForFinalisationTest() {
+  thread_start_mutex.unlock();
+}
+
+/**
 * Determines whether the thread pool is finished (idle) or not
 */
 bool ThreadPool::isThreadPoolFinished() {
-  std::unique_lock<std::mutex> thread_start_lock(thread_start_mutex);
   int i;
   for (i = 0; i < number_of_workers; i++) {
     if (threadBusy[i]) {
@@ -410,6 +424,7 @@ void ThreadPool::threadEntryProcedure(int myThreadId) {
       if (!workers[myThreadId].synthFail) delete myThreadPackage;
       return;
     }
+
     if (workers[myThreadId].threadCommand.getCallFunction() != NULL) {
       #if DO_METRICS
         unsigned long int timer_key = metrics::METRICS->timerStart("Task");

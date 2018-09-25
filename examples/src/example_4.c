@@ -9,12 +9,12 @@
 
 static void my_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
+int main() {
   const task_ptr_t task_array[1] = {my_task};
-  edatInit(&argc, &argv, NULL, task_array, 1);
+  edatInit(task_array, 1);
   int myval=(edatGetRank() + 100)* 10;
   if (edatGetRank() == 0) {
-    edatScheduleTask(my_task, 2, 0, "a", 1, "b");
+    edatSubmitTask(my_task, 2, 0, "a", 1, "b");
     edatFireEvent(&myval, EDAT_INT, 1, 0, "a");
   } else if (edatGetRank() == 1) {
     edatFireEvent(&myval, EDAT_INT, 1, 0, "b");

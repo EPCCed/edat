@@ -4,6 +4,7 @@
 #include "edat.h"
 #include "threadpool.h"
 #include "configuration.h"
+#include "concurrency_ctrl.h"
 #include "misc.h"
 #include <map>
 #include <string>
@@ -158,7 +159,15 @@ public:
     return s_cmp < 0;
   }
 
-  void display() const {
+  bool operator==(const DependencyKey& k) const {
+    if (this->s.compare(k.s) == 0) {
+      if (this->i == EDAT_ANY || k.i == EDAT_ANY) return true;
+      return this->i == k.i;
+    }
+    return false;
+  }
+
+  void display() {
     printf("Key: %s from %d\n", s.c_str(), i);
   }
 
@@ -200,6 +209,7 @@ struct TaskDescriptor {
   TaskDescriptor() { generateTaskID(); }
   void generateTaskID(void);
   static void resetTaskID(taskID_t);
+  bool greedyConsumerOfEvents=false;
   virtual TaskDescriptorType getDescriptorType() = 0;
   virtual ~TaskDescriptor() = default;
 };
@@ -233,6 +243,15 @@ struct PausedTaskDescriptor : TaskDescriptor {
   virtual TaskDescriptorType getDescriptorType() {return PAUSED;}
 };
 
+// This TaskExecutionContext is provided to the bootstrapper method, that is static (called from the thread)
+// and hence we can pop in here more context to use before and after task execution.
+struct TaskExecutionContext {
+  PendingTaskDescriptor * taskDescriptor;
+  ConcurrencyControl * concurrencyControl;
+public:
+  TaskExecutionContext(PendingTaskDescriptor * td, ConcurrencyControl * cc) : taskDescriptor(td), concurrencyControl(cc) { }
+};
+
 class Scheduler {
     int outstandingEventsToHandle; // This tracks the non-persistent events for termination checking
     int resilienceLevel;
@@ -241,6 +260,7 @@ class Scheduler {
     std::map<DependencyKey, std::queue<SpecificEvent*>> outstandingEvents;
     ThreadPool & threadPool;
     Configuration & configuration;
+    ConcurrencyControl & concurrencyControl;
     std::mutex taskAndEvent_mutex;
     static void threadBootstrapperFunction(void*);
     std::pair<TaskDescriptor*, int> findTaskMatchingEventAndUpdate(SpecificEvent*);
@@ -251,19 +271,23 @@ class Scheduler {
     static void generateEventPayload(SpecificEvent*, EDAT_Event*);
     void updateMatchingEventInTaskDescriptor(TaskDescriptor*, DependencyKey, std::map<DependencyKey, int*>::iterator, SpecificEvent*);
 public:
-    Scheduler(ThreadPool & tp, Configuration & aconfig) : threadPool(tp), configuration(aconfig) {
-      outstandingEventsToHandle = 0;
-      resilienceLevel = aconfig.get("EDAT_RESILIENCE", 0);
-    }
-    void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool);
-    void registerTask(PendingTaskDescriptor*);
+    Scheduler(ThreadPool & tp, Configuration & aconfig, ConcurrencyControl & cc) : threadPool(tp), configuration(aconfig),
+      concurrencyControl(cc) {
+        outstandingEventsToHandle = 0;
+        resilienceLevel = aconfig.get("EDAT_RESILIENCE", 0);
+      }
+    void registerTask(void (*)(EDAT_Event*, int), std::string, std::vector<std::pair<int, std::string>>, bool, bool);
+    void registerTask(PendingTaskDescriptor *);
     EDAT_Event* pauseTask(std::vector<std::pair<int, std::string>>);
     void registerEvent(SpecificEvent*);
+    void registerEvents(std::vector<SpecificEvent*>);
     void registerEvent(std::pair<DependencyKey,std::queue<SpecificEvent*>>);
     bool isFinished();
+    void lockMutexForFinalisationTest();
+    void unlockMutexForFinalisationTest();
     void readyToRunTask(PendingTaskDescriptor*);
-    bool isTaskScheduled(std::string);
-    bool descheduleTask(std::string);
+    bool edatIsTaskSubmitted(std::string);
+    bool removeTask(std::string);
     std::pair<int, EDAT_Event*> retrieveAnyMatchingEvents(std::vector<std::pair<int, std::string>>);
     void reset();
 };

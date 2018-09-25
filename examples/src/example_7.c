@@ -14,16 +14,16 @@
 static void accumulation_task(EDAT_Event*, int);
 static void report_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
+int main() {
   const task_ptr_t task_array[2] = {accumulation_task, report_task};
-  edatInit(&argc, &argv, NULL, task_array, 2);
+  edatInit(task_array, 2);
   double * data = (double*) malloc(sizeof(double) * 200);
   int i;
   for (i=0;i<200;i++) data[i]=0;
 #if APPROACH == 1
-  edatSchedulePersistentTask(accumulation_task, 2, EDAT_SELF, "local_data", EDAT_SELF, "num_fired");
+  edatSubmitPersistentTask(accumulation_task, 2, EDAT_SELF, "local_data", EDAT_SELF, "num_fired");
 #elif APPROACH == 2
-  edatSchedulePersistentNamedTask(accumulation_task, "adder", 2, EDAT_SELF, "local_data", EDAT_SELF, "num_fired");
+  edatSubmitPersistentNamedTask(accumulation_task, "adder", 2, EDAT_SELF, "local_data", EDAT_SELF, "num_fired");
 #endif
   edatFireEvent(&data, EDAT_ADDRESS, 1, EDAT_SELF, "local_data");
   int num_fired=0;
@@ -47,11 +47,11 @@ static void accumulation_task(EDAT_Event * events, int num_events) {
     edatFireEvent(events[data_index].data, EDAT_ADDRESS, 1, EDAT_SELF, "local_data");
   } else {
 #if APPROACH == 1
-    edatScheduleTask(report_task, 2, EDAT_SELF, "local_data_2", EDAT_SELF, "report_data");
+    edatSubmitTask(report_task, 2, EDAT_SELF, "local_data_2", EDAT_SELF, "report_data");
     edatFireEvent(events[data_index].data, EDAT_ADDRESS, 1, EDAT_SELF, "local_data_2");
 #elif APPROACH == 2
-    edatDescheduleTask("adder");
-    edatScheduleTask(report_task, 2, EDAT_SELF, "local_data", EDAT_SELF, "report_data");
+    edatRemoveTask("adder");
+    edatSubmitTask(report_task, 2, EDAT_SELF, "local_data", EDAT_SELF, "report_data");
     edatFireEvent(events[data_index].data, EDAT_ADDRESS, 1, EDAT_SELF, "local_data");
 #endif
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "report_data");

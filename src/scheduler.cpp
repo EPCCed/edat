@@ -516,7 +516,8 @@ PendingTaskDescriptor* ActiveTaskDescriptor::generatePendingTask() {
 * it will store the task in a scheduled state. Persistent tasks are duplicated if they are executed and the duplicate run to separate it from
 * the stored version which will be updated by other events arriving.
 */
-void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, std::vector<std::pair<int, std::string>> dependencies, bool persistent) {
+void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task_name, std::vector<std::pair<int, std::string>> dependencies,
+                             bool persistent, bool greedyConsumerOfEvents) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   PendingTaskDescriptor * pendingTask=new PendingTaskDescriptor();
   pendingTask->task_fn=task_fn;
@@ -524,6 +525,8 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
   pendingTask->freeData=true;
   pendingTask->persistent=persistent;
   pendingTask->task_name=task_name;
+  pendingTask->greedyConsumerOfEvents=greedyConsumerOfEvents;
+
   for (std::pair<int, std::string> dependency : dependencies) {
     DependencyKey depKey = DependencyKey(dependency.second, dependency.first);
     pendingTask->taskDependencyOrder.push_back(depKey);
@@ -533,35 +536,43 @@ void Scheduler::registerTask(void (*task_fn)(EDAT_Event*, int), std::string task
     } else {
       pendingTask->originalDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
     }
-    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
-    if (it != outstandingEvents.end() && !it->second.empty()) {
-      pendingTask->numArrivedEvents++;
-      SpecificEvent * specificEVTToAdd;
-      if (it->second.front()->isPersistent()) {
-        // If its persistent event then copy the event
-        specificEVTToAdd=new SpecificEvent(*(it->second.front()));
-      } else {
-        specificEVTToAdd=it->second.front();
-        // If not persistent then remove from outstanding events
-        outstandingEventsToHandle--;
-        it->second.pop();
-        if (it->second.empty()) outstandingEvents.erase(it);
-      }
+    bool continueEvtSearch=true, prev_added=false;
+    while (continueEvtSearch) {
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator it=outstandingEvents.find(depKey);
+      if (it != outstandingEvents.end() && !it->second.empty()) {
+        prev_added=true;
+        pendingTask->numArrivedEvents++;
+        SpecificEvent * specificEVTToAdd;
+        if (it->second.front()->isPersistent()) {
+          // If its persistent event then copy the event
+          specificEVTToAdd=new SpecificEvent(*(it->second.front()));
+        } else {
+          specificEVTToAdd=it->second.front();
+          // If not persistent then remove from outstanding events
+          outstandingEventsToHandle--;
+          it->second.pop();
+          if (it->second.empty()) outstandingEvents.erase(it);
+        }
 
-      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(depKey);
-      if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
-        std::queue<SpecificEvent*> eventQueue;
-        eventQueue.push(specificEVTToAdd);
-        pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depKey, eventQueue));
+        std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(depKey);
+        if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+          std::queue<SpecificEvent*> eventQueue;
+          eventQueue.push(specificEVTToAdd);
+          pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(depKey, eventQueue));
+        } else {
+          arrivedEventsIT->second.push(specificEVTToAdd);
+        }
+        continueEvtSearch=greedyConsumerOfEvents;
       } else {
-        arrivedEventsIT->second.push(specificEVTToAdd);
-      }
-    } else {
-      oDit=pendingTask->outstandingDependencies.find(depKey);
-      if (oDit != pendingTask->outstandingDependencies.end()) {
-        (*(oDit->second))++;
-      } else {
-        pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+        continueEvtSearch=false;
+        if (!prev_added) {
+          oDit=pendingTask->outstandingDependencies.find(depKey);
+          if (oDit != pendingTask->outstandingDependencies.end()) {
+            (*(oDit->second))++;
+          } else {
+            pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(depKey, new int(1)));
+          }
+        }
       }
     }
   }
@@ -646,7 +657,10 @@ EDAT_Event* Scheduler::pauseTask(std::vector<std::pair<int, std::string>> depend
     return generateEventsPayload(pausedTask, NULL);
   } else {
     pausedTasks.push_back(pausedTask);
+    // Now release any locks and keep track of the name of these
+    std::vector<std::string> releasedLocks=concurrencyControl.releaseCurrentWorkerLocks();
     threadPool.pauseThread(pausedTask, &outstandTaskEvt_lock);
+    concurrencyControl.aquireLocks(releasedLocks);  // Reacquire these locks before control goes back into user code
     return generateEventsPayload(pausedTask, NULL);
   }
 }
@@ -709,9 +723,9 @@ void Scheduler::consumeEventsByPersistentTasks() {
 }
 
 /**
-* Deschedules a task (removes it from the task list) based upon its name
+* Removes a task (removes it from the task list) based upon its name
 */
-bool Scheduler::descheduleTask(std::string taskName) {
+bool Scheduler::removeTask(std::string taskName) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
   if (task_iterator != registeredTasks.end()) {
@@ -723,9 +737,9 @@ bool Scheduler::descheduleTask(std::string taskName) {
 }
 
 /**
-* Determines whether a task is scheduled or not (based upon its name)
+* Determines whether a task is submitted or not (based upon its name)
 */
-bool Scheduler::isTaskScheduled(std::string taskName) {
+bool Scheduler::edatIsTaskSubmitted(std::string taskName) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
   std::vector<PendingTaskDescriptor*>::iterator task_iterator=locatePendingTaskFromName(taskName);
   return task_iterator != registeredTasks.end();
@@ -803,8 +817,85 @@ bool Scheduler::checkProgressPersistentTasks() {
 }
 
 /**
+* This method supports the registering of multiple events and will attempt to match these up to one or more tasks which greedily consume events
+* and then fire off any applicable tasks when the dependencies have been met.
+*/
+void Scheduler::registerEvents(std::vector<SpecificEvent*> events) {
+  std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
+  std::vector<DependencyKey> dependencies_to_remove;
+  std::map<DependencyKey, int*>::iterator it;
+  std::vector<PendingTaskDescriptor *> tasksToRun;
+  std::vector<int> events_to_remove, pendingTasksToRemove;
+  int i=0, j=0;
+  for (PendingTaskDescriptor * pendingTask : registeredTasks) {
+    if (pendingTask->greedyConsumerOfEvents) {
+      for (std::pair<DependencyKey, int*> dependency : pendingTask->outstandingDependencies) {
+        j=0;
+        for (SpecificEvent* event : events) {
+          DependencyKey dK=DependencyKey(event->getEventId(), event->getSourcePid());
+          if (dK == dependency.first) {
+            events_to_remove.push_back(j);
+            (*(dependency.second))--;
+            pendingTask->numArrivedEvents++;
+            std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = pendingTask->arrivedEvents.find(dK);
+            if (arrivedEventsIT == pendingTask->arrivedEvents.end()) {
+              std::queue<SpecificEvent*> eventQueue;
+              eventQueue.push(event);
+              pendingTask->arrivedEvents.insert(std::pair<DependencyKey, std::queue<SpecificEvent*>>(dK, eventQueue));
+            } else {
+              arrivedEventsIT->second.push(event);
+            }
+          }
+          j++;
+        }
+        if (!events_to_remove.empty()) {
+          // Go backwards through list to avoid out of bounds iterator
+          for (std::vector<int>::iterator it = events_to_remove.end()-1;it >= events_to_remove.begin() ; it--) {
+            events.erase(events.begin() + *it);
+          }
+          events_to_remove.clear();
+        }
+        if ((*(dependency.second)) <= 0) dependencies_to_remove.push_back(dependency.first);
+      }
+      if (!dependencies_to_remove.empty()) {
+        for (DependencyKey dk : dependencies_to_remove) pendingTask->outstandingDependencies.erase(dk);
+        dependencies_to_remove.clear();
+      }
+      if (pendingTask->outstandingDependencies.empty()) {
+        PendingTaskDescriptor* exec_Task;
+        if (!pendingTask->persistent) {
+          pendingTasksToRemove.push_back(i);
+          exec_Task=pendingTask;
+        } else {
+          exec_Task=new PendingTaskDescriptor(*pendingTask);
+          for (std::pair<DependencyKey, int*> dependency : pendingTask->originalDependencies) {
+            pendingTask->outstandingDependencies.insert(std::pair<DependencyKey, int*>(dependency.first, new int(*(dependency.second))));
+          }
+          pendingTask->arrivedEvents.clear();
+          pendingTask->numArrivedEvents=0;
+        }
+        tasksToRun.push_back(exec_Task);
+      }
+    }
+    i++;
+  }
+  for (int taskToRemove : pendingTasksToRemove) {
+    registeredTasks.erase(registeredTasks.begin() + taskToRemove);
+  }
+  if (!tasksToRun.empty() || !events.empty()) {
+    outstandTaskEvt_lock.unlock();
+    for (PendingTaskDescriptor * pt : tasksToRun) {
+      readyToRunTask(pt);
+    }
+    for (SpecificEvent* event : events) {
+      registerEvent(event);
+    }
+  }
+}
+
+/**
 * Registers an event and will search through the registered and paused tasks to figure out if this can be consumed directly (which might then cause the
-* task to execute/resume) or whether it needs to be stored as there is no scheduled task that can consume it currently.
+* task to execute/resume) or whether it needs to be stored as there is no registered task that can consume it currently.
 */
 void Scheduler::registerEvent(SpecificEvent * event) {
   std::unique_lock<std::mutex> outstandTaskEvt_lock(taskAndEvent_mutex);
@@ -882,7 +973,7 @@ void Scheduler::registerEvent(std::pair<DependencyKey,std::queue<SpecificEvent*>
 /**
 * Finds a task that depends on a specific event and updates the outstanding dependencies of that task to no longer be waiting for this
 * and place this event in the arrived dependencies of that task. IT will return either the task itself (and index, as the task might be
-* runnable hence we need to remove it) or NULL and -1 if no task was found. There is a priority given to scheduled tasks and then after this
+* runnable hence we need to remove it) or NULL and -1 if no task was found. There is a priority given to registered tasks and then after this
 * tasks that are paused and waiting for dependencies to resume.
 */
 std::pair<TaskDescriptor*, int> Scheduler::findTaskMatchingEventAndUpdate(SpecificEvent * event) {
@@ -946,31 +1037,45 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  taskDescriptor->resilient = resilienceLevel;
-  threadPool.startThread(threadBootstrapperFunction, taskDescriptor, taskDescriptor->task_id);
+  threadPool.startThread(threadBootstrapperFunction, new TaskExecutionContext(taskDescriptor, &concurrencyControl));
 }
 
 EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, std::set<int> * eventsThatAreContexts) {
   EDAT_Event * events_payload = new EDAT_Event[taskContainer->numArrivedEvents];
   int i=0;
-  for (DependencyKey dependencyKey : taskContainer->taskDependencyOrder) {
-    // Pick them off this way to ensure ordering of dependencies wrt task definition
-    std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = taskContainer->arrivedEvents.find(dependencyKey);
-    if (arrivedEventsIT == taskContainer->arrivedEvents.end()) {
-      raiseError("Can not find the corresponding event dependency key when mapping the task onto a thread\n");
+  if (taskContainer->greedyConsumerOfEvents) {
+    // If this is a greedy consumer then just consume events in any order
+    for (std::pair<DependencyKey, std::queue<SpecificEvent*>> events : taskContainer->arrivedEvents) {
+      while (!events.second.empty()) {
+        SpecificEvent * event = events.second.front();
+        events.second.pop();
+        generateEventPayload(event, &events_payload[i]);
+        i++;
+      }
     }
-    if (arrivedEventsIT->second.size() <=0) {
-      raiseError("Too few events with a corresponding EID for when mapping the task onto a thread\n");
+  } else {
+    for (DependencyKey dependencyKey : taskContainer->taskDependencyOrder) {
+      // Pick them off this way to ensure ordering of dependencies wrt task definition for non-greedy consumers
+      std::map<DependencyKey, std::queue<SpecificEvent*>>::iterator arrivedEventsIT = taskContainer->arrivedEvents.find(dependencyKey);
+      if (arrivedEventsIT == taskContainer->arrivedEvents.end()) {
+        raiseError("Can not find the corresponding event dependency key when mapping the task onto a thread\n");
+      }
+      if (arrivedEventsIT->second.size() <=0) {
+        raiseError("Too few events with a corresponding EID for when mapping the task onto a thread\n");
+      }
+      SpecificEvent * specEvent=arrivedEventsIT->second.front();
+      arrivedEventsIT->second.pop();
+      generateEventPayload(specEvent, &events_payload[i]);
+      if (specEvent->isAContext() && eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
+      i++;
     }
-    SpecificEvent * specEvent=arrivedEventsIT->second.front();
-    arrivedEventsIT->second.pop();
-    generateEventPayload(specEvent, &events_payload[i]);
-    if (specEvent->isAContext() && eventsThatAreContexts != NULL) eventsThatAreContexts->emplace(i);
-    i++;
   }
   return events_payload;
 }
 
+/**
+* Generates the EDAT_Event payload (that is provided to the user function) from the specific event object passed in
+*/
 void Scheduler::generateEventPayload(SpecificEvent * specEvent, EDAT_Event * event) {
   if (specEvent->isAContext()) {
     // If its a context then de-reference the pointer to point to the memory directly and don't free the pointer (as would free the context!)
@@ -997,35 +1102,38 @@ void Scheduler::generateEventPayload(SpecificEvent * specEvent, EDAT_Event * eve
 * in tern will also be executed by this thread
 */
 void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
-  PendingTaskDescriptor * taskContainer=(PendingTaskDescriptor *) pthreadRawData;
+  TaskExecutionContext * taskContext = (TaskExecutionContext *) pthreadRawData;
+  PendingTaskDescriptor * pendingTaskDescription=taskContext->taskDescriptor;
+
   std::set<int> eventsThatAreContexts;
   const std::thread::id thread_id = std::this_thread::get_id();
-  const int resilient = taskContainer->resilient;
+  const int resilient = pendingTaskDescription->resilient;
 
   if (resilient) {
-    resilienceTaskRunning(thread_id, *taskContainer, resilient);
+    resilienceTaskRunning(thread_id, *pendingTaskDescription, resilient);
   }
 
-  EDAT_Event * events_payload = generateEventsPayload(taskContainer, &eventsThatAreContexts);
-  taskContainer->task_fn(events_payload, taskContainer->numArrivedEvents);
-  for (int j=0;j<taskContainer->numArrivedEvents;j++) {
+  EDAT_Event * events_payload = generateEventsPayload(pendingTaskDescription, &eventsThatAreContexts);
+  pendingTaskDescription->task_fn(events_payload, pendingTaskDescription->numArrivedEvents);
+  taskContext->concurrencyControl->releaseCurrentWorkerLocks(); // Release any locks held by the task
+  for (int j=0;j<pendingTaskDescription->numArrivedEvents;j++) {
     free(events_payload[j].metadata.event_id);
-    if (taskContainer->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
+    if (pendingTaskDescription->freeData && events_payload[j].data != NULL && eventsThatAreContexts.count(j) == 0) free(events_payload[j].data);
   }
 
   if (resilient) {
-    resilienceTaskCompleted(thread_id, taskContainer->task_id, resilient);
+    resilienceTaskCompleted(thread_id, pendingTaskDescription->task_id, resilient);
   }
 
   delete[] events_payload;
-  delete taskContainer;
+  delete pendingTaskDescription;
+  delete taskContext;
 }
 
 /**
 * Determines whether the scheduler is finished or not
 */
 bool Scheduler::isFinished() {
-  std::lock_guard<std::mutex> lock(taskAndEvent_mutex);
   for (PendingTaskDescriptor * pendingTask : registeredTasks) {
     if (!pendingTask->persistent) return false;
   }

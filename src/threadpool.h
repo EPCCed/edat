@@ -18,7 +18,11 @@ class ThreadPoolCommand {
   void *data;
  public:
   void setCallFunction(void (*callFunction)(void *)) { this->callFunction = callFunction; }
-  void issueFunctionCall() { this->callFunction(data); }
+  void issueFunctionCall() {
+    void (*myCall)(void *)=this->callFunction;
+    this->callFunction=NULL;
+    myCall(data);
+  }
   void (*getCallFunction())(void *) { return callFunction; }
   void setData(void *data) { this->data = data; }
   void *getData() { return this->data; }
@@ -67,7 +71,9 @@ class ThreadPool {
   void killWorker(const int);
  public:
   ThreadPool(Configuration&);
-  void startThread(void (*)(void *), void *, taskID_t);
+  void lockMutexForFinalisationTest();
+  void unlockMutexForFinalisationTest();
+  void startThread(void (*)(void *), void *);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
   void notifyMainThreadIsSleeping();

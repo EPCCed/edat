@@ -12,9 +12,9 @@
 static void my_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  edatInit(&argc, &argv, NULL, NULL, 0);
+  edatInit(NULL, 0);
   if (edatGetRank() == 0) {
-    edatScheduleTask(my_task, 0);
+    edatSubmitTask(my_task, 0);
     EDAT_Event * events = edatWait(2, 1, "hello", EDAT_SELF, "fireback");
     printf("Passed wait first size is %d and second size is %d element(s)\n", events[0].metadata.number_elements, events[1].metadata.number_elements);
     edatFireEvent(NULL, EDAT_NOTYPE, 0, EDAT_SELF, "taskwaiter");

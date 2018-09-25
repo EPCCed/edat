@@ -1,6 +1,8 @@
 CC       = mpicxx
+FTN = mpif90
 # compiling flags here
 CFLAGS   = -fPIC -Iinclude -std=c++11
+FFLAGS = -fPIC -frecursive -J include
 
 LFLAGS   =
 
@@ -21,6 +23,11 @@ debug: edat
 
 noopt: CFLAGS += -Wall
 noopt: edat
+
+fortran: build_buildDir
+	$(FTN) $(FFLAGS)  -o build/fedat.o -c include/edat.F90
+	$(CC) -shared -Wl,-soname,libfedat.so -o libfedat.so build/fedat.o
+	ar rcs libfedat.a build/fedat.o
 
 edat: build_buildDir $(OBJECTS)
 	$(CC) -shared -Wl,-soname,libedat.so -o libedat.so $(OBJECTS) $(LFLAGS)

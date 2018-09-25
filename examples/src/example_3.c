@@ -1,43 +1,40 @@
 /*
-* This example demonstrates firing events with a reflux task. A reflux task is a task that is executed locally (i.e. on the rank that fired the event) when that event
-* has been delivered to the target rank. The corresponding reflux task is then eligable for execution once the event has arrived at the target rank.
+* This example illustrates greedy persistent tasks which will consume any number of events up to a threshold. This is useful for
+* making very fine grained tasks more granular. The example also demonstrates the construction of code level configuration and feeding
+* this into EDAT. Note that exported environment variables are given higher precidence than code level configuration options.
 */
-
 #include <stdio.h>
-#include <stdlib.h>
+#include <unistd.h>
 #include "edat.h"
 
 static void my_task(EDAT_Event*, int);
-static void reflux_task(EDAT_Event*, int);
 
 int main(int argc, char * argv[]) {
-  const task_ptr_t task_array[2] = {my_task, reflux_task};
-  edatInit(&argc, &argv, NULL, task_array, 2);
+  char *keys[3], *values[3];
+
+  keys[0]="EDAT_BATCH_EVENTS";
+  values[0]="true";
+  keys[1]="EDAT_MAX_BATCHED_EVENTS";
+  values[1]="5";
+  keys[2]="EDAT_BATCHING_EVENTS_TIMEOUT";
+  values[2]="0.01";
+
+  edatInitWithConfiguration(3, keys, values);
   if (edatGetRank() == 0) {
-    int * d = (int*) malloc(sizeof(int) * 10);
-    printf("[%d] main, ptr = %p\n", edatGetRank(), d);
-    int i;
-    for (i=0;i<10;i++) {
-      d[i]=i;
-    }
-    edatFireEventWithReflux(d, EDAT_INT, 10, 1, "my_task", reflux_task);
+    usleep(1000); // Put this in to test with scheduling the tasks when the events are already there
+    edatSubmitPersistentGreedyTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {
-    edatScheduleTask(my_task, 1, EDAT_ANY, "my_task");
+    for (int i=0;i<10;i++) {
+      edatFireEvent(&i, EDAT_INT, 1, 0, "my_task");
+    }
   }
   edatFinalise();
   return 0;
 }
 
 static void my_task(EDAT_Event * events, int num_events) {
-  if (events[0].metadata.number_elements > 0 && events[0].metadata.data_type == EDAT_INT) {
-    int i;
-    for (i=0;i<events[0].metadata.number_elements;i++) {
-      printf("[%d] %d=%d\n", edatGetRank(), i, ((int *) events[0].data)[i]);
-    }
+  printf("Invoked my_task with %d events\n", num_events);
+  for (int i=0;i<num_events;i++) {
+    printf("Event %d with key %s and data %d\n", i, events[i].metadata.event_id, *((int*) events[i].data));
   }
-}
-
-static void reflux_task(EDAT_Event * events, int num_events) {
-  printf("Done\n");
-  free(events[0].data);
 }

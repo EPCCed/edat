@@ -30,16 +30,19 @@ protected:
   virtual bool performSinglePoll(int*) = 0;
   virtual void startProgressThread();
 public:
+  virtual void lockMutexForFinalisationTest() = 0;
+  virtual void unlockMutexForFinalisationTest() = 0;
   virtual void resetPolling();
   virtual void runPollForEvents() = 0;
   virtual void setEligableForTermination() = 0;
   virtual bool pollForEvents();
   virtual void finalise();
   virtual void fireEvent(void *, int, int, int, bool, const char *) = 0;
-  virtual void fireEvent(void *, int, int, int, bool, const char *, void (*)(EDAT_Event*, int)) = 0;
   virtual int getRank()=0;
   virtual int getNumRanks()=0;
   virtual bool isFinished()=0;
+  virtual void lockComms()=0;
+  virtual void unlockComms()=0;
   virtual void attachMainThread(std::condition_variable*, std::mutex*, bool*);
   virtual bool doesProgressThreadExist() { return progress_thread; }
   virtual int getTypeSize(int);

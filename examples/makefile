@@ -1,4 +1,4 @@
-CC       = mpicxx
+CC       = gcc
 # compiling flags here
 CFLAGS   =
 
@@ -19,7 +19,7 @@ all: mkexamples
 debug: CFLAGS += -g
 debug: mkexamples
 
-mkexamples: example1 example2 example3 example4 example5 example6 example7 example8 example9 example10 example11 example12 jacobi
+mkexamples: example1 example2 example3 example4 example5 example6 example7 example8 example9 example10 example11 example12 example13 jacobi
 
 example1: src/example_1.o
 	$(CC) -o example_1 src/example_1.o $(LFLAGS)
@@ -57,9 +57,12 @@ example11: src/example_11.o
 example12: src/example_12.o
 	$(CC) -o example_12 src/example_12.o $(LFLAGS)
 
+example13: src/example_13.o
+	$(CC) -o example_13 src/example_13.o $(LFLAGS)
+
 jacobi: src/jacobi.o
-	$(CC) -o jacobi src/jacobi.o $(LFLAGS)
+	$(CC) -o jacobi src/jacobi.o $(LFLAGS) -lm
 
 .PHONEY: clean
 clean:
-	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7 example_8 example_9 example_10 example_11 example_12 jacobi 
+	$(rm) src/*.o example_1 example_2 example_3 example_4 example_5 example_6 example_7 example_8 example_9 example_10 example_11 example_12 example_13 jacobi

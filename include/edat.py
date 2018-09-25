@@ -73,35 +73,34 @@ def _packageEventData(data, data_type, data_count):
 def edatInit(configuration=None, libraryPath=None):
   global _edatlib_
 
-  packaged_data=None
-  if (configuration != None):
-    packaged_data=EDAT_Configuration()
-    packaged_data.num_entries=len(configuration)
-    packaged_data.key = (c_char_p * len(configuration))()
-    packaged_data.value = (c_char_p * len(configuration))()
-
-    i=0
-    for k in configuration:
-      packaged_data.key[i]=k
-      packaged_data.value[i]=configuration[k]
-      i+=1
-
   if libraryPath==None:
     _edatlib_=cdll.LoadLibrary('libedat.so')
   else:
     _edatlib_=cdll.LoadLibrary(libraryPath)
 
   _edatlib_.edatFireEvent.argtypes = [c_void_p, c_int, c_int, c_int, c_char_p]
-  return _edatlib_.edatInit(None, None, packaged_data)
+
+  if (configuration != None):
+    keys = (c_char_p * len(configuration))()
+    values = (c_char_p * len(configuration))()
+
+    i=0
+    for k in configuration:
+      keys[i]=k
+      values[i]=configuration[k]
+      i+=1
+    _edatlib_.edatInitWithConfiguration(len(configuration), keys, values)
+  else:
+    _edatlib_.edatInit()
 
 def edatFinalise():
-  return _edatlib_.edatFinalise()
+  _edatlib_.edatFinalise()
 
 def edatRestart():
-  return _edatlib_.edatRestart()
+  _edatlib_.edatRestart()
 
 def edatPauseMainThread():
-  return _edatlib_.edatPauseMainThread()
+  _edatlib_.edatPauseMainThread()
 
 def edatGetRank():
   return _edatlib_.edatGetRank()
@@ -115,30 +114,30 @@ def edatGetNumThreads():
 def edatGetThread():
   return _edatlib_.edatGetThread()
 
-def edatScheduleTask(fn, num_events, *args):
+def edatSubmitTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return _edatlib_.edatScheduleTask(task_fn, num_events, *args)
+  _edatlib_.edatSubmitTask(task_fn, num_events, *args)
 
-def edatScheduleNamedTask(fn, task_name, num_events, *args):
+def edatSubmitNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return _edatlib_.edatScheduleNamedTask(task_fn, task_name, num_events, *args)
+  _edatlib_.edatSubmitNamedTask(task_fn, task_name, num_events, *args)
 
-def edatSchedulePersistentTask(fn, num_events, *args):
+def edatSubmitPersistentTask(fn, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return _edatlib_.edatSchedulePersistentTask(task_fn, num_events, *args)
+  _edatlib_.edatSubmitPersistentTask(task_fn, num_events, *args)
 
-def edatSchedulePersistentNamedTask(fn, task_name, num_events, *args):
+def edatSubmitPersistentNamedTask(fn, task_name, num_events, *args):
   task_fn=TASKFUNCTION(fn)
-  return _edatlib_.edatSchedulePersistentTask(task_fn, task_name, num_events, *args)
+  _edatlib_.edatSubmitPersistentTask(task_fn, task_name, num_events, *args)
 
-def edatIsTaskScheduled(task_name):
-  return _edatlib_.edatIsTaskScheduled(task_name)
+def edatIsTaskSubmitted(task_name):
+  return _edatlib_.edatIsTaskSubmitted(task_name)
 
-def edatDescheduleTask(task_name):
-  return _edatlib_.edatDescheduleTask(task_name)
+def edatRemoveTask(task_name):
+  _edatlib_.edatRemoveTask(task_name)
 
 def edatFireEvent(data, data_type, data_count, target, event_id):
-  return _edatlib_.edatFireEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
+  _edatlib_.edatFireEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
 
 def edatFirePersistentEvent(data, data_type, data_count, target, event_id):
-  return _edatlib_.edatFirePersistentEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
+  _edatlib_.edatFirePersistentEvent(_packageEventData(data, data_type, data_count), data_type, data_count, target, event_id)
