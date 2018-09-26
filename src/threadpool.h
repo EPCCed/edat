@@ -103,7 +103,7 @@ class ThreadPool {
   ThreadPool(Configuration&);
   void lockMutexForFinalisationTest();
   void unlockMutexForFinalisationTest();
-  void startThread(void (*)(void *), void *);
+  void startThread(void (*)(void *), void *, taskID_t);
   bool isThreadPoolFinished();
   void setMessaging(Messaging*);
   void notifyMainThreadIsSleeping();

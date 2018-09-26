@@ -66,7 +66,7 @@ double timeDiff(struct timespec, struct timespec);
 
 int main(int argc, char * argv[])
 {
-	const task_ptr_t task_array[6] = {iterScheduleTask, initialNormTask, globalNormTask, normUpdateTask, localNormTask, boundaryUpdateTask};
+	const task_ptr_t task_array[6] = {iterTask, initialNormTask, globalNormTask, normUpdateTask, localNormTask, boundaryUpdateTask};
 	int num_ranks, my_rank, nx, ny, domain_dims[]={0,0}, local_dims[]={0,0};
 	int domain_coords[]={-1,-1}, neighbours[]={INT_MIN, INT_MIN, INT_MIN, INT_MIN};
 	int mem_dims[]={0,0}, iter=0;

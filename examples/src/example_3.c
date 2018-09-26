@@ -10,7 +10,7 @@
 
 static void my_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
+int main() {
   char *keys[3], *values[3];
 
   keys[0]="EDAT_BATCH_EVENTS";
@@ -20,7 +20,9 @@ int main(int argc, char * argv[]) {
   keys[2]="EDAT_BATCHING_EVENTS_TIMEOUT";
   values[2]="0.01";
 
-  edatInitWithConfiguration(3, keys, values);
+  const task_ptr_t task_array[1] = {my_task};
+
+  edatInitWithConfiguration(3, keys, values, task_array, 1);
   if (edatGetRank() == 0) {
     usleep(1000); // Put this in to test with scheduling the tasks when the events are already there
     edatSubmitPersistentGreedyTask(my_task, 1, EDAT_ANY, "my_task");

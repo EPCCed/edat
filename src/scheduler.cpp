@@ -1067,7 +1067,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
-  threadPool.startThread(threadBootstrapperFunction, new TaskExecutionContext(taskDescriptor, &concurrencyControl));
+  threadPool.startThread(threadBootstrapperFunction, new TaskExecutionContext(taskDescriptor, &concurrencyControl), taskDescriptor->task_id);
 }
 
 EDAT_Event * Scheduler::generateEventsPayload(TaskDescriptor * taskContainer, std::set<int> * eventsThatAreContexts) {
@@ -1158,6 +1158,20 @@ void Scheduler::threadBootstrapperFunction(void * pthreadRawData) {
   delete[] events_payload;
   delete pendingTaskDescription;
   delete taskContext;
+}
+
+/**
+* Locks the mutex for testing for finalisation (whether the scheduler is completed, no tasks or events outstanding)
+*/
+void Scheduler::lockMutexForFinalisationTest() {
+  taskAndEvent_mutex.lock();
+}
+
+/**
+* Unlocks the mutex for testing for finalisation
+*/
+void Scheduler::unlockMutexForFinalisationTest() {
+  taskAndEvent_mutex.unlock();
 }
 
 /**

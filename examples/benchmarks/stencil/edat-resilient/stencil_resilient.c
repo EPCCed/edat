@@ -63,7 +63,7 @@ int main(int argc, char ** argv) {
   ** Initialize the MPI environment
   ********************************************************************************/
   task_ptr_t task_array[3] = {complete_run, compute_kernel, firstHaloSwap};
-  edatInit(&argc, &argv, NULL, task_array, 3);
+  edatInit(task_array, 3);
   my_ID=edatGetRank();
   Num_procs=edatGetNumRanks();
 
@@ -147,26 +147,26 @@ int main(int argc, char ** argv) {
         // I have one neighbour! Where are they?
         if (my_IDy < Num_procsy-1) {
           // above!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 2, EDAT_SELF, "init_in", top_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 2, EDAT_SELF, "init_in", top_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           edatFireEvent(comm_buffer_up, EDAT_DTYPE, RADIUS*width, top_nbr, "init_buffer");
         } else if (my_IDy > 0) {
           // below!!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 2, EDAT_SELF, "init_in", bottom_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 2, EDAT_SELF, "init_in", bottom_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           edatFireEvent(comm_buffer_down, EDAT_DTYPE, RADIUS*width, bottom_nbr, "init_buffer");
         } else if (my_IDx < Num_procsx-1) {
           // to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 2, EDAT_SELF, "init_in", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 2, EDAT_SELF, "init_in", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDx > 0) {
           // to the left!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", left_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 2, EDAT_SELF, "init_in", left_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", left_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 2, EDAT_SELF, "init_in", left_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "init_buffer");
         } else {
@@ -179,48 +179,48 @@ int main(int argc, char ** argv) {
         // I have two neighbours! Where are they?
         if (my_IDy < Num_procsy-1 && my_IDy > 0) {
           // above and below!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           edatFireEvent(comm_buffer_up, EDAT_DTYPE, RADIUS*width, top_nbr, "init_buffer");
           edatFireEvent(comm_buffer_down, EDAT_DTYPE, RADIUS*width, bottom_nbr, "init_buffer");
         } else if (my_IDx > 0 && my_IDx < Num_procsx-1) {
           // to the left and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", left_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", left_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
           edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "init_buffer");
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDy < Num_procsy-1 && my_IDx < Num_procsx-1) {
           // above and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
           edatFireEvent(comm_buffer_up, EDAT_DTYPE, RADIUS*width, top_nbr, "init_buffer");
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDy < Num_procsy-1 && my_IDx > 0) {
           // above and to the left!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", left_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", top_nbr, "init_buffer", left_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           edatFireEvent(comm_buffer_up, EDAT_DTYPE, RADIUS*width, top_nbr, "init_buffer");
           edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "init_buffer");
         } else if (my_IDy > 0 && my_IDx < Num_procsx-1) {
           // below and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
           edatFireEvent(comm_buffer_down, EDAT_DTYPE, RADIUS*width, bottom_nbr, "init_buffer");
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDy > 0 && my_IDx > 0) {
           // below and to the left!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 3, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", left_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 3, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", left_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           edatFireEvent(comm_buffer_down, EDAT_DTYPE, RADIUS*width, bottom_nbr, "init_buffer");
@@ -234,8 +234,8 @@ int main(int argc, char ** argv) {
       case 3:
         if (my_IDy < Num_procsy-1 && my_IDy > 0 && my_IDx < Num_procsx-1) {
           // above, below, and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
@@ -244,8 +244,8 @@ int main(int argc, char ** argv) {
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDy < Num_procsy-1 && my_IDy > 0 && my_IDx > 0) {
           // above, below, and to the left!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", left_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", left_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
@@ -254,8 +254,8 @@ int main(int argc, char ** argv) {
           edatFireEvent(comm_buffer_left, EDAT_DTYPE, RADIUS*height, left_nbr, "init_buffer");
         } else if (my_IDy < Num_procsy-1 && my_IDx > 0 && my_IDx < Num_procsx-1) {
           // above, to the left, and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 4, EDAT_SELF, "init_in", top_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_up, in, UP);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
@@ -264,8 +264,8 @@ int main(int argc, char ** argv) {
           edatFireEvent(comm_buffer_right, EDAT_DTYPE, RADIUS*height, right_nbr, "init_buffer");
         } else if (my_IDy > 0 && my_IDx > 0 && my_IDx < Num_procsx-1) {
           // below, to the left, and to the right!
-          edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-          edatScheduleTask(firstHaloSwap, 4, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
+          edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+          edatSubmitTask(firstHaloSwap, 4, EDAT_SELF, "init_in", bottom_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
           prepareCommBuffer(comm_buffer_down, in, DOWN);
           prepareCommBuffer(comm_buffer_left, in, LEFT);
           prepareCommBuffer(comm_buffer_right, in, RIGHT);
@@ -280,8 +280,8 @@ int main(int argc, char ** argv) {
         break;
       case 4:
         // surrounded!
-        edatSchedulePersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
-        edatScheduleTask(firstHaloSwap, 5, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
+        edatSubmitPersistentTask(compute_kernel, 4+num_neighbours*2, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time", top_nbr, "buffer", EDAT_SELF, "halosend", bottom_nbr, "buffer", EDAT_SELF, "halosend", left_nbr, "buffer", EDAT_SELF, "halosend", right_nbr, "buffer", EDAT_SELF, "halosend");
+        edatSubmitTask(firstHaloSwap, 5, EDAT_SELF, "init_in", top_nbr, "init_buffer", bottom_nbr, "init_buffer", left_nbr, "init_buffer", right_nbr, "init_buffer");
         prepareCommBuffer(comm_buffer_up, in, UP);
         prepareCommBuffer(comm_buffer_down, in, DOWN);
         prepareCommBuffer(comm_buffer_left, in, LEFT);
@@ -294,11 +294,11 @@ int main(int argc, char ** argv) {
     }
   } else {
     // single process, so no communication
-    edatSchedulePersistentTask(compute_kernel, 4, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time");
+    edatSubmitPersistentTask(compute_kernel, 4, EDAT_SELF, "in", EDAT_SELF, "out", EDAT_SELF, "iterations", EDAT_SELF, "start_time");
   }
 
   if (my_ID == ROOT_PROCESS) {
-    edatScheduleTask(complete_run, 2, EDAT_ALL, "runtime", EDAT_ALL, "localnorm");
+    edatSubmitTask(complete_run, 2, EDAT_ALL, "runtime", EDAT_ALL, "localnorm");
   }
 
   int total_length_in  = (width+2*RADIUS) * (height+2*RADIUS);

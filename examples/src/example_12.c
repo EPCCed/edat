@@ -10,9 +10,9 @@
 
 static void my_task(EDAT_Event*, int);
 
-int main(int argc, char * argv[]) {
+int main() {
   const task_ptr_t task_array[1] = {my_task};
-  edatInit(&argc, &argv, NULL, task_array, 1);
+  edatInit(task_array, 1);
   if (edatGetRank() == 0) {
     edatSubmitTask(my_task, 1, EDAT_ANY, "my_task");
   } else if (edatGetRank() == 1) {

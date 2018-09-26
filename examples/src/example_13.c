@@ -11,7 +11,9 @@
 static void task(EDAT_Event*, int);
 
 int main() {
-  edatInit();
+  const task_ptr_t const task_array[1] = {task};
+
+  edatInit(task_array, 1);
   edatSubmitTask(task, 1, EDAT_SELF, "task_num");
   edatSubmitTask(task, 1, EDAT_SELF, "task_num");
   int t=0;

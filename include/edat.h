@@ -66,7 +66,7 @@ typedef struct edat_struct_event EDAT_Event;
 typedef void (*task_ptr_t) (EDAT_Event*, int);
 
 void edatInit(const task_ptr_t * const, const int);
-void edatInitWithConfiguration(int, char **, char **);
+void edatInitWithConfiguration(int, char **, char **, const task_ptr_t * const, const int);
 void edatFinalise(void);
 int edatGetRank(void);
 int edatGetNumRanks(void);
