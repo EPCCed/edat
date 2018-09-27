@@ -39,7 +39,7 @@
 */
 Messaging::Messaging(Scheduler & a_scheduler, ThreadPool & a_threadPool, ContextManager& a_contextManager, Configuration & aconfig) : scheduler(a_scheduler),
                       threadPool(a_threadPool), contextManager(a_contextManager), configuration(aconfig) {
-  continue_polling=false;
+  continue_polling=true;
   progress_thread=configuration.get("EDAT_PROGRESS_THREAD", true);
   it_count=0;
 }

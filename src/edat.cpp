@@ -91,7 +91,6 @@ static void doInitialisation(Configuration * configuration, bool comm_present, i
     const unsigned int COMM_TIMEOUT = configuration->get("EDAT_COMM_TIMEOUT", DEFAULT_COMM_TIMEOUT);
     resilienceInit(resilienceLevel, *scheduler, *threadPool, *messaging, std::this_thread::get_id(), task_array, number_of_tasks, COMM_TIMEOUT);
   }
-  messaging->resetPolling();
   edatActive=true;
   #if DO_METRICS
     metrics::METRICS->edatTimerStart();
