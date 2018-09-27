@@ -1067,6 +1067,7 @@ void Scheduler::updateMatchingEventInTaskDescriptor(TaskDescriptor * taskDescrip
 * then the thread pool will queue it up for execution when a thread becomes available.
 */
 void Scheduler::readyToRunTask(PendingTaskDescriptor * taskDescriptor) {
+  taskDescriptor->resilient = resilienceLevel;
   threadPool.startThread(threadBootstrapperFunction, new TaskExecutionContext(taskDescriptor, &concurrencyControl), taskDescriptor->task_id);
 }
 
