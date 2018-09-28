@@ -229,6 +229,10 @@ void resilienceFinalise(int resilienceLevel) {
   return;
 }
 
+/**
+* Wipes resilience ledgers from memory, and returns details necessary to ensure
+* enough continuity for a restart from a synthetic process failure.
+*/
 ContinuityData resilienceSyntheticFinalise(const std::thread::id thread_id) {
   external_ledger->endMonitoring();
   const std::thread::id main_thread = internal_ledger->getMainThread();
@@ -240,6 +244,9 @@ ContinuityData resilienceSyntheticFinalise(const std::thread::id thread_id) {
   return con_data;
 }
 
+/**
+* Inserts provided task in to the active task list in the internal ledger
+*/
 void resilienceRestoreTaskToActive(const std::thread::id thread_id, PendingTaskDescriptor * ptd) {
   internal_ledger->taskActiveOnThread(thread_id, *ptd);
   return;
@@ -559,6 +566,10 @@ EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amess
   serialize();
 }
 
+/**
+* Constructor, includes boolean argument to indicate whether a recovery from file
+* is necessary
+*/
 EDAT_Process_Ledger::EDAT_Process_Ledger(Scheduler& ascheduler, Messaging& amessaging, const int my_rank, const int num_ranks, const task_ptr_t * const thetaskarray, const int num_tasks, const unsigned int a_timeout, std::string ledger_name, bool recovery) : scheduler(ascheduler), messaging(amessaging), RANK(my_rank), NUM_RANKS(num_ranks), COMM_TIMEOUT(a_timeout), task_array(thetaskarray), number_of_tasks(num_tasks), fname(ledger_name) {
 
   dead_ranks = new bool[NUM_RANKS];
@@ -733,6 +744,10 @@ EDAT_Process_Ledger::~EDAT_Process_Ledger() {
   }
 }
 
+/**
+* EXTENSIVE COMMIT
+* Commits newly submitted task to ledger file
+*/
 void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_addTask");
@@ -758,6 +773,10 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, LoggedTask& lgt) {
   return;
 }
 
+/**
+* EXTENSIVE COMMIT
+* Commits newly arrived event to ledger file
+*/
 void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_addEvent");
@@ -784,6 +803,10 @@ void EDAT_Process_Ledger::commit(SpecificEvent& spec_evt) {
   return;
 }
 
+/**
+* EXTENSIVE COMMIT
+* Commits event which is being held in case another process fails to ledger file
+*/
 void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_holdEvent");
@@ -806,6 +829,11 @@ void EDAT_Process_Ledger::commit(HeldEvent& held_event) {
   return;
 }
 
+/**
+* ATOMIC COMMIT
+* Commits dead rank boolean to ledger file, marking change of state from alive
+* to dead or dead to alive
+*/
 void EDAT_Process_Ledger::commit(const int rank, const bool rank_is_dead) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_deadRank");
@@ -824,6 +852,11 @@ void EDAT_Process_Ledger::commit(const int rank, const bool rank_is_dead) {
   return;
 }
 
+/**
+* ATOMIC COMMIT
+* Adds task_id to event in ledger file, indicating that event has been matched
+* to a task
+*/
 void EDAT_Process_Ledger::commit(const taskID_t task_id, const std::streampos file_pos) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_mvEvtToTsk");
@@ -841,6 +874,10 @@ void EDAT_Process_Ledger::commit(const taskID_t task_id, const std::streampos fi
   return;
 }
 
+/**
+* ATOMIC COMMIT
+* Updates state of task in ledger file
+*/
 void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos file_pos) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_taskState");
@@ -856,6 +893,10 @@ void EDAT_Process_Ledger::commit(const TaskState& state, const std::streampos fi
   return;
 }
 
+/**
+* ATOMIC COMMIT
+* Updates state of HeldEvent in ledger file
+*/
 void EDAT_Process_Ledger::commit(const HeldEventState& state, const std::streampos file_pos) {
   #if DO_METRICS
   unsigned long int timer_key = metrics::METRICS->timerStart("commit_hvtState");
@@ -871,6 +912,9 @@ void EDAT_Process_Ledger::commit(const HeldEventState& state, const std::streamp
   return;
 }
 
+/**
+* Returns index matching function pointer in task array
+*/
 int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   for (int func_id = 0; func_id<number_of_tasks; ++func_id) {
     if (task_array[func_id] == task_fn) return func_id;
@@ -880,6 +924,9 @@ int EDAT_Process_Ledger::getFuncID(const task_ptr_t task_fn) {
   return 0;
 }
 
+/**
+* Fires all events held for the supplied target rank
+*/
 void EDAT_Process_Ledger::fireHeldEvents(const int target) {
   std::vector<HeldEvent*>::iterator he_iter;
 
@@ -894,6 +941,9 @@ void EDAT_Process_Ledger::fireHeldEvents(const int target) {
   return;
 }
 
+/**
+* Serialization routine for whole ledger
+*/
 void EDAT_Process_Ledger::serialize() {
   // serialization schema:
   // dead_ranks as int[NUM_RANKS]
@@ -955,6 +1005,10 @@ void EDAT_Process_Ledger::serialize() {
   return;
 }
 
+/**
+* Monitors for event confirmations until monitor = false, expected to run in its
+* own thread
+*/
 void EDAT_Process_Ledger::monitorProcesses() {
   const unsigned int MAX_FAIL = (1000 * COMM_TIMEOUT) / REST_PERIOD;
   int rank, test_result=0;
@@ -1045,6 +1099,10 @@ void EDAT_Process_Ledger::monitorProcesses() {
   return;
 }
 
+/**
+* Handles confirmation that an event has been received by the target rank
+* The held event can be deleted, and the file ledger updated
+*/
 void EDAT_Process_Ledger::confirmEventReceivedAtTarget(const int rank, const std::string recv_evt_id) {
   std::multiset<std::string>::iterator seid_iter;
   std::vector<HeldEvent*>::reverse_iterator he_iter;
@@ -1243,6 +1301,9 @@ void EDAT_Process_Ledger::moveEventToTask(const DependencyKey depkey, const task
   return;
 }
 
+/**
+* Update state of task to RUNNING
+*/
 void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
   log_mutex.lock();
   LoggedTask * const lgt = task_log.at(task_id);
@@ -1253,6 +1314,9 @@ void EDAT_Process_Ledger::markTaskRunning(const taskID_t task_id) {
   return;
 }
 
+/**
+* Update state of task to COMPLETED
+*/
 void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
   log_mutex.lock();
   LoggedTask * const lgt = task_log.at(task_id);
@@ -1267,6 +1331,9 @@ void EDAT_Process_Ledger::markTaskComplete(const taskID_t task_id) {
   return;
 }
 
+/**
+* Update state of task to FAILED
+*/
 void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   log_mutex.lock();
   LoggedTask * const lgt = task_log.at(task_id);
@@ -1281,6 +1348,9 @@ void EDAT_Process_Ledger::markTaskFailed(const taskID_t task_id) {
   return;
 }
 
+/**
+* Initialise arrays for monitoring thread
+*/
 void EDAT_Process_Ledger::beginMonitoring() {
   finished=false;
   recv_conf_buffer = new char[NUM_RANKS*max_event_id_size];
@@ -1299,6 +1369,9 @@ void EDAT_Process_Ledger::beginMonitoring() {
   return;
 }
 
+/**
+* Register that a rank has died
+*/
 void EDAT_Process_Ledger::registerObit(const int rank) {
   dead_ranks_mutex.lock();
   dead_ranks[rank] = true;
@@ -1308,6 +1381,9 @@ void EDAT_Process_Ledger::registerObit(const int rank) {
   return;
 }
 
+/**
+* Register that a rank has been revived
+*/
 void EDAT_Process_Ledger::registerPhoenix(const int rank) {
   std::lock_guard<std::mutex> lock(dead_ranks_mutex);
   dead_ranks[rank] = false;
@@ -1316,6 +1392,9 @@ void EDAT_Process_Ledger::registerPhoenix(const int rank) {
   return;
 }
 
+/**
+* End monitoring for event confirmations and deallocate arrays
+*/
 void EDAT_Process_Ledger::endMonitoring() {
   monitor_mutex.lock();
   monitor = false;
@@ -1342,6 +1421,10 @@ void EDAT_Process_Ledger::deleteLedgerFile() {
   return;
 }
 
+/**
+* If an event is to be fired to a rank other than this one, make sure a copy
+* is held and stored in the ledger file, in case the target rank fails
+*/
 void EDAT_Process_Ledger::holdEvent(HeldEvent* held_event) {
   std::lock_guard<std::mutex> lock(held_events_mutex);
   if (held_event->target == EDAT_ALL) {
@@ -1384,6 +1467,11 @@ bool EDAT_Process_Ledger::isFinished() const {
   return finished;
 }
 
+/**
+* If an event has been fired from the main thread its holding is handled
+* separately as it is fired immediately, rather at the completion of a parent
+* task
+*/
 void EDAT_Process_Ledger::eventFiredFromMain(const int target, const std::string event_id, HeldEvent* held_event) {
   std::lock_guard<std::mutex> lock(held_events_mutex);
 
