@@ -37,7 +37,7 @@ struct mycontext {
 };
 
 static void displayPreamble(int, int, int, int, int, int);
-static void errorCheckParameters(int, int, int, long, int, int, int);
+static void errorCheckParameters(int, int, long, int, int, int);
 static void initialise_in_out_arrays(struct mycontext *, int);
 static void initialise_stencil_weights(struct mycontext *);
 static void allocate_comms_buffers(DTYPE**, DTYPE**, DTYPE**, DTYPE**, int, int, int);
@@ -75,11 +75,16 @@ int main(int argc, char ** argv) {
   ** process, test, and broadcast input parameters
   ********************************************************************************/
 
+  if (argc != 3){
+    if (my_ID == ROOT_PROCESS) fprintf(stderr, "Usage: stencil <# iterations> <array dimension> \n");
+    exit(EXIT_FAILURE);
+  }
+
   context->iterations = atoi(*++argv);
   context->n = atoi(*++argv);
   context->nsquare = (long) context->n * (long) context->n;
 
-  errorCheckParameters(my_ID, argc, context->iterations, context->nsquare, Num_procs, RADIUS, context->n);
+  errorCheckParameters(my_ID, context->iterations, context->nsquare, Num_procs, RADIUS, context->n);
 
   /* determine best way to create a 2D grid of ranks (closest to square)     */
   factor(Num_procs, &(context->Num_procsx), &(context->Num_procsy));
@@ -457,7 +462,7 @@ static void allocate_comms_buffers(DTYPE **comm_buffer_up, DTYPE **comm_buffer_d
   }
 }
 
-static void errorCheckParameters(int my_ID, int argc, int iterations, long nsquare, int num_procs, int radius, int n) {
+static void errorCheckParameters(int my_ID, int iterations, long nsquare, int num_procs, int radius, int n) {
   if (my_ID == ROOT_PROCESS) {
     printf("Parallel Research Kernels version %s\n", PRKVERSION);
     printf("EDAT stencil execution on 2D grid\n");
@@ -466,11 +471,6 @@ static void errorCheckParameters(int my_ID, int argc, int iterations, long nsqua
   if (my_ID == ROOT_PROCESS) fprintf(stderr, "ERROR: Compact stencil not supported\n");
   exit(EXIT_FAILURE);
 #endif
-  if (argc != 3){
-    if (my_ID == ROOT_PROCESS) fprintf(stderr, "Usage: stencil <# iterations> <array dimension> \n");
-    exit(EXIT_FAILURE);
-  }
-
   if (iterations < 1){
     if (my_ID == ROOT_PROCESS) fprintf(stderr, "ERROR: iterations must be >= 1 : %d \n", iterations);
     exit(EXIT_FAILURE);
