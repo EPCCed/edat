@@ -37,10 +37,19 @@
 #include "threadpool.h"
 #include "scheduler.h"
 #include "messaging.h"
-#include "mpi_p2p_messaging.h"
 #include "contextmanager.h"
 #include "concurrency_ctrl.h"
 #include "metrics.h"
+
+#ifndef USE_GASNET
+#include "mpi_p2p_messaging.h"
+#define MESSAGING_CLASS MPI_P2P_Messaging
+#warning ("Compiling edat with MPI (Use -DUSE_GASNET to compile with GASNet")
+#else
+#include "mpi_gasnet_p2p_messaging.h"
+#define MESSAGING_CLASS MPI_GASNet_P2P_Messaging
+#warning ("Compiling edat with GASNet")
+#endif
 
 #ifndef DO_METRICS
 #define DO_METRICS false
@@ -78,9 +87,9 @@ static void doInitialisation(Configuration * configuration, bool comm_present, i
     metrics::METRICS = new EDAT_Metrics(*configuration);
   #endif
   if (comm_present) {
-    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration, communicator);
+    messaging=new MESSAGING_CLASS(*scheduler, *threadPool, *contextManager, *configuration, communicator);
   } else {
-    messaging=new MPI_P2P_Messaging(*scheduler, *threadPool, *contextManager, *configuration);
+    messaging=new MESSAGING_CLASS(*scheduler, *threadPool, *contextManager, *configuration);
   }
   threadPool->setMessaging(messaging);
   edatActive=true;
