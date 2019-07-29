@@ -40,6 +40,12 @@
 #include <cstdlib>
 #include <ctime>
 
+#define GASNET_BARRIER()                                           \
+do {                                                        \
+  gasnet_barrier_notify(0,GASNET_BARRIERFLAG_ANONYMOUS);    \
+  gasnet_barrier_wait(0,GASNET_BARRIERFLAG_ANONYMOUS);      \
+} while (0)
+
 #ifndef DO_METRICS
 #define DO_METRICS false
 #endif
@@ -57,20 +63,19 @@
 static MPI_GASNet_P2P_Messaging *g_messaging_class = nullptr;
 
 /**
- * GASNet handler functions TODO just work for base-types due to
+ * GASNet handler functions
  */
 const gasnet_handler_t medium_req_handler = 200;
 const gasnet_handler_t medium_rep_handler = 201;
 
 void req_fire_event(gasnet_token_t token, void *buf, size_t size, 
                     int event_id_length, int data_type, int source, int persistent) 
-{
-//     std::cout << "req_fire_event" << std::endl;
-    
+{    
     size_t data_size = size - event_id_length;
     
-    auto event_id = new char[event_id_length];
-    auto data = new char[data_size];
+    // no free necessary, will be freed by scheduler
+    char *event_id = (char *)malloc(event_id_length);
+    char *data = (char *)malloc(data_size);
     
     memcpy(event_id, buf, event_id_length);
     memcpy(data, reinterpret_cast<char *>(buf) + event_id_length, data_size);
@@ -94,22 +99,17 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
             g_messaging_class->scheduler.registerEvents(g_messaging_class->eventShortTermStore);
             g_messaging_class->eventShortTermStore.clear();
         }
-    } 
+    }
     else 
     {
         g_messaging_class->scheduler.registerEvent(event);
     }
-  
-    // should be there! concurrency problem?
-//     delete[] event_id;
-//     delete[] data;
     
     gasnet_AMReplyShort0(token, medium_rep_handler);
 }
 
 void rep_fire_event(gasnet_token_t token)
 {
-//     std::cout << "rep_fire_event" << std::endl;
     g_messaging_class->m_pending_msgs_out--;
 }
 
@@ -143,7 +143,7 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
         { medium_rep_handler, (void(*)())rep_fire_event } 
     };
     
-    int segment_size = 64*1024*1024; /* want 64MB segment in this example */
+    int segment_size = gasnet_getMaxLocalSegmentSize();
     int min_heap_offset = 0;
     
     gasnet_init(nullptr, nullptr);
@@ -209,8 +209,9 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
     m_enableBridge=configuration.get("EDAT_ENABLE_BRIDGE", false);
     if (doesProgressThreadExist()) startProgressThread();
     
-    if( m_my_rank == 0 );
-        std::cout << "You run edat with GASNet!" << std::endl;
+    std::cout << "Gasnet rank #" << m_my_rank << " initialised with segment_size " << segment_size << "B" << std::endl;
+    
+    GASNET_BARRIER();
 }
 
 /**
@@ -419,7 +420,7 @@ bool MPI_GASNet_P2P_Messaging::performSinglePoll(int * iteration_counter)
     unsigned long int timer_key_psp = metrics::METRICS->timerStart("performSinglePoll");
 #endif
     
-//     fireASingleLocalEvent(); // why?
+    fireASingleLocalEvent(); // why?
 //     (*iteration_counter)++;  // what does this?
     
     gasnet_AMPoll();
