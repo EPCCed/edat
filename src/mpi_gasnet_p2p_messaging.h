@@ -59,6 +59,7 @@ class MPI_GASNet_P2P_Messaging : public Messaging
     std::map<MPI_Request, char*> outstandingSendRequests;
     std::mutex outstandingSendRequests_mutex, mpi_mutex, dataArrival_mutex;
     std::vector<SpecificEvent*> eventShortTermStore;
+    std::vector<gasnet_seginfo_t> m_gasnet_seginfo_table;
     
     // private member functions
     void checkSendRequestsForProgress();

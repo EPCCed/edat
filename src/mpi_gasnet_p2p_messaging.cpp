@@ -143,11 +143,47 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
         { medium_rep_handler, (void(*)())rep_fire_event } 
     };
     
-    int segment_size = gasnet_getMaxLocalSegmentSize();
+    auto segment_size = gasnet_getMaxLocalSegmentSize();
+    
+    if( segment_size == 0 )
+    {
+        if( gasnet_AMMaxLongRequest() % GASNET_PAGESIZE == 0 )
+            segment_size = gasnet_AMMaxLongRequest();
+        else
+            segment_size = (gasnet_AMMaxLongRequest() / GASNET_PAGESIZE + 1) * GASNET_PAGESIZE;
+    }
+
+    
     int min_heap_offset = 0;
     
     gasnet_init(nullptr, nullptr);
     gasnet_attach(handlers.data(), handlers.size(), segment_size, min_heap_offset);
+    
+    GASNET_BARRIER();
+    
+    m_gasnet_seginfo_table.resize(gasnet_nodes());
+    gasnet_getSegmentInfo(m_gasnet_seginfo_table.data(), m_gasnet_seginfo_table.size());
+
+    // Initialisation summary for GASNet
+    if ( gasnet_mynode() == 0 )
+    {
+        std::cout << "+-------------------------------+\n";
+        std::cout << "  GASNET INITIALISATION SUMMARY\n";
+        std::cout << "- max. medium msg size: " << gasnet_AMMaxMedium() << "B\n";
+        std::cout << "- max. long msg size:   " << gasnet_AMMaxLongRequest() << "B\n";
+        std::cout << "- rank initialization summary:\n";
+        std::cout << "\trank\tsegment_size\n";
+        
+        for(std::size_t i=0; i<m_gasnet_seginfo_table.size(); ++i)
+        {
+            std::cout << "\t" << i << "\t" << m_gasnet_seginfo_table[i].size << "\n";
+        }
+        std::cout << "+-------------------------------+\n";
+        std::cout << std::endl;
+        
+    }
+    
+    GASNET_BARRIER();
     
     // Init global pointer for GASNet handlers
     if( g_messaging_class == nullptr )
@@ -208,10 +244,6 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
     batch_timeout=configuration.get("EDAT_BATCHING_EVENTS_TIMEOUT", 0.1);
     m_enableBridge=configuration.get("EDAT_ENABLE_BRIDGE", false);
     if (doesProgressThreadExist()) startProgressThread();
-    
-    std::cout << "Gasnet rank #" << m_my_rank << " initialised with segment_size " << segment_size << "B" << std::endl;
-    
-    GASNET_BARRIER();
 }
 
 /**
