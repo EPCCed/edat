@@ -1,4 +1,16 @@
-include ../GASNet/local/include/$(CONDUIT)-conduit/$(CONDUIT)-par.mak
+#toolchain
+TOOLCHAIN=
+
+include makefile-config-toolchain.mak
+include ../GASNet/local$(TOOLCHAIN)/include/$(CONDUIT)-conduit/$(CONDUIT)-par.mak
+
+ifndef MPICXX
+$(error MPICXX not defined)
+endif
+
+ifndef CONDUIT
+$(error CONDUIT not defined)
+endif
 
 # compiling flags here
 CXXFLAGS = $(GASNET_CXXCPPFLAGS) $(GASNET_CXXFLAGS) -fPIC -Iinclude -std=c++11 -DUSE_GASNET
