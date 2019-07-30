@@ -39,6 +39,7 @@
 #include <mutex>
 #include <cstdlib>
 #include <ctime>
+#include <iostream>
 
 #define GASNET_BARRIER()                                           \
 do {                                                        \
@@ -147,10 +148,7 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
     
     if( segment_size == 0 )
     {
-        if( gasnet_AMMaxLongRequest() % GASNET_PAGESIZE == 0 )
-            segment_size = gasnet_AMMaxLongRequest();
-        else
-            segment_size = (gasnet_AMMaxLongRequest() / GASNET_PAGESIZE + 1) * GASNET_PAGESIZE;
+        segment_size = GASNET_PAGESIZE;
     }
 
     
