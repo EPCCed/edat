@@ -52,3 +52,4 @@ $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 clean:
 	$(rm) $(OBJDIR)	
 	$(rm) libedat.so
+	$(rm) libedat.a
