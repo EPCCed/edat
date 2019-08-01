@@ -48,10 +48,11 @@ class MPI_GASNet_P2P_Messaging : public Messaging
     friend void rep_fire_event(gasnet_token_t token);
         
     // private member data
-    bool m_protectMPI, m_mpiInitHere, m_terminated, m_eligable_for_termination, m_batchEvents, m_enableBridge;
+    bool m_protectMPI, m_mpiInitHere, m_terminated, m_eligable_for_termination, m_batchEvents, m_enableBridge, m_gasnet_verbose{ false };
     int m_my_rank, m_total_ranks, m_reply_from_master, m_empty_itertions, m_max_batched_events, m_pending_msgs_out{0};
     double last_event_arrival, batch_timeout;
     int terminated_id, mode=0;
+    size_t m_gasnet_segment_size = 0;
     int * termination_codes, *pingback_termination_codes;
     MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL,
         terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;

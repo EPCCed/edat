@@ -66,12 +66,15 @@ static MPI_GASNet_P2P_Messaging *g_messaging_class = nullptr;
 /**
  * GASNet handler functions
  */
-const gasnet_handler_t medium_req_handler = 200;
-const gasnet_handler_t medium_rep_handler = 201;
+const gasnet_handler_t req_handler_id = 200;
+const gasnet_handler_t rep_handler_id = 201;
 
 void req_fire_event(gasnet_token_t token, void *buf, size_t size, 
                     int event_id_length, int data_type, int source, int persistent) 
 {    
+    if( g_messaging_class->m_gasnet_verbose ) 
+        std::cout << "rank #" << g_messaging_class->m_my_rank << " recieved message with size " << size << "B" << std::endl;
+    
     size_t data_size = size - event_id_length;
     
     // no free necessary, will be freed by scheduler
@@ -106,7 +109,7 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
         g_messaging_class->scheduler.registerEvent(event);
     }
     
-    gasnet_AMReplyShort0(token, medium_rep_handler);
+    gasnet_AMReplyShort0(token, rep_handler_id);
 }
 
 void rep_fire_event(gasnet_token_t token)
@@ -138,24 +141,61 @@ MPI_GASNet_P2P_Messaging::MPI_GASNet_P2P_Messaging(Scheduler & a_scheduler, Thre
 */
 void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm) 
 {
+    // Try to get env variable EDAT_GASNET_VERBOSE
+    if( const char *verbose_str = std::getenv("EDAT_GASNET_VERBOSE") )
+    {
+        if( strlen(verbose_str) > 0)
+        {
+            if( strcmp(verbose_str, "true") == 0 )
+                m_gasnet_verbose = true;
+            else if( strcmp(verbose_str, "false") == 0 )
+                m_gasnet_verbose = false;
+            else
+                m_gasnet_verbose = std::atoi(verbose_str) != 0;
+        }
+    }
+    
+    // Try to get env variable EDAT_GASNET_SEGSIZE
+    bool have_segsize_from_env = false;
+    size_t segsize_env;
+    
+    if( const char *segment_size_str = std::getenv("EDAT_GASNET_SEGSIZE") )
+    {
+        if( strlen(segment_size_str) > 0 && std::atol(segment_size_str) > 0 )
+        {
+            segsize_env = std::atol(segment_size_str);
+            have_segsize_from_env = true;
+        }
+    }
+    
     // Init MPI_GASNet
     std::vector<gasnet_handlerentry_t> handlers = { 
-        { medium_req_handler, (void(*)())req_fire_event }, 
-        { medium_rep_handler, (void(*)())rep_fire_event } 
+        { req_handler_id, (void(*)())req_fire_event }, 
+        { rep_handler_id, (void(*)())rep_fire_event } 
     };
     
-    auto segment_size = gasnet_getMaxLocalSegmentSize();
+    bool have_minimum_segsize = false;
     
-    if( segment_size == 0 )
+    if( have_segsize_from_env )
     {
-        segment_size = GASNET_PAGESIZE;
+        m_gasnet_segment_size = segsize_env;
+    }
+    else
+    {
+        m_gasnet_segment_size = gasnet_getMaxLocalSegmentSize();
+    
+        if( m_gasnet_segment_size == 0 )
+        {
+            m_gasnet_segment_size = GASNET_PAGESIZE;
+            have_minimum_segsize = true;
+        }
     }
 
     
     int min_heap_offset = 0;
     
     gasnet_init(nullptr, nullptr);
-    gasnet_attach(handlers.data(), handlers.size(), segment_size, min_heap_offset);
+    gasnet_attach(handlers.data(), handlers.size(), m_gasnet_segment_size, min_heap_offset);
     
     GASNET_BARRIER();
     
@@ -163,21 +203,34 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
     gasnet_getSegmentInfo(m_gasnet_seginfo_table.data(), m_gasnet_seginfo_table.size());
 
     // Initialisation summary for GASNet
+    bool do_rank_summary = false;
     if ( gasnet_mynode() == 0 )
     {
         std::cout << "+-------------------------------+\n";
         std::cout << "  GASNET INITIALISATION SUMMARY\n";
-        std::cout << "- max. medium msg size: " << gasnet_AMMaxMedium() << "B\n";
-        std::cout << "- max. long msg size:   " << gasnet_AMMaxLongRequest() << "B\n";
+        std::cout << "- created " << gasnet_nodes() << " GASNet-ranks\n";
+        std::cout << "- max. medium msg size:  " << gasnet_AMMaxMedium() << "B\n";
+        std::cout << "- max. long msg size:    " << gasnet_AMMaxLongRequest() << "B\n";
+        if(have_segsize_from_env)
+        std::cout << "- segment size from env: " << m_gasnet_segment_size << "B\n";
+        else
+        std::cout << "- segment size:          " << m_gasnet_segment_size << "B\n";
+        if(have_minimum_segsize)
+        std::cout << "- WARNING: initialised with segsize with min value (GASNET_PAGESIZE)\n";
+        if(m_gasnet_verbose)
+        std::cout << "- INFO: verbose gasnet output\n";
+        if(do_rank_summary){
         std::cout << "- rank initialization summary:\n";
         std::cout << "\trank\tsegment_size\n";
         
         for(std::size_t i=0; i<m_gasnet_seginfo_table.size(); ++i)
         {
             std::cout << "\t" << i << "\t" << m_gasnet_seginfo_table[i].size << "\n";
+        }        
         }
         std::cout << "+-------------------------------+\n";
         std::cout << std::endl;
+
         
     }
     
@@ -318,8 +371,22 @@ void MPI_GASNet_P2P_Messaging::sendSingleEvent(void * data, int data_count, int 
         memcpy(buffer + event_id_len, data, type_element_size * data_count);
 
     if (m_protectMPI) mpi_mutex.lock();
+    
+    if( packet_size < gasnet_AMMaxMedium() )
+    {
+        if( m_gasnet_verbose ) std::cout << "rank #" << m_my_rank << " sends medium message with size " << packet_size << "B to target " << target << std::endl;
+        gasnet_AMRequestMedium4(target, req_handler_id, buffer, packet_size, event_id_len, data_type, m_my_rank, persistent);
+    }
+    else if( packet_size < gasnet_AMMaxLongRequest() && packet_size < m_gasnet_seginfo_table[target].size )
+    {
+        if( m_gasnet_verbose ) std::cout << "rank #" << m_my_rank << " sends long message with size " << packet_size << "B to target " << target << std::endl;
+        gasnet_AMRequestLong4(target, req_handler_id, buffer, packet_size, m_gasnet_seginfo_table[target].addr, event_id_len, data_type, m_my_rank, persistent);
+    }
+    else
+        raiseError("Cannot send message due to size-problems");
+    
     m_pending_msgs_out++;
-    gasnet_AMRequestMedium4(target, medium_req_handler, buffer, packet_size, event_id_len, data_type, m_my_rank, persistent); 
+    
     if (m_protectMPI) mpi_mutex.unlock();
     
 // Important?
