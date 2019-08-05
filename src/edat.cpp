@@ -42,13 +42,21 @@
 #include "metrics.h"
 
 #ifndef USE_GASNET
+
 #include "mpi_p2p_messaging.h"
 #define MESSAGING_CLASS MPI_P2P_Messaging
 #warning ("Compiling edat with MPI (Use -DUSE_GASNET to compile with GASNet")
+
 #else
+
 #include "mpi_gasnet_p2p_messaging.h"
 #define MESSAGING_CLASS MPI_GASNet_P2P_Messaging
-#warning ("Compiling edat with GASNet")
+#ifdef GASNET_DO_REPLY
+#warning ("Compiling edat with GASNet (including AM-Replys)")
+#else
+#warning ("Compiling edat with GASNet (without AM-Replys, to enable use -DGASNET_DO_REPLY)")
+#endif
+
 #endif
 
 #ifndef DO_METRICS

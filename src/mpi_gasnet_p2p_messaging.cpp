@@ -109,7 +109,9 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
         g_messaging_class->scheduler.registerEvent(event);
     }
     
+#ifdef GASNET_DO_REPLY
     gasnet_AMReplyShort0(token, rep_handler_id);
+#endif
 }
 
 void rep_fire_event(gasnet_token_t token)
@@ -385,7 +387,9 @@ void MPI_GASNet_P2P_Messaging::sendSingleEvent(void * data, int data_count, int 
     else
         raiseError("Cannot send message due to size-problems");
     
+#ifdef GASNET_DO_REPLY
     m_pending_msgs_out++;
+#endif
     
     if (m_protectMPI) mpi_mutex.unlock();
     
@@ -415,18 +419,10 @@ void MPI_GASNet_P2P_Messaging::unlockMutexForFinalisationTest() {
 /**
 * Determines whether the messaging is finished or not locally
 */
-bool MPI_GASNet_P2P_Messaging::isFinished() {
-  int pending_message, global_pending_message;
-  if (m_protectMPI) mpi_mutex.lock();
-  MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, communicator, &pending_message, MPI_STATUS_IGNORE);
-  if (m_enableBridge) {
-    MPI_Iprobe(MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &global_pending_message, MPI_STATUS_IGNORE);
-  } else {
-    global_pending_message=0;
-  }
-  if (m_protectMPI) mpi_mutex.unlock();
-  if (pending_message || global_pending_message) return false;
-  return outstandingSendRequests.empty() && eventShortTermStore.empty();
+bool MPI_GASNet_P2P_Messaging::isFinished() 
+{
+    // In MPI version here is also a MPI_Iprobe, but should not be necessary here
+    return outstandingSendRequests.empty() && eventShortTermStore.empty();
 }
 
 /**
@@ -517,40 +513,35 @@ bool MPI_GASNet_P2P_Messaging::performSinglePoll(int * iteration_counter)
     unsigned long int timer_key_psp = metrics::METRICS->timerStart("performSinglePoll");
 #endif
     
-    fireASingleLocalEvent(); // why?
-//     (*iteration_counter)++;  // what does this?
-    
+    // In MPI version here is a MPI_Iprobe, to ensure that all messages which are currently in the queue arrive. Here, the gasnet_AMPoll() should ensure the same thing
     gasnet_AMPoll();
-    int m_pending_msgs_in = 0; // gasnet_AMPoll ensures that all requests are done?
-
-    if ( m_pending_msgs_out == 0 && m_pending_msgs_in == 0 ) 
+    
+    if (m_batchEvents && !eventShortTermStore.empty() && MPI_Wtime() - last_event_arrival > batch_timeout) 
     {
-        if (m_batchEvents && !eventShortTermStore.empty() && MPI_Wtime() - last_event_arrival > batch_timeout) 
-        {
-            scheduler.registerEvents(eventShortTermStore);
-            eventShortTermStore.clear();
-        }
-        
-        bool current_terminated=checkForLocalTermination();
-        
-        if (current_terminated && !m_terminated) 
-        {
-            terminated_id=std::rand();
-            
-            if (m_my_rank != 0) 
-            {
-                if (m_protectMPI) mpi_mutex.lock();
-                int sendTerminationIdFlag=(terminate_send_req == MPI_REQUEST_NULL);
-                if (!sendTerminationIdFlag) MPI_Test(&terminate_send_req, &sendTerminationIdFlag, MPI_STATUS_IGNORE);
-                if (sendTerminationIdFlag) MPI_Isend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, communicator, &terminate_send_req);
-                if (termination_pingback_request == MPI_REQUEST_NULL) {
-                MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, communicator, &termination_pingback_request);
-                }
-                if (m_protectMPI) mpi_mutex.unlock();
-            }
-        }
-        m_terminated=current_terminated;
+        scheduler.registerEvents(eventShortTermStore);
+        eventShortTermStore.clear();
     }
+    
+    bool current_terminated=checkForLocalTermination();
+    
+    if (current_terminated && !m_terminated) 
+    {
+        terminated_id=std::rand();
+        
+        if (m_my_rank != 0) 
+        {
+            if (m_protectMPI) mpi_mutex.lock();
+            int sendTerminationIdFlag=(terminate_send_req == MPI_REQUEST_NULL);
+            if (!sendTerminationIdFlag) MPI_Test(&terminate_send_req, &sendTerminationIdFlag, MPI_STATUS_IGNORE);
+            if (sendTerminationIdFlag) MPI_Isend(&terminated_id, 1, MPI_INT, 0, MPI_TERMINATION_TAG, communicator, &terminate_send_req);
+            if (termination_pingback_request == MPI_REQUEST_NULL) {
+            MPI_Irecv(NULL, 0, MPI_INT, 0, MPI_TERMINATION_TAG, communicator, &termination_pingback_request);
+            }
+            if (m_protectMPI) mpi_mutex.unlock();
+        }
+    }
+    m_terminated=current_terminated;
+        
     if (m_my_rank == 0) termination_codes[0]=m_terminated ? terminated_id : -1;
 
 #if DO_METRICS
