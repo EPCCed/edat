@@ -51,11 +51,16 @@ do {                                                        \
 #define DO_METRICS false
 #endif
 
-#define MPI_TAG 16384
 #define MPI_TERMINATION_TAG 16385
 #define MPI_TERMINATION_CONFIRM_TAG 16386
 #define SEND_PROGRESS_PERIOD 10
 #define MAX_TERMINATION_COUNT 100
+
+/**
+ * Prototypes for non member helper functions
+ */
+bool get_gasnet_verbose_env();
+size_t get_gasnet_segsize_env();
 
 /**
  * Global pointer to messaging class for GASNet handlers. Should be save, since there only exists one instance of the messaging in one process.
@@ -109,14 +114,19 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
         g_messaging_class->scheduler.registerEvent(event);
     }
     
-#ifdef GASNET_DO_REPLY
-    gasnet_AMReplyShort0(token, rep_handler_id);
-#endif
+    if( size > gasnet_AMMaxMedium() )
+        gasnet_AMReplyShort0(token, rep_handler_id);
 }
 
 void rep_fire_event(gasnet_token_t token)
-{
-    g_messaging_class->m_pending_msgs_out--;
+{    
+    gasnet_node_t src;
+    gasnet_AMGetMsgSource(token, &src);
+    
+    if( g_messaging_class->m_gasnet_verbose )
+        std::cout << "rank #" << g_messaging_class->m_my_rank << " recieved long message reply from rank #" << src << std::endl;
+        
+    g_messaging_class->m_remote_address_map.at(src).available = true;
 }
 
 /**
@@ -143,82 +153,58 @@ MPI_GASNet_P2P_Messaging::MPI_GASNet_P2P_Messaging(Scheduler & a_scheduler, Thre
 */
 void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm) 
 {
-    // Try to get env variable EDAT_GASNET_VERBOSE
-    if( const char *verbose_str = std::getenv("EDAT_GASNET_VERBOSE") )
-    {
-        if( strlen(verbose_str) > 0)
-        {
-            if( strcmp(verbose_str, "true") == 0 )
-                m_gasnet_verbose = true;
-            else if( strcmp(verbose_str, "false") == 0 )
-                m_gasnet_verbose = false;
-            else
-                m_gasnet_verbose = std::atoi(verbose_str) != 0;
-        }
-    }
-    
-    // Try to get env variable EDAT_GASNET_SEGSIZE
-    bool have_segsize_from_env = false;
-    size_t segsize_env;
-    
-    if( const char *segment_size_str = std::getenv("EDAT_GASNET_SEGSIZE") )
-    {
-        if( strlen(segment_size_str) > 0 && std::atol(segment_size_str) > 0 )
-        {
-            segsize_env = std::atol(segment_size_str);
-            have_segsize_from_env = true;
-        }
-    }
-    
     // Init MPI_GASNet
+    gasnet_init(nullptr, nullptr);
+    
     std::vector<gasnet_handlerentry_t> handlers = { 
         { req_handler_id, (void(*)())req_fire_event }, 
         { rep_handler_id, (void(*)())rep_fire_event } 
     };
     
-    bool have_minimum_segsize = false;
+    size_t segment_size = 0;
+    size_t min_heap_offset = 0;
     
-    if( have_segsize_from_env )
+    if( auto segsize_env = get_gasnet_segsize_env() > 0 )
     {
-        m_gasnet_segment_size = segsize_env;
+        segment_size = segsize_env;
     }
     else
     {
-        m_gasnet_segment_size = gasnet_getMaxLocalSegmentSize();
-    
-        if( m_gasnet_segment_size == 0 )
-        {
-            m_gasnet_segment_size = GASNET_PAGESIZE;
-            have_minimum_segsize = true;
-        }
+        segment_size = gasnet_getMaxLocalSegmentSize();
     }
 
-    
-    int min_heap_offset = 0;
-    
-    gasnet_init(nullptr, nullptr);
-    gasnet_attach(handlers.data(), handlers.size(), m_gasnet_segment_size, min_heap_offset);
-    
-    GASNET_BARRIER();
+    gasnet_attach(handlers.data(), handlers.size(), segment_size, min_heap_offset);
     
     m_gasnet_seginfo_table.resize(gasnet_nodes());
     gasnet_getSegmentInfo(m_gasnet_seginfo_table.data(), m_gasnet_seginfo_table.size());
 
+    // Init remote memory addresses
+    for(std::size_t rank = 0; rank < gasnet_nodes(); ++rank)
+    {
+        if( rank != gasnet_mynode() )
+        {
+            std::size_t my_index = rank < gasnet_mynode() ? gasnet_mynode() : gasnet_mynode()-1;
+            std::size_t size = m_gasnet_seginfo_table[rank].size / gasnet_nodes();
+            void *addr = (char *)m_gasnet_seginfo_table[rank].addr + my_index * size;
+            
+            m_remote_address_map.insert({ rank, remote_addr_t(true, addr, size) });
+        }
+    }
+    
+    m_max_long_msg_size = std::min( segment_size / (gasnet_nodes()-1), gasnet_AMMaxLongRequest() );
+    
     // Initialisation summary for GASNet
+    m_gasnet_verbose = get_gasnet_verbose_env();
     bool do_rank_summary = false;
+    
     if ( gasnet_mynode() == 0 )
     {
-        std::cout << "+-------------------------------+\n";
+        std::cout << "+------------------------------------+\n";
         std::cout << "  GASNET INITIALISATION SUMMARY\n";
         std::cout << "- created " << gasnet_nodes() << " GASNet-ranks\n";
-        std::cout << "- max. medium msg size:  " << gasnet_AMMaxMedium() << "B\n";
-        std::cout << "- max. long msg size:    " << gasnet_AMMaxLongRequest() << "B\n";
-        if(have_segsize_from_env)
-        std::cout << "- segment size from env: " << m_gasnet_segment_size << "B\n";
-        else
-        std::cout << "- segment size:          " << m_gasnet_segment_size << "B\n";
-        if(have_minimum_segsize)
-        std::cout << "- WARNING: initialised with segsize with min value (GASNET_PAGESIZE)\n";
+        std::cout << "- max. medium msg size:  " << gasnet_AMMaxMedium()/1024.0 << " KiB\n";
+        std::cout << "- max. long msg size:    " << m_max_long_msg_size/1024.0 << " KiB\n";
+        std::cout << "- segment size:          " << segment_size/(1024.0*1024.0) << " MiB\n";
         if(m_gasnet_verbose)
         std::cout << "- INFO: verbose gasnet output\n";
         if(do_rank_summary){
@@ -230,10 +216,8 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
             std::cout << "\t" << i << "\t" << m_gasnet_seginfo_table[i].size << "\n";
         }        
         }
-        std::cout << "+-------------------------------+\n";
+        std::cout << "+------------------------------------+\n";
         std::cout << std::endl;
-
-        
     }
     
     GASNET_BARRIER();
@@ -376,28 +360,23 @@ void MPI_GASNet_P2P_Messaging::sendSingleEvent(void * data, int data_count, int 
     
     if( packet_size < gasnet_AMMaxMedium() )
     {
-        if( m_gasnet_verbose ) std::cout << "rank #" << m_my_rank << " sends medium message with size " << packet_size << "B to target " << target << std::endl;
+        if( m_gasnet_verbose ) 
+            std::cout << "rank #" << m_my_rank << " sends medium message with size " << packet_size << "B to target " << target << std::endl;
+        
         gasnet_AMRequestMedium4(target, req_handler_id, buffer, packet_size, event_id_len, data_type, m_my_rank, persistent);
     }
-    else if( packet_size < gasnet_AMMaxLongRequest() && packet_size < m_gasnet_seginfo_table[target].size )
+    else if( packet_size < m_max_long_msg_size )
     {
-        if( m_gasnet_verbose ) std::cout << "rank #" << m_my_rank << " sends long message with size " << packet_size << "B to target " << target << std::endl;
-        gasnet_AMRequestLong4(target, req_handler_id, buffer, packet_size, m_gasnet_seginfo_table[target].addr, event_id_len, data_type, m_my_rank, persistent);
+        if( m_gasnet_verbose ) 
+            std::cout << "rank #" << m_my_rank << " sends long message with size " << packet_size << "B to target " << target << std::endl;
+        
+        GASNET_BLOCKUNTIL( m_remote_address_map.at(target).available == true );
+        gasnet_AMRequestLong4(target, req_handler_id, buffer, packet_size, m_remote_address_map.at(target).addr, event_id_len, data_type, m_my_rank, persistent);
     }
     else
         raiseError("Cannot send message due to size-problems");
     
-#ifdef GASNET_DO_REPLY
-    m_pending_msgs_out++;
-#endif
-    
     if (m_protectMPI) mpi_mutex.unlock();
-    
-// Important?
-//     {
-//         std::lock_guard<std::mutex> out_sendReq_lock(outstandingSendRequests_mutex);
-//         outstandingSendRequests.insert(std::pair<MPI_Request, char*>(request, buffer));
-//     }
 }
 
 /**
@@ -739,3 +718,41 @@ bool MPI_GASNet_P2P_Messaging::checkForCodeInList(int * codes_to_check, int fail
   return false;
 }
 
+bool get_gasnet_verbose_env()
+{
+    if( const char *verbose_str = std::getenv("EDAT_GASNET_VERBOSE") )
+    {
+        if( strlen(verbose_str) > 0)
+        {
+            if( strcmp(verbose_str, "true") == 0 )
+                return true;
+            else if( strcmp(verbose_str, "false") == 0 )
+                return false;
+            else
+                return std::atoi(verbose_str) != 0;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    else
+    {
+        return false;
+    }
+}
+    
+size_t get_gasnet_segsize_env()
+{
+    size_t segsize_env = 0;
+    
+    if( const char *segment_size_str = std::getenv("EDAT_GASNET_SEGSIZE") )
+    {
+        if( strlen(segment_size_str) > 0 && std::atol(segment_size_str) > 0 )
+        {
+            segsize_env = std::atol(segment_size_str);
+        }
+    }
+    
+    return segsize_env;
+}

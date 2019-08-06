@@ -32,6 +32,7 @@
 #define SRC_MPI_P2P_MESSAGING_H_
 
 #include <map>
+#include <array>
 #include <vector>
 #include <mutex>
 
@@ -41,18 +42,32 @@
 #include "messaging.h"
 #include "configuration.h"
 
+struct remote_addr_t
+{
+    remote_addr_t(bool _avail, void *_addr, size_t _size) : available(_avail), addr(_addr), size(_size) {}
+    remote_addr_t() = delete;
+    bool available;
+    void * const addr;
+    size_t const size;
+};
+
 class MPI_GASNet_P2P_Messaging : public Messaging 
 {
     // GASNet handler functions
     friend void req_fire_event(gasnet_token_t token, void *buf, size_t size, int event_id_length, int data_type, int source, int persistent);
     friend void rep_fire_event(gasnet_token_t token);
+    
+    // GASNet variables
+    bool m_gasnet_verbose{ false };
+    
+    std::map<gasnet_node_t, remote_addr_t> m_remote_address_map;
+    int m_max_long_msg_size;
         
     // private member data
-    bool m_protectMPI, m_mpiInitHere, m_terminated, m_eligable_for_termination, m_batchEvents, m_enableBridge, m_gasnet_verbose{ false };
-    int m_my_rank, m_total_ranks, m_reply_from_master, m_empty_itertions, m_max_batched_events, m_pending_msgs_out{0};
+    bool m_protectMPI, m_mpiInitHere, m_terminated, m_eligable_for_termination, m_batchEvents, m_enableBridge;
+    int m_my_rank, m_total_ranks, m_reply_from_master, m_empty_itertions, m_max_batched_events;
     double last_event_arrival, batch_timeout;
     int terminated_id, mode=0;
-    size_t m_gasnet_segment_size = 0;
     int * termination_codes, *pingback_termination_codes;
     MPI_Request termination_pingback_request=MPI_REQUEST_NULL, termination_messages, termination_completed_request=MPI_REQUEST_NULL,
         terminate_send_req=MPI_REQUEST_NULL, terminate_send_pingback=MPI_REQUEST_NULL;
