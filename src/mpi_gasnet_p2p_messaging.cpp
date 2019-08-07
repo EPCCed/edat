@@ -89,6 +89,9 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
     memcpy(event_id, buf, event_id_length);
     memcpy(data, reinterpret_cast<char *>(buf) + event_id_length, data_size);
     
+    if( size > gasnet_AMMaxMedium() )
+        gasnet_AMReplyShort0(token, rep_handler_id);
+    
     SpecificEvent* event=new SpecificEvent(source, 
                                            data_size > 0 ? data_size / g_messaging_class->getTypeSize(data_type) : 0, 
                                            data_size, 
@@ -113,9 +116,6 @@ void req_fire_event(gasnet_token_t token, void *buf, size_t size,
     {
         g_messaging_class->scheduler.registerEvent(event);
     }
-    
-    if( size > gasnet_AMMaxMedium() )
-        gasnet_AMReplyShort0(token, rep_handler_id);
 }
 
 void rep_fire_event(gasnet_token_t token)
@@ -182,9 +182,9 @@ void MPI_GASNet_P2P_Messaging::initialise(MPI_Comm comm)
     for(std::size_t rank = 0; rank < gasnet_nodes(); ++rank)
     {
         if( rank != gasnet_mynode() )
-        {
-            std::size_t my_index = rank < gasnet_mynode() ? gasnet_mynode() : gasnet_mynode()-1;
-            std::size_t size = m_gasnet_seginfo_table[rank].size / gasnet_nodes();
+        {            
+            std::size_t my_index = rank < gasnet_mynode() ? gasnet_mynode()-1 : gasnet_mynode();
+            std::size_t size = m_gasnet_seginfo_table[rank].size / (gasnet_nodes()-1);
             void *addr = (char *)m_gasnet_seginfo_table[rank].addr + my_index * size;
             
             m_remote_address_map.insert({ rank, remote_addr_t(true, addr, size) });
@@ -370,8 +370,15 @@ void MPI_GASNet_P2P_Messaging::sendSingleEvent(void * data, int data_count, int 
         if( m_gasnet_verbose ) 
             std::cout << "rank #" << m_my_rank << " sends long message with size " << packet_size << "B to target " << target << std::endl;
         
-        GASNET_BLOCKUNTIL( m_remote_address_map.at(target).available == true );
+        if( !m_remote_address_map.at(target).available )
+        {
+            if( m_gasnet_verbose ) 
+                std::cout << "rank #" << m_my_rank << " waits in the queue to submit a long message" << std::endl;
+            GASNET_BLOCKUNTIL( m_remote_address_map.at(target).available == true );
+        }
+        m_remote_address_map.at(target).available == false;
         gasnet_AMRequestLong4(target, req_handler_id, buffer, packet_size, m_remote_address_map.at(target).addr, event_id_len, data_type, m_my_rank, persistent);
+        
     }
     else
         raiseError("Cannot send message due to size-problems");
